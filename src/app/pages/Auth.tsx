@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useSearchParams, useNavigate, Link } from 'react-router';
 import { Mail, Lock, User, Dumbbell, Github, ArrowLeft, Phone, MapPin, Upload } from 'lucide-react';
 import { Button, TextField, InputAdornment, Divider, MenuItem } from '@mui/material';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion } from 'motion/react';
 import { useAuth } from '../context/AuthContext';
 
 import logo from '../../imports/ChatGPT_Image_May_14__2026__09_48_52_PM.png';
@@ -48,12 +48,12 @@ export function Auth() {
           className="bg-white p-8 rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-100"
         >
           <form className="space-y-6" onSubmit={handleSubmit}>
-                          {isRegister && (
+            {isRegister && (
               <div className="flex flex-col gap-6">
                 {/* Họ và Tên */}
                 <TextField
                   fullWidth
-                  label="Họ và Tên"
+                  label="Username"
                   placeholder="Nguyễn Văn A"
                   slotProps={{
                       input: {
@@ -91,7 +91,7 @@ export function Auth() {
                   value={facility}
                   onChange={(e) => setFacility(e.target.value)}
                   InputLabelProps={{
-                    shrink: true, // Giúp chữ "Cơ sở phòng tập" thu nhỏ lên trên, không đè lên icon
+                    shrink: true,
                   }}
                   slotProps={{
                       input: {
@@ -155,7 +155,8 @@ export function Auth() {
                 </div>
               </div>
             )}
-              <div className="flex flex-col gap-6">
+
+            {/* Email (Dành cho cả Đăng nhập & Đăng ký) */}
             <TextField
               fullWidth
               label="Địa chỉ Email"
@@ -171,6 +172,8 @@ export function Auth() {
               }}
             />
 
+            {/* Mật khẩu (Dành cho cả Đăng nhập & Đăng ký) */}
+             <div className="flex flex-col gap-6">
             <TextField
               fullWidth
               label="Mật khẩu"
@@ -186,11 +189,11 @@ export function Auth() {
                   }
               }}
             />
+             </div>
 
-            </div>
-
+            {/* Chọn vai trò đăng nhập */}
             <div className="space-y-2">
-              <div className="text-sm font-medium text-slate-700 mb-4">Đăng nhập với vai trò</div>
+              <div className="text-sm font-medium text-slate-700">Đăng nhập với vai trò</div>
               <div className="grid grid-cols-3 gap-2">
                 {(['member', 'pt', 'admin'] as const).map((r) => (
                   <button
@@ -209,6 +212,7 @@ export function Auth() {
               </div>
             </div>
 
+            {/* Nút Đăng ký / Đăng nhập */}
             <Button
               fullWidth
               type="submit"
@@ -227,6 +231,7 @@ export function Auth() {
             </Button>
           </form>
 
+          {/* Login xã hội (Google / Github) */}
           <div className="mt-8">
             <Divider>
               <span className="text-xs text-slate-400 px-2 uppercase font-medium">Hoặc tiếp tục với</span>
