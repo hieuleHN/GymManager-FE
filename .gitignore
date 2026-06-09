@@ -1,0 +1,13 @@
+# Loại bỏ thư mục build
+/build/
+
+# Loại bỏ thư mục node_modules
+/node_modules/
+
+# Loại bỏ file tạm
+*.log
+*.tmp
+
+# Loại bỏ file hệ thống
+.DS_Store
+Thumbs.db
