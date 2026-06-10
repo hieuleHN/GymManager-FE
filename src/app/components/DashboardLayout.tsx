@@ -14,7 +14,9 @@ import {
   X,
   FileText,
   Bell,
-  Home
+  Home,
+  Users,
+  MessageCircle
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import logo from '../../imports/ChatGPT_Image_May_14__2026__09_48_52_PM.png';
@@ -38,6 +40,8 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     { name: 'Lịch sử giao dịch', href: '/dashboard/history', icon: History },
     { name: 'Lịch tập', href: '/dashboard/schedule', icon: Calendar },
     { name: 'Đặt lịch / Liên hệ HLV', href: '/dashboard/trainers', icon: UserCircle },
+    { name: 'Cộng đồng', href: '/dashboard/community', icon: Users },
+    { name: 'Tin nhắn', href: '/dashboard/messages', icon: MessageCircle },
     { name: 'Theo dõi tiến độ', href: '/dashboard/progress', icon: TrendingUp },
     { name: 'Dịch vụ', href: '/dashboard/services', icon: FileText },
     { name: 'Cài đặt', href: '/dashboard/settings', icon: Settings },

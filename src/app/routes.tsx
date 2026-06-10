@@ -58,6 +58,8 @@ import { TrainerProfile } from './pages/admin/TrainerProfile';
 import { TrainingSchedule } from './pages/admin/TrainingSchedule';
 import { LockerManagement } from './pages/admin/LockerManagement';
 import { ScheduleConfirmations } from './pages/admin/ScheduleConfirmations';
+import { Community } from './pages/dashboard/Community';
+import { Messages } from './pages/dashboard/Messages';
 
 function ProtectedRoute({ children, role }: { children: React.ReactNode, role?: string }) {
   const { user } = useAuth();
@@ -118,6 +120,14 @@ export const router = createBrowserRouter([
   {
     path: '/dashboard/progress',
     element: <ProtectedRoute><Progress /></ProtectedRoute>
+  },
+  {
+    path: '/dashboard/community',
+    element: <ProtectedRoute><Community /></ProtectedRoute>
+  },
+  {
+    path: '/dashboard/messages',
+    element: <ProtectedRoute><Messages /></ProtectedRoute>
   },
   {
     path: '/dashboard/services',
