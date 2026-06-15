@@ -2,30 +2,95 @@ import { AdminLayout } from '../../components/AdminLayout';
 import { Button } from '@mui/material';
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
+import { useClub } from '../../context/ClubContext';
+import { toast } from 'sonner';
+import { getAuthHeaders } from '../../context/AuthContext';
+import { Loader2 } from 'lucide-react';
 
 export function AddEquipment() {
   const navigate = useNavigate();
+  const { selectedClub } = useClub();
+  const [submitting, setSubmitting] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const [formData, setFormData] = useState({
     name: '',
     description: '',
-    price: '',
-    quantity: '',
-    purchaseDate: new Date().toISOString().split('T')[0],
     unitPrice: '',
+    quantity: '',
     supplier: '',
-    address: '',
     phone: '',
-    total: 0
+    address: '',
+    purchaser: '',
+    warranty_period: '12',
+    total: ''
   });
 
   const handleChange = (field: string, value: any) => {
     setFormData({ ...formData, [field]: value });
+    if (errors[field]) setErrors(prev => ({ ...prev, [field]: '' }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleBlur = (field: string, value: any) => {
+    let msg = '';
+    if (!value && (field === 'name' || field === 'supplier' || field === 'phone' || field === 'address' || field === 'purchaser')) {
+      const labels: Record<string, string> = { name: 'tên thiết bị', supplier: 'nhà cung cấp', phone: 'số điện thoại', address: 'địa chỉ', purchaser: 'người mua' };
+      msg = 'Vui lòng nhập ' + labels[field];
+    } else if ((field === 'unitPrice' || field === 'quantity') && (!value || Number(value) <= 0)) {
+      msg = !value ? 'Vui lòng nhập ' + (field === 'unitPrice' ? 'đơn giá' : 'số lượng') : (field === 'unitPrice' ? 'Đơn giá' : 'Số lượng') + ' phải lớn hơn 0';
+    }
+    setErrors(prev => ({ ...prev, [field]: msg }));
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    alert('Thêm thiết bị thành công!');
-    navigate('/admin/equipment');
+
+    const newErrors: Record<string, string> = {};
+    if (!formData.name.trim()) newErrors.name = 'Vui lòng nhập tên thiết bị';
+    if (!formData.unitPrice || Number(formData.unitPrice) <= 0) newErrors.unitPrice = !formData.unitPrice ? 'Vui lòng nhập đơn giá' : 'Đơn giá phải lớn hơn 0';
+    if (!formData.quantity || Number(formData.quantity) <= 0) newErrors.quantity = !formData.quantity ? 'Vui lòng nhập số lượng' : 'Số lượng phải lớn hơn 0';
+    if (!formData.supplier.trim()) newErrors.supplier = 'Vui lòng nhập nhà cung cấp';
+    if (!formData.phone.trim()) newErrors.phone = 'Vui lòng nhập số điện thoại';
+    if (!formData.address.trim()) newErrors.address = 'Vui lòng nhập địa chỉ';
+    if (!formData.purchaser.trim()) newErrors.purchaser = 'Vui lòng nhập người mua';
+    setErrors(newErrors);
+    if (Object.keys(newErrors).length > 0) return;
+
+    setSubmitting(true);
+    try {
+      const body: any = {
+        name: formData.name.trim(),
+        description: formData.description.trim(),
+        unitPrice: parseFloat(formData.unitPrice),
+        quantity: parseInt(formData.quantity),
+        supplier: formData.supplier.trim(),
+        phone: formData.phone.trim(),
+        address: formData.address.trim(),
+        purchaser: formData.purchaser.trim(),
+        warranty_period: parseInt(formData.warranty_period) || 12
+      };
+      if (formData.total) {
+        body.total = parseFloat(formData.total);
+      }
+      if (selectedClub !== 'all') {
+        body.location_id = selectedClub;
+      }
+
+      const res = await fetch('/api/equipments', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(body)
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Thêm thiết bị thất bại!');
+
+      toast.success('Thêm thiết bị thành công!');
+      navigate('/admin/equipment');
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -51,8 +116,10 @@ export function AddEquipment() {
                     required
                     value={formData.name}
                     onChange={(e) => handleChange('name', e.target.value)}
-                    className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    onBlur={() => handleBlur('name', formData.name)}
+                    className={`w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 ${errors.name ? 'border-red-500' : 'border-slate-200'}`}
                   />
+                  {errors.name && <p className="text-red-500 text-sm mt-1">{errors.name}</p>}
                 </div>
 
                 <div>
@@ -69,15 +136,17 @@ export function AddEquipment() {
 
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Giá tiền <span className="text-red-500">*</span>
+                    Đơn giá <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="number"
                     required
-                    value={formData.price}
-                    onChange={(e) => handleChange('price', e.target.value)}
-                    className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    value={formData.unitPrice}
+                    onChange={(e) => handleChange('unitPrice', e.target.value)}
+                    onBlur={() => handleBlur('unitPrice', formData.unitPrice)}
+                    className={`w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 ${errors.unitPrice ? 'border-red-500' : 'border-slate-200'}`}
                   />
+                  {errors.unitPrice && <p className="text-red-500 text-sm mt-1">{errors.unitPrice}</p>}
                 </div>
 
                 <div>
@@ -89,51 +158,58 @@ export function AddEquipment() {
                     required
                     value={formData.quantity}
                     onChange={(e) => handleChange('quantity', e.target.value)}
-                    className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    onBlur={() => handleBlur('quantity', formData.quantity)}
+                    className={`w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 ${errors.quantity ? 'border-red-500' : 'border-slate-200'}`}
                   />
+                  {errors.quantity && <p className="text-red-500 text-sm mt-1">{errors.quantity}</p>}
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Ngày mua hàng
+                    Thời gian bảo hành (tháng)
                   </label>
                   <input
-                    type="date"
-                    value={formData.purchaseDate}
-                    onChange={(e) => handleChange('purchaseDate', e.target.value)}
+                    type="number"
+                    value={formData.warranty_period}
+                    onChange={(e) => handleChange('warranty_period', e.target.value)}
                     className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   />
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Đơn giá
+                    Người mua <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
-                    value={formData.unitPrice}
-                    onChange={(e) => handleChange('unitPrice', e.target.value)}
-                    className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    required
+                    value={formData.purchaser}
+                    onChange={(e) => handleChange('purchaser', e.target.value)}
+                    onBlur={() => handleBlur('purchaser', formData.purchaser)}
+                    className={`w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 ${errors.purchaser ? 'border-red-500' : 'border-slate-200'}`}
                   />
+                  {errors.purchaser && <p className="text-red-500 text-sm mt-1">{errors.purchaser}</p>}
                 </div>
               </div>
             </div>
 
             {/* Right Column - Supplier Info */}
             <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-8">
-              <h2 className="text-xl font-bold text-slate-900 mb-6">Thông tin người cung cấp</h2>
+              <h2 className="text-xl font-bold text-slate-900 mb-6">Thông tin nhà cung cấp</h2>
               <div className="space-y-6">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Người cung cấp <span className="text-red-500">*</span>
+                    Nhà cung cấp <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
                     required
                     value={formData.supplier}
                     onChange={(e) => handleChange('supplier', e.target.value)}
-                    className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    onBlur={() => handleBlur('supplier', formData.supplier)}
+                    className={`w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 ${errors.supplier ? 'border-red-500' : 'border-slate-200'}`}
                   />
+                  {errors.supplier && <p className="text-red-500 text-sm mt-1">{errors.supplier}</p>}
                 </div>
 
                 <div>
@@ -144,9 +220,11 @@ export function AddEquipment() {
                     required
                     value={formData.address}
                     onChange={(e) => handleChange('address', e.target.value)}
+                    onBlur={() => handleBlur('address', formData.address)}
                     rows={3}
-                    className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className={`w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 ${errors.address ? 'border-red-500' : 'border-slate-200'}`}
                   />
+                  {errors.address && <p className="text-red-500 text-sm mt-1">{errors.address}</p>}
                 </div>
 
                 <div>
@@ -158,19 +236,20 @@ export function AddEquipment() {
                     required
                     value={formData.phone}
                     onChange={(e) => handleChange('phone', e.target.value)}
-                    className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    onBlur={() => handleBlur('phone', formData.phone)}
+                    className={`w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 ${errors.phone ? 'border-red-500' : 'border-slate-200'}`}
                   />
+                  {errors.phone && <p className="text-red-500 text-sm mt-1">{errors.phone}</p>}
                 </div>
 
                 <div className="pt-6 border-t border-slate-200">
                   <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Tổng tiền <span className="text-red-500">*</span>
+                    Tổng tiền
                   </label>
                   <input
                     type="number"
-                    required
                     value={formData.total}
-                    onChange={(e) => handleChange('total', parseFloat(e.target.value) || 0)}
+                    onChange={(e) => handleChange('total', e.target.value)}
                     className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     placeholder="Nhập tổng tiền"
                   />
@@ -199,6 +278,7 @@ export function AddEquipment() {
             <Button
               type="submit"
               variant="contained"
+              disabled={submitting}
               sx={{
                 bgcolor: '#4f46e5',
                 '&:hover': { bgcolor: '#4338ca' },
@@ -207,7 +287,7 @@ export function AddEquipment() {
                 px: 4
               }}
             >
-              Thêm thiết bị
+              {submitting ? 'Đang thêm...' : 'Thêm thiết bị'}
             </Button>
           </div>
         </form>
