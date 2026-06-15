@@ -1,52 +1,123 @@
 import { AdminLayout } from '../../components/AdminLayout';
+import { Pagination } from '../../components/Pagination';
 import { Button } from '@mui/material';
-import { Plus } from 'lucide-react';
-import { useState } from 'react';
+import { Plus, Trash2 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { getAuthHeaders, getApiUrl } from '../../context/AuthContext';
+import { useClub } from '../../context/ClubContext';
+import { toast } from 'sonner';
 
-const returns = [
-  {
-    id: 1,
-    productName: 'Nước tăng lực Red Bull',
-    reason: 'Hết hạn sử dụng',
-    quantity: 5,
-    returnDate: '2024-05-20'
-  },
-  {
-    id: 2,
-    productName: 'Nước protein Whey',
-    reason: 'Bao bì hỏng',
-    quantity: 2,
-    returnDate: '2024-05-18'
-  },
-  {
-    id: 3,
-    productName: 'Nước điện giải Pocari',
-    reason: 'Không đúng loại đặt hàng',
-    quantity: 10,
-    returnDate: '2024-05-15'
-  }
-];
+interface ProductReturn {
+  _id: string;
+  productName: string;
+  reason: string;
+  quantity: number;
+  returnDate: string;
+  locationId: string;
+}
 
 export function ProductReturns() {
+  const { selectedClub } = useClub();
+  const [returns, setReturns] = useState<ProductReturn[]>([]);
+  const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [formData, setFormData] = useState({
     productName: '',
     reason: '',
     quantity: ''
   });
+  const [submitting, setSubmitting] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
+
+  const fetchReturns = async (p = page) => {
+    setLoading(true);
+    try {
+      const base = selectedClub !== 'all' ? `?locationId=${selectedClub}` : '?';
+      const url = `${getApiUrl()}/api/product-returns${base}&page=${p}&limit=15`;
+      const res = await fetch(url, { headers: getAuthHeaders() });
+      const data = await res.json();
+      setReturns(data.data || []);
+      setTotalPages(data.totalPages || 1);
+      setTotal(data.total || 0);
+    } catch {
+      toast.error('Không thể tải danh sách trả hàng');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { setPage(1); fetchReturns(1); }, [selectedClub]);
 
   const handleChange = (field: string, value: string) => {
     setFormData({ ...formData, [field]: value });
   };
 
-  const handleSubmit = () => {
-    if (!formData.productName || !formData.reason || !formData.quantity) {
-      alert('Vui lòng điền đầy đủ thông tin!');
+  const handleDelete = async (id: string) => {
+    if (!confirm('Bạn có chắc chắn muốn xóa?')) return;
+    try {
+      const res = await fetch(`${getApiUrl()}/api/product-returns/${id}`, { method: 'DELETE', headers: getAuthHeaders() });
+      if (res.ok) {
+        toast.success('Đã xóa');
+        fetchReturns(page);
+      } else {
+        toast.error('Xóa thất bại');
+      }
+    } catch {
+      toast.error('Xóa thất bại');
+    }
+  };
+
+  const handleBlur = (field: string) => {
+    let error = '';
+    if (field === 'reason' && !formData.reason.trim()) error = 'Vui lòng nhập lý do trả hàng';
+    else if (field === 'quantity' && (!formData.quantity || Number(formData.quantity) <= 0)) error = 'Số lượng phải lớn hơn 0';
+    setErrors(prev => ({ ...prev, [field]: error }));
+  };
+
+  const validateAll = () => {
+    const newErrors: Record<string, string> = {};
+    if (!formData.reason.trim()) newErrors.reason = 'Vui lòng nhập lý do trả hàng';
+if (!formData.quantity || Number(formData.quantity) <= 0) newErrors.quantity = 'Số lượng phải lớn hơn 0';
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const handleSubmit = async () => {
+    if (!validateAll()) return;
+    if (selectedClub === 'all') {
+      toast.error('Vui lòng chọn cơ sở!');
       return;
     }
-    alert('Đã lưu thông tin trả hàng!');
-    setShowAddModal(false);
-    setFormData({ productName: '', reason: '', quantity: '' });
+    setSubmitting(true);
+    try {
+      const body = {
+        productName: formData.productName,
+        reason: formData.reason,
+        quantity: Number(formData.quantity),
+        locationId: selectedClub
+      };
+      const res = await fetch(`${getApiUrl()}/api/product-returns`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(body)
+      });
+      if (res.ok) {
+        toast.success('Đã lưu thông tin trả hàng!');
+        setShowAddModal(false);
+        setFormData({ productName: '', reason: '', quantity: '' });
+        setPage(1); fetchReturns(1);
+      } else {
+        const data = await res.json();
+        toast.error(data.error || 'Lưu thất bại');
+      }
+    } catch {
+      toast.error('Lưu thất bại');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -60,7 +131,7 @@ export function ProductReturns() {
           <Button
             variant="contained"
             startIcon={<Plus className="w-5 h-5" />}
-            onClick={() => setShowAddModal(true)}
+            onClick={() => { setFormData({ productName: '', reason: '', quantity: '' }); setErrors({}); setShowAddModal(true); }}
             sx={{
               bgcolor: '#4f46e5',
               '&:hover': { bgcolor: '#4338ca' },
@@ -83,21 +154,36 @@ export function ProductReturns() {
                   <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Lý do trả hàng</th>
                   <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Số lượng</th>
                   <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Ngày trả</th>
+                  <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Thao tác</th>
                 </tr>
               </thead>
-              <tbody>
-                {returns.map((item, index) => (
-                  <tr key={item.id} className="border-b border-slate-100 hover:bg-slate-50">
+<tbody>
+                {loading ? (
+                  <tr><td colSpan={6} className="px-6 py-8 text-center text-slate-500">Đang tải...</td></tr>
+                ) : returns.length === 0 ? (
+                  <tr><td colSpan={6} className="px-6 py-8 text-center text-slate-500">Chưa có lần trả hàng nào</td></tr>
+                ) : returns.map((item, index) => (
+                  <tr key={item._id} className="border-b border-slate-100 hover:bg-slate-50">
                     <td className="px-6 py-4 text-sm text-slate-900">{index + 1}</td>
                     <td className="px-6 py-4 text-sm font-medium text-slate-900">{item.productName}</td>
                     <td className="px-6 py-4 text-sm text-slate-600">{item.reason}</td>
                     <td className="px-6 py-4 text-sm text-slate-600">{item.quantity}</td>
-                    <td className="px-6 py-4 text-sm text-slate-600">{item.returnDate}</td>
+                    <td className="px-6 py-4 text-sm text-slate-600">{item.returnDate ? new Date(item.returnDate).toLocaleDateString('vi-VN') : ''}</td>
+                    <td className="px-6 py-4">
+                      <button
+                        onClick={() => handleDelete(item._id)}
+                        className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                        title="Xóa"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+          {!loading && <Pagination page={page} totalPages={totalPages} total={total} limit={15} onPageChange={(p) => { setPage(p); fetchReturns(p); }} />}
         </div>
       </div>
 
@@ -127,11 +213,13 @@ export function ProductReturns() {
                 </label>
                 <textarea
                   value={formData.reason}
-                  onChange={(e) => handleChange('reason', e.target.value)}
+onChange={(e) => { handleChange('reason', e.target.value); setErrors(prev => ({ ...prev, reason: '' })); }}
+                  onBlur={() => handleBlur('reason')}
                   rows={3}
-                  className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className={`w-full p-3 border ${errors.reason ? 'border-red-400' : 'border-slate-200'} rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500`}
                   placeholder="Nhập lý do trả hàng"
                 />
+                {errors.reason && <p className="text-red-500 text-sm mt-1">{errors.reason}</p>}
               </div>
 
               <div>
@@ -141,11 +229,13 @@ export function ProductReturns() {
                 <input
                   type="number"
                   value={formData.quantity}
-                  onChange={(e) => handleChange('quantity', e.target.value)}
-                  className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  onChange={(e) => { handleChange('quantity', e.target.value); setErrors(prev => ({ ...prev, quantity: '' })); }}
+                  onBlur={() => handleBlur('quantity')}
+                  className={`w-full p-3 border ${errors.quantity ? 'border-red-400' : 'border-slate-200'} rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500`}
                   placeholder="Nhập số lượng"
                   min="1"
                 />
+                {errors.quantity && <p className="text-red-500 text-sm mt-1">{errors.quantity}</p>}
               </div>
             </div>
 
@@ -170,6 +260,7 @@ export function ProductReturns() {
               <Button
                 variant="contained"
                 onClick={handleSubmit}
+                disabled={submitting}
                 sx={{
                   flex: 1,
                   bgcolor: '#4f46e5',
@@ -178,7 +269,7 @@ export function ProductReturns() {
                   borderRadius: 2
                 }}
               >
-                Lưu
+                {submitting ? 'Đang lưu...' : 'Lưu'}
               </Button>
             </div>
           </div>
