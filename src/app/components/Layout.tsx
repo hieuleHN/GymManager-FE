@@ -130,7 +130,7 @@ export function Layout() {
                     <div className="text-right">
                       <p className="text-sm font-medium text-slate-900">{user.name}</p>
                       <p className="text-xs text-slate-500 capitalize">
-                        {user.role === 'member' ? 'Hội viên' : user.role === 'pt' ? 'HLV Cá nhân' : 'Quản trị viên'}
+                        {user.role === 'member' ? 'Hội viên' : (user.isStaff ? 'Nhân viên' : 'Hội viên')}
                       </p>
                     </div>
                     <img className="h-8 w-8 rounded-full ring-2 ring-indigo-100" src={user.avatar} alt="" />
