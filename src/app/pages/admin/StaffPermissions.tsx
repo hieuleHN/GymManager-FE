@@ -88,8 +88,8 @@ export function StaffPermissions() {
 
   return (
     <AdminLayout>
-      <div className="max-w-7xl mx-auto space-y-6"></div>
-      <div>
+      <div className="max-w-7xl mx-auto space-y-6">
+        <div>
           <h1 className="text-3xl font-bold text-slate-900 mb-2">Phân quyền theo chức vụ</h1>
           <p className="text-slate-600">Chọn chức vụ và bật/tắt các chức năng được phép truy cập</p>
         </div>
