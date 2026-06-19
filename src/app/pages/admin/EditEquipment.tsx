@@ -206,7 +206,7 @@ export function EditEquipment() {
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">
                     Thời gian bảo hành (tháng)
-                    </label>
+                  </label>
                   <input
                     type="number"
                     value={formData.warranty_period}
