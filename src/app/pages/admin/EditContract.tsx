@@ -1,21 +1,67 @@
 import { AdminLayout } from '../../components/AdminLayout';
 import { Button } from '@mui/material';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router';
+import { getAuthHeaders } from '../../context/AuthContext';
+import { toast } from 'sonner';
 
 export function EditContract() {
   const navigate = useNavigate();
   const { id } = useParams();
+  const headers = getAuthHeaders();
 
-  const [commitmentA, setCommitmentA] = useState('Bên A cam kết cung cấp đầy đủ trang thiết bị tập luyện...');
-  const [commitmentB, setCommitmentB] = useState('Bên B cam kết tuân thủ quy định của phòng gym...');
-  const [otherTerms, setOtherTerms] = useState('Các điều khoản khác sẽ được thỏa thuận trực tiếp...');
+  const [contractA, setContractA] = useState('');
+  const [contractB, setContractB] = useState('');
+  const [contractTerms, setContractTerms] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  useEffect(() => {
+    const fetchContract = async () => {
+      try {
+        const res = await fetch(`/api/packages/${id}`, { headers });
+        if (!res.ok) throw new Error('Not found');
+        const data = await res.json();
+        const pkg = data.data || data;
+        setContractA(pkg.contractA || '');
+        setContractB(pkg.contractB || '');
+        setContractTerms(pkg.contractTerms || '');
+      } catch {
+        toast.error('Không tìm thấy hợp đồng');
+        navigate('/admin/contracts');
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchContract();
+  }, [id]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    alert('Cập nhật hợp đồng thành công!');
-    navigate('/admin/contracts');
+    setSubmitting(true);
+    try {
+      const res = await fetch(`/api/packages/${id}`, {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify({ contractA, contractB, contractTerms }),
+      });
+      if (!res.ok) throw new Error('Update failed');
+      toast.success('Cập nhật hợp đồng thành công!');
+      navigate('/admin/contracts');
+    } catch {
+      toast.error('Cập nhật hợp đồng thất bại');
+    } finally {
+      setSubmitting(false);
+    }
   };
+
+  if (loading) {
+    return (
+      <AdminLayout>
+        <div className="max-w-4xl mx-auto p-8 text-center text-slate-500">Đang tải...</div>
+      </AdminLayout>
+    );
+  }
 
   return (
     <AdminLayout>
@@ -32,8 +78,8 @@ export function EditContract() {
                 Cam kết bên A (Phòng gym)
               </label>
               <textarea
-                value={commitmentA}
-                onChange={(e) => setCommitmentA(e.target.value)}
+                value={contractA}
+                onChange={(e) => setContractA(e.target.value)}
                 rows={6}
                 className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
@@ -44,8 +90,8 @@ export function EditContract() {
                 Cam kết bên B (Khách hàng)
               </label>
               <textarea
-                value={commitmentB}
-                onChange={(e) => setCommitmentB(e.target.value)}
+                value={contractB}
+                onChange={(e) => setContractB(e.target.value)}
                 rows={6}
                 className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
@@ -56,8 +102,8 @@ export function EditContract() {
                 Điều khoản khác
               </label>
               <textarea
-                value={otherTerms}
-                onChange={(e) => setOtherTerms(e.target.value)}
+                value={contractTerms}
+                onChange={(e) => setContractTerms(e.target.value)}
                 rows={6}
                 className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
@@ -67,6 +113,7 @@ export function EditContract() {
               <Button
                 type="button"
                 variant="outlined"
+                disabled={submitting}
                 onClick={() => navigate('/admin/contracts')}
                 sx={{
                   borderColor: '#cbd5e1',
@@ -82,6 +129,7 @@ export function EditContract() {
               <Button
                 type="submit"
                 variant="contained"
+                disabled={submitting}
                 sx={{
                   bgcolor: '#4f46e5',
                   '&:hover': { bgcolor: '#4338ca' },
