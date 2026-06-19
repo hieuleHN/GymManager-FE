@@ -158,7 +158,7 @@ export function LockerManagement() {
             </p>
           </div>
           <button onClick={() => { setFormData(emptyForm); setErrors({}); setShowModal(true); }}
-          className="flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-semibold">
+            className="flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-semibold">
             <Plus className="w-5 h-5" /> Báo cáo vấn đề mới
           </button>
         </div>
