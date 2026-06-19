@@ -66,7 +66,7 @@ export function EditProduct() {
     const newErrors: Record<string, string> = {};
     if (!formData.name) newErrors.name = 'Vui lòng nhập tên sản phẩm';
     if (!formData.price || Number(formData.price) <= 0) newErrors.price = !formData.price ? 'Vui lòng nhập đơn giá' : 'Đơn giá phải lớn hơn 0';
-if (!formData.quantity || Number(formData.quantity) <= 0) newErrors.quantity = !formData.quantity ? 'Vui lòng nhập số lượng' : 'Số lượng phải lớn hơn 0';
+    if (!formData.quantity || Number(formData.quantity) <= 0) newErrors.quantity = !formData.quantity ? 'Vui lòng nhập số lượng' : 'Số lượng phải lớn hơn 0';
     if (!formData.importDate) newErrors.importDate = 'Vui lòng nhập ngày nhập';
     if (!formData.expiryDate) newErrors.expiryDate = 'Vui lòng nhập ngày hết hạn';
     setErrors(newErrors);
@@ -141,7 +141,7 @@ if (!formData.quantity || Number(formData.quantity) <= 0) newErrors.quantity = !
             </div>
 
             <div>
-<label className="block text-sm font-medium text-slate-700 mb-2">
+              <label className="block text-sm font-medium text-slate-700 mb-2">
                 Tên sản phẩm <span className="text-red-500">*</span>
               </label>
               <input
@@ -200,7 +200,7 @@ if (!formData.quantity || Number(formData.quantity) <= 0) newErrors.quantity = !
                 value={formData.description}
                 onChange={(e) => handleChange('description', e.target.value)}
                 rows={3}
-className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 placeholder="Mô tả sản phẩm (không bắt buộc)"
               />
             </div>
@@ -268,7 +268,7 @@ className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focu
                 {submitting ? 'Đang lưu...' : 'Cập nhật'}
               </Button>
             </div>
-</div>
+          </div>
         </form>
       </div>
     </AdminLayout>
