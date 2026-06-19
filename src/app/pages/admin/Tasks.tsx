@@ -1,88 +1,47 @@
 import { AdminLayout } from '../../components/AdminLayout';
+import { Pagination } from '../../components/Pagination';
 import { Button } from '@mui/material';
-import { Plus, Check } from 'lucide-react';
-import { useState } from 'react';
+import { Plus, Edit, Trash2 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router';
+import { getAuthHeaders, getApiUrl } from '../../context/AuthContext';
 
-const tasks = [
-  {
-    id: 1,
-    title: 'Bảo trì máy chạy bộ',
-    assignee: 'Nguyễn Văn X',
-    priority: 'high',
-    status: 'pending',
-    dueDate: '2024-05-28',
-    description: 'Kiểm tra và bảo trì tất cả máy chạy bộ'
-  },
-  {
-    id: 2,
-    title: 'Cập nhật hợp đồng khách hàng',
-    assignee: 'Trần Thị Y',
-    priority: 'medium',
-    status: 'in_progress',
-    dueDate: '2024-05-30',
-    description: 'Cập nhật hợp đồng cho khách hàng sắp hết hạn'
-  },
-  {
-    id: 3,
-    title: 'Tổng kết doanh thu tháng 5',
-    assignee: 'Phạm Thị T',
-    priority: 'high',
-    status: 'pending',
-    dueDate: '2024-05-31',
-    description: 'Lập báo cáo doanh thu tháng 5'
-  },
-  {
-    id: 4,
-    title: 'Kiểm tra thiết bị an toàn',
-    assignee: 'Lê Văn Z',
-    priority: 'low',
-    status: 'completed',
-    dueDate: '2024-05-25',
-    description: 'Kiểm tra tất cả thiết bị an toàn trong phòng tập'
-  }
-];
+interface Task {
+  _id: string;
+  name: string;
+  salary: number;
+  description?: string;
+  isAdmin?: boolean;
+}
 
 export function Tasks() {
-  const [statusFilter, setStatusFilter] = useState('all');
+  const navigate = useNavigate();
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
 
-  const filteredTasks = tasks.filter(task =>
-    statusFilter === 'all' || task.status === statusFilter
-  );
-
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case 'high': return 'bg-red-100 text-red-700';
-      case 'medium': return 'bg-yellow-100 text-yellow-700';
-      case 'low': return 'bg-blue-100 text-blue-700';
-      default: return 'bg-slate-100 text-slate-700';
-    }
+  const fetchTasks = async (p = page) => {
+    try {
+      const res = await fetch(`${getApiUrl()}/api/jobs?page=${p}&limit=15`, { headers: getAuthHeaders() });
+      const data = await res.json();
+      setTasks(data.data || []);
+      setTotalPages(data.totalPages || 1);
+      setTotal(data.total || 0);
+    } catch {}
   };
 
-  const getPriorityText = (priority: string) => {
-    switch (priority) {
-      case 'high': return 'Cao';
-      case 'medium': return 'Trung bình';
-      case 'low': return 'Thấp';
-      default: return priority;
-    }
-  };
+  useEffect(() => { fetchTasks(1); }, []);
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'completed': return 'bg-green-100 text-green-700';
-      case 'in_progress': return 'bg-blue-100 text-blue-700';
-      case 'pending': return 'bg-yellow-100 text-yellow-700';
-      default: return 'bg-slate-100 text-slate-700';
-    }
-  };
-
-  const getStatusText = (status: string) => {
-    switch (status) {
-      case 'completed': return 'Hoàn thành';
-      case 'in_progress': return 'Đang làm';
-      case 'pending': return 'Chờ xử lý';
-      default: return status;
-    }
+  const handleDelete = async (id: string) => {
+    if (!confirm('Bạn có chắc chắn muốn xóa công việc này?')) return;
+    try {
+      const res = await fetch(`${getApiUrl()}/api/jobs/${id}`, { method: 'DELETE', headers: getAuthHeaders() });
+      if (res.ok) {
+        alert('Đã xóa công việc!');
+        fetchTasks(page);
+      }
+    } catch {}
   };
 
   return (
@@ -91,84 +50,58 @@ export function Tasks() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold text-slate-900 mb-2">Quản lý công việc</h1>
-            <p className="text-slate-600">Theo dõi và phân công công việc cho nhân viên</p>
+            <p className="text-slate-600">Quản lý các vị trí công việc và mức lương</p>
           </div>
-          <Button
-            variant="contained"
-            startIcon={<Plus className="w-5 h-5" />}
-            sx={{
-              bgcolor: '#4f46e5',
-              '&:hover': { bgcolor: '#4338ca' },
-              textTransform: 'none',
-              borderRadius: 2,
-              px: 4
-            }}
-          >
-            Tạo công việc
+          <Button variant="contained" startIcon={<Plus className="w-5 h-5" />} onClick={() => navigate('/admin/jobs/add')}
+            sx={{ bgcolor: '#4f46e5', '&:hover': { bgcolor: '#4338ca' }, textTransform: 'none', borderRadius: 2, px: 4 }}>
+            Thêm công việc
           </Button>
         </div>
 
-        {/* Filter */}
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
-          <div className="flex gap-3">
-            {[
-              { value: 'all', label: 'Tất cả' },
-              { value: 'pending', label: 'Chờ xử lý' },
-              { value: 'in_progress', label: 'Đang làm' },
-              { value: 'completed', label: 'Hoàn thành' }
-            ].map((filter) => (
-              <button
-                key={filter.value}
-                onClick={() => setStatusFilter(filter.value)}
-                className={`px-6 py-2.5 rounded-lg font-semibold transition-all ${
-                  statusFilter === filter.value
-                    ? 'bg-indigo-600 text-white shadow-md'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                }`}
-              >
-                {filter.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Tasks Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredTasks.map((task) => (
-            <div key={task.id} className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
-              <div className="flex items-start justify-between mb-4">
-                <h3 className="text-lg font-bold text-slate-900 flex-1">{task.title}</h3>
-                {task.status === 'completed' && (
-                  <div className="bg-green-100 p-2 rounded-lg">
-                    <Check className="w-5 h-5 text-green-600" />
-                  </div>
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-slate-50 border-b border-slate-200">
+                <tr>
+                  <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">STT</th>
+                  <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Tên công việc</th>
+                  <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Mô tả</th>
+                  <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Tiền lương</th>
+                  <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Admin</th>
+                  <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Thao tác</th>
+                </tr>
+              </thead>
+              <tbody>
+                {tasks.map((task, index) => (
+                  <tr key={task._id} className="border-b border-slate-100 hover:bg-slate-50">
+                    <td className="px-6 py-4 text-sm text-slate-900">{index + 1}</td>
+                    <td className="px-6 py-4 text-sm font-medium text-slate-900">{task.name}</td>
+                    <td className="px-6 py-4 text-sm text-slate-600">{task.description || '-'}</td>
+                    <td className="px-6 py-4 text-sm text-indigo-600 font-bold">{(task.salary ?? 0).toLocaleString('vi-VN')}đ</td>
+                    <td className="px-6 py-4">
+                      <span className={`inline-flex px-3 py-1 rounded-full text-xs font-semibold ${task.isAdmin ? 'bg-purple-100 text-purple-700' : 'bg-slate-100 text-slate-600'}`}>
+                        {task.isAdmin ? 'Có' : 'Không'}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex gap-2">
+                        <button className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg" title="Sửa">
+                          <Edit className="w-4 h-4" />
+                        </button>
+                        <button onClick={() => handleDelete(task._id)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg" title="Xóa">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {tasks.length === 0 && (
+                  <tr><td colSpan={6} className="px-6 py-8 text-center text-slate-500">Chưa có công việc nào</td></tr>
                 )}
-              </div>
-
-              <p className="text-sm text-slate-600 mb-4">{task.description}</p>
-
-              <div className="space-y-3">
-                <div className="flex justify-between text-sm">
-                  <span className="text-slate-600">Người phụ trách:</span>
-                  <span className="font-semibold text-slate-900">{task.assignee}</span>
-                </div>
-
-                <div className="flex justify-between text-sm">
-                  <span className="text-slate-600">Hạn hoàn thành:</span>
-                  <span className="font-semibold text-slate-900">{task.dueDate}</span>
-                </div>
-
-                <div className="flex gap-2 pt-3 border-t border-slate-200">
-                  <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getPriorityColor(task.priority)}`}>
-                    {getPriorityText(task.priority)}
-                  </span>
-                  <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(task.status)}`}>
-                    {getStatusText(task.status)}
-                  </span>
-                </div>
-              </div>
-            </div>
-          ))}
+              </tbody>
+            </table>
+          </div>
+          <Pagination page={page} totalPages={totalPages} total={total} limit={15} onPageChange={(p) => { setPage(p); fetchTasks(p); }} />
         </div>
       </div>
     </AdminLayout>

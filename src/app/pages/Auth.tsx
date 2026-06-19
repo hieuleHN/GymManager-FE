@@ -46,17 +46,13 @@ export function Auth() {
       setError('Vui lòng nhập tài khoản và mật khẩu!');
       return;
     }
-    
-    
     setLoading(true);
     try {
       await login(loginMode === 'staff' ? 'staff' : 'member', loginForm.account, loginForm.password);
       if (loginMode === 'staff') {
         navigate('/admin/dashboard');
-        console.log(loginMode);
       } else {
         navigate('/dashboard');
-        
       }
     } catch (err: any) {
       setError(err.message);

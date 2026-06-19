@@ -1,159 +1,173 @@
-import React, { useState, useEffect } from "react";
-import { AdminLayout } from "../../components/AdminLayout";
-import { Button } from "@mui/material";
-import { Plus, Trash2 } from "lucide-react";
-import { useNavigate, useParams } from "react-router";
-import axios from "axios";
+import { AdminLayout } from '../../components/AdminLayout';
+import { Button } from '@mui/material';
+import { Plus, Trash2 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { useNavigate, useParams } from 'react-router';
+import { useClub } from '../../context/ClubContext';
+import { getAuthHeaders } from '../../context/AuthContext';
+import { toast } from 'sonner';
+
+interface Discipline {
+  _id: string;
+  name: string;
+}
 
 export function EditPackage() {
   const navigate = useNavigate();
-  const { id } = useParams(); // Lấy ID gói tập từ đường dẫn URL
-  const [departments, setDepartments] = useState<any[]>([]);
+  const { id } = useParams();
+  const { selectedClub } = useClub();
+  const headers = getAuthHeaders();
 
+  const [disciplines, setDisciplines] = useState<Discipline[]>([]);
+  const [loadingData, setLoadingData] = useState(true);
   const [formData, setFormData] = useState({
-    name: "",
-    departmentId: "",
-    monthly_price: "",
+    name: '',
+    disciplineId: '',
+    unitPrice: '',
   });
-
-  const [features, setFeatures] = useState<string[]>([""]);
-  const [durations, setDurations] = useState<
-    Array<{ months: string; discount: string }>
-  >([{ months: "", discount: "" }]);
-  const [commitmentA, setCommitmentA] = useState("");
-  const [commitmentB, setCommitmentB] = useState("");
-  const [otherTerms, setOtherTerms] = useState("");
-
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  // KÉO DỮ LIỆU CŨ TỪ DATABASE ĐỔ VÀO FORM
+  const [features, setFeatures] = useState<string[]>(['']);
+  const [durations, setDurations] = useState<Array<{ months: string; discount: string }>>([{ months: '', discount: '' }]);
+  const [contractA, setContractA] = useState('');
+  const [contractB, setContractB] = useState('');
+  const [contractTerms, setContractTerms] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // 1. Lấy danh sách bộ môn
-        const deptRes = await axios.get("http://localhost:5000/departments");
-        setDepartments(deptRes.data);
+        const discUrl = selectedClub && selectedClub !== 'all'
+          ? `/api/disciplines?locationId=${selectedClub}`
+          : '/api/disciplines';
+        const pkgUrl = `/api/packages/${id}`;
 
-        // 2. Lấy dữ liệu gói tập hiện tại đang sửa
-        const pkgRes = await axios.get(`http://localhost:5000/packages/${id}`);
-        const pkg = pkgRes.data;
+        const [discRes, pkgRes] = await Promise.all([
+          fetch(discUrl, { headers }),
+          fetch(pkgUrl, { headers }),
+        ]);
 
-        // Đổ dữ liệu vào State
-        setFormData({
-          name: pkg.name,
-          departmentId: pkg.departmentId?._id || pkg.departmentId,
-          monthly_price: pkg.monthly_price.toString(),
-        });
-
-        if (pkg.features?.length > 0) setFeatures(pkg.features);
-
-        if (pkg.durationOptions?.length > 0) {
-          setDurations(
-            pkg.durationOptions.map((d: any) => ({
-              months: d.months.toString(),
-              discount: d.discountPercent.toString(),
-            })),
-          );
+        if (discRes.ok) {
+          const discData = await discRes.json();
+          setDisciplines(Array.isArray(discData) ? discData : discData.data || []);
         }
 
-        setCommitmentA(pkg.gymCommitments || "");
-        setCommitmentB(pkg.customerCommitments || "");
-        setOtherTerms(pkg.otherTerms || "");
-      } catch (error) {
-        console.error("Lỗi khi lấy dữ liệu gói tập:", error);
-        alert("Không tìm thấy dữ liệu gói tập này!");
+        if (pkgRes.ok) {
+          const pkgData = await pkgRes.json();
+          const pkg = pkgData.data || pkgData;
+          setFormData({
+            name: pkg.name || '',
+            disciplineId: typeof pkg.disciplineId === 'object' ? pkg.disciplineId._id : pkg.disciplineId || '',
+            unitPrice: pkg.unitPrice?.toString() || '',
+          });
+          setFeatures(pkg.features?.length ? pkg.features : ['']);
+          setDurations(
+            pkg.durations?.length
+              ? pkg.durations.map((d: any) => ({
+                  months: d.months?.toString() || '',
+                  discount: d.discount?.toString() || '',
+                }))
+              : [{ months: '', discount: '' }]
+          );
+          setContractA(pkg.contractA || '');
+          setContractB(pkg.contractB || '');
+          setContractTerms(pkg.contractTerms || '');
+        } else {
+          toast.error('Không tìm thấy gói tập');
+          navigate('/admin/packages');
+        }
+      } catch {
+        toast.error('Không thể tải dữ liệu');
+        navigate('/admin/packages');
+      } finally {
+        setLoadingData(false);
       }
     };
-    if (id) fetchData();
-  }, [id]);
+    fetchData();
+  }, [id, selectedClub]);
 
   const handleChange = (field: string, value: any) => {
     setFormData({ ...formData, [field]: value });
-    if (errors[field]) setErrors({ ...errors, [field]: "" });
+    if (errors[field]) setErrors(prev => ({ ...prev, [field]: '' }));
   };
 
-  const addFeature = () => setFeatures([...features, ""]);
-  const removeFeature = (index: number) =>
-    setFeatures(features.filter((_, i) => i !== index));
+  const handleBlur = (field: string, value: any) => {
+    let msg = '';
+    if ((field === 'name' || field === 'unitPrice') && !value) msg = 'Vui lòng nhập ' + (field === 'name' ? 'tên gói tập' : 'đơn giá');
+    else if (field === 'disciplineId' && !value) msg = 'Vui lòng chọn bộ môn';
+    else if (field === 'unitPrice' && value && Number(value) <= 0) msg = 'Đơn giá phải lớn hơn 0';
+    setErrors(prev => ({ ...prev, [field]: msg }));
+  };
+
+  const addFeature = () => setFeatures([...features, '']);
+  const removeFeature = (index: number) => setFeatures(features.filter((_, i) => i !== index));
   const updateFeature = (index: number, value: string) => {
     const newFeatures = [...features];
     newFeatures[index] = value;
     setFeatures(newFeatures);
   };
 
-  const addDuration = () =>
-    setDurations([...durations, { months: "", discount: "" }]);
-  const removeDuration = (index: number) =>
-    setDurations(durations.filter((_, i) => i !== index));
-  const updateDuration = (
-    index: number,
-    field: "months" | "discount",
-    value: string,
-  ) => {
+  const addDuration = () => setDurations([...durations, { months: '', discount: '' }]);
+  const removeDuration = (index: number) => setDurations(durations.filter((_, i) => i !== index));
+  const updateDuration = (index: number, field: 'months' | 'discount', value: string) => {
     const newDurations = [...durations];
     newDurations[index][field] = value;
     setDurations(newDurations);
-    if (errors.durations) setErrors({ ...errors, durations: "" });
-  };
-
-  const validateForm = () => {
-    const newErrors: Record<string, string> = {};
-    if (!formData.name.trim()) newErrors.name = "Vui lòng nhập tên gói tập";
-    if (!formData.departmentId)
-      newErrors.departmentId = "Vui lòng chọn loại gói (Bộ môn)";
-    if (!formData.monthly_price)
-      newErrors.monthly_price = "Vui lòng nhập đơn giá";
-    else if (Number(formData.monthly_price) <= 0)
-      newErrors.monthly_price = "Đơn giá phải lớn hơn 0đ";
-
-    const hasInvalidDuration = durations.some(
-      (d) => d.months !== "" && Number(d.months) <= 0,
-    );
-    if (hasInvalidDuration) newErrors.durations = "Số tháng tập phải lớn hơn 0";
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!validateForm()) return;
+    const newErrors: Record<string, string> = {};
+    if (!formData.name) newErrors.name = 'Vui lòng nhập tên gói tập';
+    if (!formData.disciplineId) newErrors.disciplineId = 'Vui lòng chọn bộ môn';
+    if (!formData.unitPrice || Number(formData.unitPrice) <= 0) newErrors.unitPrice = !formData.unitPrice ? 'Vui lòng nhập đơn giá' : 'Đơn giá phải lớn hơn 0';
+    setErrors(newErrors);
+    if (Object.keys(newErrors).length > 0) return;
 
+    setSubmitting(true);
     try {
-      const payload = {
+      const body = {
         name: formData.name,
-        departmentId: formData.departmentId,
-        monthly_price: Number(formData.monthly_price),
-        features: features.filter((f) => f.trim() !== ""),
-        durationOptions: durations
-          .filter((d) => d.months !== "")
-          .map((d) => ({
-            months: Number(d.months),
-            discountPercent: Number(d.discount) || 0,
-          })),
-        gymCommitments: commitmentA,
-        customerCommitments: commitmentB,
-        otherTerms: otherTerms,
+        disciplineId: formData.disciplineId,
+        unitPrice: Number(formData.unitPrice),
+        features: features.filter(f => f.trim()),
+        durations: durations
+          .filter(d => d.months)
+          .map(d => ({ months: Number(d.months), discount: Number(d.discount) || 0 })),
+        contractA,
+        contractB,
+        contractTerms,
       };
 
-      // GỌI API PUT (SỬA) THAY VÌ POST
-      await axios.put(`http://localhost:5000/packages/${id}`, payload);
-      alert("Cập nhật gói tập thành công!");
-      navigate("/admin/packages");
-    } catch (error: any) {
-      console.error("Lỗi khi lưu gói tập:", error);
-      alert("Lỗi hệ thống: Không thể cập nhật gói tập!");
+      const res = await fetch(`/api/packages/${id}`, {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error('Update failed');
+      toast.success('Cập nhật gói tập thành công!');
+      navigate('/admin/packages');
+    } catch {
+      toast.error('Cập nhật gói tập thất bại');
+    } finally {
+      setSubmitting(false);
     }
   };
+
+  if (loadingData) {
+    return (
+      <AdminLayout>
+        <div className="max-w-4xl mx-auto p-8 text-center text-slate-500">Đang tải...</div>
+      </AdminLayout>
+    );
+  }
 
   return (
     <AdminLayout>
       <div className="max-w-4xl mx-auto space-y-6">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900 mb-2">
-            Cập nhật gói tập
-          </h1>
-          <p className="text-slate-600">Chỉnh sửa thông tin gói tập hiện tại</p>
+          <h1 className="text-3xl font-bold text-slate-900 mb-2">Sửa gói tập</h1>
+          <p className="text-slate-600">Cập nhật thông tin gói tập</p>
         </div>
 
         <form onSubmit={handleSubmit}>
@@ -165,57 +179,48 @@ export function EditPackage() {
                 </label>
                 <input
                   type="text"
+                  required
                   value={formData.name}
-                  onChange={(e) => handleChange("name", e.target.value)}
-                  className={`w-full p-3 border rounded-xl focus:outline-none focus:ring-2 ${errors.name ? "border-red-500 focus:ring-red-200" : "border-slate-200 focus:ring-indigo-500"}`}
+                  onChange={(e) => handleChange('name', e.target.value)}
+                  onBlur={() => handleBlur('name', formData.name)}
+                  className={`w-full p-3 border ${errors.name ? 'border-red-400' : 'border-slate-200'} rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+                  placeholder="VD: PREMIUM"
                 />
-                {errors.name && (
-                  <p className="text-red-500 text-xs mt-1">{errors.name}</p>
-                )}
+                {errors.name && <p className="text-red-500 text-sm mt-1">{errors.name}</p>}
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Loại gói (Bộ môn) <span className="text-red-500">*</span>
+                  Bộ môn <span className="text-red-500">*</span>
                 </label>
                 <select
-                  value={formData.departmentId}
-                  onChange={(e) => handleChange("departmentId", e.target.value)}
-                  className={`w-full p-3 border rounded-xl focus:outline-none focus:ring-2 ${errors.departmentId ? "border-red-500 focus:ring-red-200" : "border-slate-200 focus:ring-indigo-500"}`}
+                  value={formData.disciplineId}
+                  onChange={(e) => handleChange('disciplineId', e.target.value)}
+                  onBlur={() => handleBlur('disciplineId', formData.disciplineId)}
+                  className={`w-full p-3 border ${errors.disciplineId ? 'border-red-400' : 'border-slate-200'} rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500`}
                 >
-                  <option value="" disabled>
-                    -- Chọn bộ môn --
-                  </option>
-                  {departments.map((dept) => (
-                    <option key={dept._id} value={dept._id}>
-                      {dept.title}
-                    </option>
+                  <option value="">Chọn bộ môn</option>
+                  {disciplines.map((d) => (
+                    <option key={d._id} value={d._id}>{d.name}</option>
                   ))}
                 </select>
-                {errors.departmentId && (
-                  <p className="text-red-500 text-xs mt-1">
-                    {errors.departmentId}
-                  </p>
-                )}
+                {errors.disciplineId && <p className="text-red-500 text-sm mt-1">{errors.disciplineId}</p>}
               </div>
 
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Đơn giá gói theo tháng <span className="text-red-500">*</span>
+                  Đơn giá theo tháng <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="number"
-                  value={formData.monthly_price}
-                  onChange={(e) =>
-                    handleChange("monthly_price", e.target.value)
-                  }
-                  className={`w-full p-3 border rounded-xl focus:outline-none focus:ring-2 ${errors.monthly_price ? "border-red-500 focus:ring-red-200" : "border-slate-200 focus:ring-indigo-500"}`}
+                  required
+                  value={formData.unitPrice}
+                  onChange={(e) => handleChange('unitPrice', e.target.value)}
+                  onBlur={() => handleBlur('unitPrice', formData.unitPrice)}
+                  className={`w-full p-3 border ${errors.unitPrice ? 'border-red-400' : 'border-slate-200'} rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+                  placeholder="VD: 2000000"
                 />
-                {errors.monthly_price && (
-                  <p className="text-red-500 text-xs mt-1">
-                    {errors.monthly_price}
-                  </p>
-                )}
+                {errors.unitPrice && <p className="text-red-500 text-sm mt-1">{errors.unitPrice}</p>}
               </div>
             </div>
 
@@ -231,12 +236,13 @@ export function EditPackage() {
                       value={feature}
                       onChange={(e) => updateFeature(index, e.target.value)}
                       className="flex-1 p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      placeholder="VD: Không giới hạn tập luyện"
                     />
                     {features.length > 1 && (
                       <button
                         type="button"
                         onClick={() => removeFeature(index)}
-                        className="p-3 text-red-600 hover:bg-red-50 rounded-xl"
+                        className="p-3 text-red-600 hover:bg-red-50 rounded-xl transition-colors"
                       >
                         <Trash2 className="w-5 h-5" />
                       </button>
@@ -246,9 +252,9 @@ export function EditPackage() {
                 <button
                   type="button"
                   onClick={addFeature}
-                  className="flex items-center gap-2 px-4 py-2 text-indigo-600 hover:bg-indigo-50 rounded-xl"
+                  className="flex items-center gap-2 px-4 py-2 text-indigo-600 hover:bg-indigo-50 rounded-xl transition-colors"
                 >
-                  <Plus className="w-5 h-5" />{" "}
+                  <Plus className="w-5 h-5" />
                   <span className="font-medium">Thêm tính năng</span>
                 </button>
               </div>
@@ -258,27 +264,20 @@ export function EditPackage() {
               <label className="block text-sm font-medium text-slate-700 mb-2">
                 Thời gian tập & Giảm giá
               </label>
-              {errors.durations && (
-                <p className="text-red-500 text-xs mb-2">{errors.durations}</p>
-              )}
               <div className="space-y-3">
                 {durations.map((duration, index) => (
                   <div key={index} className="flex gap-3">
                     <input
                       type="number"
                       value={duration.months}
-                      onChange={(e) =>
-                        updateDuration(index, "months", e.target.value)
-                      }
-                      className={`flex-1 p-3 border rounded-xl focus:outline-none focus:ring-2 ${errors.durations ? "border-red-500" : "border-slate-200"}`}
+                      onChange={(e) => updateDuration(index, 'months', e.target.value)}
+                      className="flex-1 p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
                       placeholder="Số tháng (VD: 6)"
                     />
                     <input
                       type="number"
                       value={duration.discount}
-                      onChange={(e) =>
-                        updateDuration(index, "discount", e.target.value)
-                      }
+                      onChange={(e) => updateDuration(index, 'discount', e.target.value)}
                       className="flex-1 p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
                       placeholder="% Giảm giá (VD: 15)"
                     />
@@ -286,7 +285,7 @@ export function EditPackage() {
                       <button
                         type="button"
                         onClick={() => removeDuration(index)}
-                        className="p-3 text-red-600 hover:bg-red-50 rounded-xl"
+                        className="p-3 text-red-600 hover:bg-red-50 rounded-xl transition-colors"
                       >
                         <Trash2 className="w-5 h-5" />
                       </button>
@@ -296,9 +295,9 @@ export function EditPackage() {
                 <button
                   type="button"
                   onClick={addDuration}
-                  className="flex items-center gap-2 px-4 py-2 text-indigo-600 hover:bg-indigo-50 rounded-xl"
+                  className="flex items-center gap-2 px-4 py-2 text-indigo-600 hover:bg-indigo-50 rounded-xl transition-colors"
                 >
-                  <Plus className="w-5 h-5" />{" "}
+                  <Plus className="w-5 h-5" />
                   <span className="font-medium">Thêm thời gian</span>
                 </button>
               </div>
@@ -307,35 +306,40 @@ export function EditPackage() {
             <div className="space-y-6 pt-6 border-t border-slate-200">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Cam kết bên A (Phòng gym)
+                  Hợp đồng - Cam kết bên A (Phòng gym)
                 </label>
                 <textarea
-                  value={commitmentA}
-                  onChange={(e) => setCommitmentA(e.target.value)}
+                  value={contractA}
+                  onChange={(e) => setContractA(e.target.value)}
                   rows={4}
-                  className="w-full p-3 border border-slate-200 rounded-xl"
+                  className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="Nhập các cam kết của phòng gym..."
                 />
               </div>
+
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Cam kết bên B (Khách hàng)
+                  Hợp đồng - Cam kết bên B (Khách hàng)
                 </label>
                 <textarea
-                  value={commitmentB}
-                  onChange={(e) => setCommitmentB(e.target.value)}
+                  value={contractB}
+                  onChange={(e) => setContractB(e.target.value)}
                   rows={4}
-                  className="w-full p-3 border border-slate-200 rounded-xl"
+                  className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="Nhập các cam kết của khách hàng..."
                 />
               </div>
+
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Điều khoản khác
+                  Hợp đồng - Điều khoản khác
                 </label>
                 <textarea
-                  value={otherTerms}
-                  onChange={(e) => setOtherTerms(e.target.value)}
+                  value={contractTerms}
+                  onChange={(e) => setContractTerms(e.target.value)}
                   rows={4}
-                  className="w-full p-3 border border-slate-200 rounded-xl"
+                  className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="Nhập các điều khoản khác..."
                 />
               </div>
             </div>
@@ -344,13 +348,15 @@ export function EditPackage() {
               <Button
                 type="button"
                 variant="outlined"
-                onClick={() => navigate("/admin/packages")}
+                disabled={submitting}
+                onClick={() => navigate('/admin/packages')}
                 sx={{
-                  borderColor: "#cbd5e1",
-                  color: "#475569",
-                  textTransform: "none",
+                  borderColor: '#cbd5e1',
+                  color: '#475569',
+                  '&:hover': { borderColor: '#94a3b8', bgcolor: '#f8fafc' },
+                  textTransform: 'none',
                   borderRadius: 2,
-                  px: 4,
+                  px: 4
                 }}
               >
                 Hủy
@@ -358,14 +364,16 @@ export function EditPackage() {
               <Button
                 type="submit"
                 variant="contained"
+                disabled={submitting}
                 sx={{
-                  bgcolor: "#4f46e5",
-                  textTransform: "none",
+                  bgcolor: '#4f46e5',
+                  '&:hover': { bgcolor: '#4338ca' },
+                  textTransform: 'none',
                   borderRadius: 2,
-                  px: 4,
+                  px: 4
                 }}
               >
-                Cập nhật
+                Cập nhật gói tập
               </Button>
             </div>
           </div>
