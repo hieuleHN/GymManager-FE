@@ -9,81 +9,6 @@ export function PackageCheckout() {
   const { packageId } = useParams();
   const navigate = useNavigate();
   const selectedPackage = packagesData.find(p => p.id === packageId);
-  const [authChecking, setAuthChecking] = useState(true);
-  const [authError, setAuthError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const stored = localStorage.getItem('auth_user');
-    if (!stored) {
-      setAuthError('login');
-      setAuthChecking(false);
-      return;
-    }
-    const user = JSON.parse(stored);
-    if (user.isStaff) {
-      setAuthError('staff');
-      setAuthChecking(false);
-      return;
-    }
-    fetch(`${getApiUrl()}/api/customers/my-info`, {
-      headers: { 'Authorization': `Bearer ${user.token}` }
-    })
-      .then(res => res.json())
-      .then(data => {
-        if (data && data.status) {
-          if (data.status === 'approved') {
-            setAuthError(null);
-          } else {
-            setAuthError('not_approved');
-          }
-        }
-      })
-      .catch(() => setAuthError('login'))
-      .finally(() => setAuthChecking(false));
-  }, []);
-
-  if (authChecking) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <p className="text-slate-500">Đang kiểm tra...</p>
-      </div>
-    );
-  }
-
-  if (authError === 'login') {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
-        <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100 max-w-md w-full text-center">
-          <AlertTriangle className="w-16 h-16 text-amber-500 mx-auto mb-4" />
-          <h2 className="text-2xl font-bold text-slate-900 mb-2">Vui lòng đăng nhập</h2>
-          <p className="text-slate-600 mb-6">Bạn cần đăng nhập để đăng ký gói tập</p>
-          <Button variant="contained" onClick={() => navigate('/auth')}
-            sx={{ bgcolor: '#4f46e5', '&:hover': { bgcolor: '#4338ca' }, textTransform: 'none', borderRadius: 2, px: 6 }}>
-            Đăng nhập ngay
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
-  if (authError === 'not_approved') {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
-        <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100 max-w-md w-full text-center">
-          <AlertTriangle className="w-16 h-16 text-amber-500 mx-auto mb-4" />
-          <h2 className="text-2xl font-bold text-slate-900 mb-2">Chưa được xác nhận</h2>
-          <p className="text-slate-600 mb-6">Bạn cần hoàn thiện thông tin cá nhân và được xác nhận trước khi đăng ký gói tập</p>
-          <Button variant="contained" onClick={() => navigate('/dashboard/settings')}
-            sx={{ bgcolor: '#d97706', '&:hover': { bgcolor: '#b45309' }, textTransform: 'none', borderRadius: 2, px: 6 }}>
-            Đi đến cài đặt
-            <ArrowRight className="ml-2 w-4 h-4" />
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
-  const [selectedClub, setSelectedClub] = useState('');
   const [selectedDiscipline, setSelectedDiscipline] = useState(selectedPackage?.discipline || '');
   const [currentPackage, setCurrentPackage] = useState(packageId || '');
   const [durationType, setDurationType] = useState<'month' | 'year'>('month');
@@ -92,87 +17,68 @@ export function PackageCheckout() {
     return <Navigate to="/packages" />;
   }
 
-  // Set initial club if only one available
-  useEffect(() => {
-    const pkg = getCurrentPackageData();
-    if (pkg.clubs.length === 1 && !selectedClub) {
-      setSelectedClub(pkg.clubs[0]);
-    }
-  }, [currentPackage]);
-
   const getCurrentPackageData = () => {
     return packagesData.find(p => p.id === currentPackage) || selectedPackage;
   };
 
   const pkg = getCurrentPackageData();
 
-  // Get all unique clubs from all packages
-  const allClubs = clubsData;
-
-  // Get packages filtered by selected club and discipline
   const getAvailablePackages = () => {
     let packages = packagesData;
-
     if (selectedDiscipline) {
       packages = packages.filter(p => p.discipline === selectedDiscipline);
     }
-
-    if (selectedClub) {
-      packages = packages.filter(p => p.clubs.includes(selectedClub));
-    }
-
     return packages;
   };
 
   const availablePackages = getAvailablePackages();
 
   const monthlyPrice = pkg.price;
-  const yearlyPrice = pkg.price * 12 * 0.85; // 15% discount for yearly
+  const yearlyPrice = pkg.price * 12 * 0.85;
   const totalPrice = durationType === 'month' ? monthlyPrice : yearlyPrice;
 
   const formatPrice = (price: number) => {
     return price.toLocaleString('vi-VN') + 'đ';
   };
 
-  const handleProceedToContract = () => {
-    if (!selectedClub) {
-      alert('Vui lòng chọn cơ sở phòng tập');
+  const handleProceedToContract = async () => {
+    const stored = localStorage.getItem('auth_user');
+    if (!stored) {
+      navigate('/auth');
       return;
     }
+    const user = JSON.parse(stored);
+    if (user.isStaff) return;
 
-    navigate('/contract', {
-      state: {
-        package: pkg,
-        club: clubsData.find(c => c.id === selectedClub),
-        durationType,
-        totalPrice
+    try {
+      const res = await fetch(`${getApiUrl()}/api/customers/my-info`, {
+        headers: { 'Authorization': `Bearer ${user.token}` }
+      });
+      const data = await res.json();
+      if (data?.status === 'approved') {
+        navigate('/contract', {
+          state: {
+            package: pkg,
+            club: clubsData.find(c => c.id === pkg.clubs[0]),
+            durationType,
+            totalPrice
+          }
+        });
+      } else {
+        navigate('/dashboard/settings');
       }
-    });
+    } catch {
+      navigate('/auth');
+    }
   };
 
   const handleDisciplineChange = (newDiscipline: string) => {
     setSelectedDiscipline(newDiscipline);
-    // Reset package selection when discipline changes
     const packagesInDiscipline = packagesData.filter(p =>
-      p.discipline === newDiscipline && (!selectedClub || p.clubs.includes(selectedClub))
+      p.discipline === newDiscipline
     );
     if (packagesInDiscipline.length > 0) {
       setCurrentPackage(packagesInDiscipline[0].id);
-    }
-  };
-
-  const handleClubChange = (newClub: string) => {
-    setSelectedClub(newClub);
-    // Check if current package is available in selected club
-    const currentPkg = getCurrentPackageData();
-    if (!currentPkg.clubs.includes(newClub)) {
-      // Find a package in same discipline that's available in this club
-      const availablePkg = packagesData.find(p =>
-        p.discipline === selectedDiscipline && p.clubs.includes(newClub)
-      );
-      if (availablePkg) {
-        setCurrentPackage(availablePkg.id);
-      }
     }
   };
 
@@ -184,28 +90,9 @@ export function PackageCheckout() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Left Column - Form */}
           <div className="lg:col-span-2 space-y-6">
-            {/* Club Selection */}
-            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-              <h2 className="text-xl font-bold text-slate-900 mb-4">1. Chọn cơ sở phòng tập</h2>
-              <FormControl fullWidth>
-                <InputLabel>Cơ sở</InputLabel>
-                <Select
-                  value={selectedClub}
-                  label="Cơ sở"
-                  onChange={(e) => handleClubChange(e.target.value)}
-                >
-                  {allClubs.map((club) => (
-                    <MenuItem key={club.id} value={club.id}>
-                      {club.name} - {club.address}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </div>
-
             {/* Discipline Selection */}
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-              <h2 className="text-xl font-bold text-slate-900 mb-4">2. Chọn bộ môn</h2>
+              <h2 className="text-xl font-bold text-slate-900 mb-4">1. Chọn bộ môn</h2>
               <FormControl fullWidth>
                 <InputLabel>Bộ môn</InputLabel>
                 <Select
@@ -224,7 +111,7 @@ export function PackageCheckout() {
 
             {/* Package Selection */}
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-              <h2 className="text-xl font-bold text-slate-900 mb-4">3. Chọn gói tập</h2>
+              <h2 className="text-xl font-bold text-slate-900 mb-4">2. Chọn gói tập</h2>
               <FormControl fullWidth disabled={availablePackages.length === 0}>
                 <InputLabel>Gói tập</InputLabel>
                 <Select
@@ -247,7 +134,7 @@ export function PackageCheckout() {
               </FormControl>
               {availablePackages.length === 0 && (
                 <p className="text-sm text-amber-600 mt-2">
-                  Vui lòng chọn cơ sở và bộ môn để xem các gói tập có sẵn
+                  Vui lòng chọn bộ môn để xem các gói tập có sẵn
                 </p>
               )}
             </div>
@@ -297,14 +184,6 @@ export function PackageCheckout() {
                   <p className="text-sm text-slate-500">Gói tập</p>
                   <p className="font-bold text-slate-900">{pkg.name}</p>
                 </div>
-                {selectedClub && (
-                  <div>
-                    <p className="text-sm text-slate-500">Cơ sở</p>
-                    <p className="font-medium text-slate-900">
-                      {clubsData.find(c => c.id === selectedClub)?.name}
-                    </p>
-                  </div>
-                )}
                 <div>
                   <p className="text-sm text-slate-500">Thời gian</p>
                   <p className="font-medium text-slate-900">
