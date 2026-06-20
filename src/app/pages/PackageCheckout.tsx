@@ -2,12 +2,86 @@ import { useState, useEffect } from 'react';
 import { useParams, Navigate, useNavigate } from 'react-router';
 import { packagesData, clubsData, disciplinesData } from '../data';
 import { Button, MenuItem, Select, FormControl, InputLabel } from '@mui/material';
-import { Check } from 'lucide-react';
+import { Check, AlertTriangle, ArrowRight } from 'lucide-react';
+import { getApiUrl } from './../context/AuthContext';
 
 export function PackageCheckout() {
   const { packageId } = useParams();
   const navigate = useNavigate();
   const selectedPackage = packagesData.find(p => p.id === packageId);
+  const [authChecking, setAuthChecking] = useState(true);
+  const [authError, setAuthError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const stored = localStorage.getItem('auth_user');
+    if (!stored) {
+      setAuthError('login');
+      setAuthChecking(false);
+      return;
+    }
+    const user = JSON.parse(stored);
+    if (user.isStaff) {
+      setAuthError('staff');
+      setAuthChecking(false);
+      return;
+    }
+    fetch(`${getApiUrl()}/api/customers/my-info`, {
+      headers: { 'Authorization': `Bearer ${user.token}` }
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.status) {
+          if (data.status === 'approved') {
+            setAuthError(null);
+          } else {
+            setAuthError('not_approved');
+          }
+        }
+      })
+      .catch(() => setAuthError('login'))
+      .finally(() => setAuthChecking(false));
+  }, []);
+
+  if (authChecking) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <p className="text-slate-500">Đang kiểm tra...</p>
+      </div>
+    );
+  }
+
+  if (authError === 'login') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
+        <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100 max-w-md w-full text-center">
+          <AlertTriangle className="w-16 h-16 text-amber-500 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-slate-900 mb-2">Vui lòng đăng nhập</h2>
+          <p className="text-slate-600 mb-6">Bạn cần đăng nhập để đăng ký gói tập</p>
+          <Button variant="contained" onClick={() => navigate('/auth')}
+            sx={{ bgcolor: '#4f46e5', '&:hover': { bgcolor: '#4338ca' }, textTransform: 'none', borderRadius: 2, px: 6 }}>
+            Đăng nhập ngay
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (authError === 'not_approved') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
+        <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100 max-w-md w-full text-center">
+          <AlertTriangle className="w-16 h-16 text-amber-500 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-slate-900 mb-2">Chưa được xác nhận</h2>
+          <p className="text-slate-600 mb-6">Bạn cần hoàn thiện thông tin cá nhân và được xác nhận trước khi đăng ký gói tập</p>
+          <Button variant="contained" onClick={() => navigate('/dashboard/settings')}
+            sx={{ bgcolor: '#d97706', '&:hover': { bgcolor: '#b45309' }, textTransform: 'none', borderRadius: 2, px: 6 }}>
+            Đi đến cài đặt
+            <ArrowRight className="ml-2 w-4 h-4" />
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   const [selectedClub, setSelectedClub] = useState('');
   const [selectedDiscipline, setSelectedDiscipline] = useState(selectedPackage?.discipline || '');

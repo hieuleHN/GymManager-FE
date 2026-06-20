@@ -19,7 +19,7 @@ interface Customer {
   idCardFront?: string;
   idCardBack?: string;
   registerDate: string;
-  status: 'pending' | 'approved' | 'rejected';
+  status: 'pending' | 'pending_approval' | 'approved' | 'rejected' | 'locked';
   rejectionReason?: string;
   createdAt: string;
 }
@@ -29,7 +29,7 @@ export function CustomerList() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
-  const [activeTab, setActiveTab] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'pending' | 'pending_approval' | 'approved' | 'rejected'>('all');
   const [rejectReason, setRejectReason] = useState('');
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [rejectTarget, setRejectTarget] = useState<string | null>(null);
@@ -76,7 +76,7 @@ export function CustomerList() {
       const res = await fetch(`${getApiUrl()}/api/customers/${rejectTarget}/reject`, {
         method: 'POST',
         headers: getAuthHeaders(),
-        body: JSON.stringify({ reason: rejectReason || 'Không được chấp nhận' })
+        body: JSON.stringify({ reason: rejectReason || 'Thông tin không đúng' })
       });
       if (res.ok) {
         alert('Đã từ chối khách hàng!');
@@ -101,14 +101,18 @@ export function CustomerList() {
 
   const statusBadge = (status: string) => {
     const colors: Record<string, string> = {
-      pending: 'bg-yellow-100 text-yellow-700',
+      pending: 'bg-gray-100 text-gray-700',
+      pending_approval: 'bg-yellow-100 text-yellow-700',
       approved: 'bg-green-100 text-green-700',
-      rejected: 'bg-red-100 text-red-700'
+      rejected: 'bg-red-100 text-red-700',
+      locked: 'bg-red-100 text-red-700'
     };
     const labels: Record<string, string> = {
-      pending: 'Chờ duyệt',
+      pending: 'Chưa điền TT',
+      pending_approval: 'Chờ xác nhận',
       approved: 'Đã duyệt',
-      rejected: 'Từ chối'
+      rejected: 'Từ chối',
+      locked: 'Đã khóa'
     };
     return <span className={`inline-flex px-3 py-1 rounded-full text-xs font-semibold ${colors[status] || ''}`}>{labels[status] || status}</span>;
   };
@@ -121,22 +125,20 @@ export function CustomerList() {
           <p className="text-slate-600">Quản lý thông tin khách hàng</p>
         </div>
 
-        {/* Tabs */}
-        <div className="flex gap-2 bg-white rounded-2xl shadow-sm border border-slate-100 p-2">
-          {(['all', 'pending', 'approved', 'rejected'] as const).map(tab => (
+        <div className="flex gap-2 bg-white rounded-2xl shadow-sm border border-slate-100 p-2 overflow-x-auto">
+          {(['all', 'pending', 'pending_approval', 'approved', 'rejected'] as const).map(tab => (
             <button key={tab} onClick={() => setActiveTab(tab)}
-              className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
+              className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all whitespace-nowrap ${
                 activeTab === tab ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-100'
               }`}>
-              {tab === 'all' ? 'Tất cả' : tab === 'pending' ? 'Chờ duyệt' : tab === 'approved' ? 'Đã duyệt' : 'Từ chối'}
-              {tab === 'pending' && customers.filter(c => c.status === 'pending').length > 0 && (
-                <span className="ml-2 bg-red-500 text-white px-2 py-0.5 rounded-full text-xs">{customers.filter(c => c.status === 'pending').length}</span>
+              {tab === 'all' ? 'Tất cả' : tab === 'pending' ? 'Chưa điền TT' : tab === 'pending_approval' ? 'Chờ xác nhận' : tab === 'approved' ? 'Đã duyệt' : 'Từ chối'}
+              {tab === 'pending_approval' && customers.filter(c => c.status === 'pending_approval').length > 0 && (
+                <span className="ml-2 bg-red-500 text-white px-2 py-0.5 rounded-full text-xs">{customers.filter(c => c.status === 'pending_approval').length}</span>
               )}
             </button>
           ))}
         </div>
 
-        {/* Search */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
           <div className="relative">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
@@ -146,7 +148,6 @@ export function CustomerList() {
           </div>
         </div>
 
-        {/* Table */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -167,12 +168,12 @@ export function CustomerList() {
                 {filteredCustomers.map((customer, index) => (
                   <tr key={customer._id} className="border-b border-slate-100 hover:bg-slate-50">
                     <td className="px-6 py-4 text-sm text-slate-900">{index + 1}</td>
-                    <td className="px-6 py-4 text-sm font-medium text-slate-900">{customer.fullName}</td>
+                    <td className="px-6 py-4 text-sm font-medium text-slate-900">{customer.fullName || '-'}</td>
                     <td className="px-6 py-4 text-sm text-slate-600">{customer.account}</td>
-                    <td className="px-6 py-4 text-sm text-slate-600">{customer.gender}</td>
-                    <td className="px-6 py-4 text-sm text-slate-600">{customer.phone}</td>
+                    <td className="px-6 py-4 text-sm text-slate-600">{customer.gender || '-'}</td>
+                    <td className="px-6 py-4 text-sm text-slate-600">{customer.phone || '-'}</td>
                     <td className="px-6 py-4 text-sm text-slate-600">{customer.registerDate ? new Date(customer.registerDate).toLocaleDateString('vi-VN') : ''}</td>
-                    <td className="px-6 py-4 text-sm text-slate-600">{customer.email}</td>
+                    <td className="px-6 py-4 text-sm text-slate-600">{customer.email || '-'}</td>
                     <td className="px-6 py-4">{statusBadge(customer.status)}</td>
                     <td className="px-6 py-4">
                       <div className="flex gap-2">
@@ -182,7 +183,7 @@ export function CustomerList() {
                         <button onClick={() => navigate(`/admin/customers/${customer._id}/edit`)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg" title="Sửa">
                           <Edit className="w-4 h-4" />
                         </button>
-                        {customer.status === 'pending' && (
+                        {customer.status === 'pending_approval' && (
                           <>
                             <button onClick={() => handleApprove(customer._id)} className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg" title="Chấp nhận">
                               <Check className="w-4 h-4" />
@@ -208,7 +209,6 @@ export function CustomerList() {
           <Pagination page={page} totalPages={totalPages} total={total} limit={15} onPageChange={(p) => { setPage(p); fetchCustomers(p); }} />
         </div>
 
-        {/* Detail Modal */}
         {selectedCustomer && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setSelectedCustomer(null)}>
             <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
@@ -222,7 +222,7 @@ export function CustomerList() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="bg-slate-50 p-4 rounded-xl">
                     <p className="text-sm text-slate-600 mb-1">Họ và tên</p>
-                    <p className="text-lg font-semibold text-slate-900">{selectedCustomer.fullName}</p>
+                    <p className="text-lg font-semibold text-slate-900">{selectedCustomer.fullName || '-'}</p>
                   </div>
                   <div className="bg-slate-50 p-4 rounded-xl">
                     <p className="text-sm text-slate-600 mb-1">Tài khoản</p>
@@ -230,15 +230,15 @@ export function CustomerList() {
                   </div>
                   <div className="bg-slate-50 p-4 rounded-xl">
                     <p className="text-sm text-slate-600 mb-1">Giới tính</p>
-                    <p className="text-lg font-semibold text-slate-900">{selectedCustomer.gender}</p>
+                    <p className="text-lg font-semibold text-slate-900">{selectedCustomer.gender || '-'}</p>
                   </div>
                   <div className="bg-slate-50 p-4 rounded-xl">
                     <p className="text-sm text-slate-600 mb-1">Số điện thoại</p>
-                    <p className="text-lg font-semibold text-slate-900">{selectedCustomer.phone}</p>
+                    <p className="text-lg font-semibold text-slate-900">{selectedCustomer.phone || '-'}</p>
                   </div>
                   <div className="bg-slate-50 p-4 rounded-xl">
                     <p className="text-sm text-slate-600 mb-1">Email</p>
-                    <p className="text-lg font-semibold text-slate-900">{selectedCustomer.email}</p>
+                    <p className="text-lg font-semibold text-slate-900">{selectedCustomer.email || '-'}</p>
                   </div>
                   <div className="bg-slate-50 p-4 rounded-xl">
                     <p className="text-sm text-slate-600 mb-1">Số căn cước</p>
@@ -284,7 +284,6 @@ export function CustomerList() {
           </div>
         )}
 
-        {/* Reject Modal */}
         {showRejectModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowRejectModal(false)}>
             <div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>

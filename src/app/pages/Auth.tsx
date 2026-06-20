@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate, Link } from 'react-router';
-import { Mail, Lock, User, Camera, Dumbbell } from 'lucide-react';
+import { Mail, Lock, User, Camera, Dumbbell, MapPin, Eye, EyeOff } from 'lucide-react';
 import { Button } from '@mui/material';
 import { useAuth, getApiUrl } from '../context/AuthContext';
 import logo from '../../imports/ChatGPT_Image_May_14__2026__09_48_52_PM.png';
@@ -15,29 +15,21 @@ export function Auth() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [locations, setLocations] = useState<any[]>([]);
 
   const [loginForm, setLoginForm] = useState({ account: '', password: '' });
   const [registerForm, setRegisterForm] = useState({
-    account: '', password: '', confirmPassword: '', fullName: '', gender: 'Nam',
-    phone: '', email: '', address: '', idNumber: '', registerDate: new Date().toISOString().split('T')[0]
+    account: '', password: '', confirmPassword: '', locationId: ''
   });
-  const [idCardFront, setIdCardFront] = useState<File | null>(null);
-  const [idCardBack, setIdCardBack] = useState<File | null>(null);
-  const [idCardFrontPreview, setIdCardFrontPreview] = useState('');
-  const [idCardBackPreview, setIdCardBackPreview] = useState('');
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, side: 'front' | 'back') => {
-    const file = e.target.files?.[0];
-    if (file) {
-      if (side === 'front') {
-        setIdCardFront(file);
-        setIdCardFrontPreview(URL.createObjectURL(file));
-      } else {
-        setIdCardBack(file);
-        setIdCardBackPreview(URL.createObjectURL(file));
-      }
+  useEffect(() => {
+    if (isRegister) {
+      fetch(`${getApiUrl()}/api/locations`)
+        .then(res => res.json())
+        .then(data => setLocations(Array.isArray(data) ? data : data?.data || []))
+        .catch(() => {});
     }
-  };
+  }, [isRegister]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -72,40 +64,25 @@ export function Auth() {
       setError('Mật khẩu phải có ít nhất 6 ký tự!');
       return;
     }
-    const phoneRegex = /(84|0[3|5|7|8|9])+([0-9]{8})\b/;
-    if (!phoneRegex.test(registerForm.phone)) {
-      setError('Số điện thoại không hợp lệ!');
-      return;
-    }
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(registerForm.email)) {
-      setError('Email không hợp lệ!');
+    if (!registerForm.locationId) {
+      setError('Vui lòng chọn câu lạc bộ!');
       return;
     }
     setLoading(true);
     try {
-      const formData = new FormData();
-      formData.append('account', registerForm.account);
-      formData.append('password', registerForm.password);
-      formData.append('fullName', registerForm.fullName);
-      formData.append('gender', registerForm.gender);
-      formData.append('phone', registerForm.phone);
-      formData.append('email', registerForm.email);
-      formData.append('address', registerForm.address);
-      formData.append('idNumber', registerForm.idNumber);
-      formData.append('registerDate', registerForm.registerDate);
-      if (idCardFront) formData.append('idCardFront', idCardFront);
-      if (idCardBack) formData.append('idCardBack', idCardBack);
-
       const res = await fetch(`${getApiUrl()}/api/customers/register`, {
         method: 'POST',
-        body: formData
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          account: registerForm.account,
+          password: registerForm.password,
+          locationId: registerForm.locationId
+        })
       });
       const data = await res.json();
       if (!res.ok) {
         throw new Error(data.error || 'Đăng ký thất bại!');
       }
-      alert('Đăng ký thành công! Vui lòng chờ nhân viên xác nhận tài khoản.');
       navigate('/auth');
     } catch (err: any) {
       setError(err.message);
@@ -117,90 +94,45 @@ export function Auth() {
   if (isRegister) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4 py-12">
-        <div className="max-w-2xl w-full">
+        <div className="max-w-md w-full">
           <div className="text-center mb-8">
             <Link to="/">
               <ImageWithFallback src={logo} alt="Logo" className="h-28 w-auto mx-auto object-contain" />
             </Link>
             <h2 className="text-3xl font-extrabold text-slate-900 mt-4">Đăng ký tài khoản</h2>
-            <p className="text-slate-500 mt-2">Điền thông tin để đăng ký làm hội viên</p>
+            <p className="text-slate-500 mt-2">Tạo tài khoản hội viên mới</p>
           </div>
 
           <form onSubmit={handleRegister} className="bg-white p-8 rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-100 space-y-5">
             {error && <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm">{error}</div>}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Tài khoản <span className="text-red-500">*</span></label>
-                <input type="text" required value={registerForm.account} onChange={(e) => setRegisterForm({ ...registerForm, account: e.target.value })}
-                  className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Nhập tài khoản" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Họ và tên <span className="text-red-500">*</span></label>
-                <input type="text" required value={registerForm.fullName} onChange={(e) => setRegisterForm({ ...registerForm, fullName: e.target.value })}
-                  className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Nguyễn Văn A" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Mật khẩu <span className="text-red-500">*</span></label>
-                <input type={showPassword ? 'text' : 'password'} required value={registerForm.password} onChange={(e) => setRegisterForm({ ...registerForm, password: e.target.value })}
-                  className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Ít nhất 6 ký tự" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Xác nhận mật khẩu <span className="text-red-500">*</span></label>
-                <input type={showPassword ? 'text' : 'password'} required value={registerForm.confirmPassword} onChange={(e) => setRegisterForm({ ...registerForm, confirmPassword: e.target.value })}
-                  className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Nhập lại mật khẩu" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Giới tính</label>
-                <select value={registerForm.gender} onChange={(e) => setRegisterForm({ ...registerForm, gender: e.target.value })}
-                  className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                  <option value="Nam">Nam</option>
-                  <option value="Nữ">Nữ</option>
-                  <option value="Khác">Khác</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Số điện thoại <span className="text-red-500">*</span></label>
-                <input type="tel" required value={registerForm.phone} onChange={(e) => setRegisterForm({ ...registerForm, phone: e.target.value })}
-                  className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="0901234567" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Email <span className="text-red-500">*</span></label>
-                <input type="email" required value={registerForm.email} onChange={(e) => setRegisterForm({ ...registerForm, email: e.target.value })}
-                  className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="email@example.com" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Số căn cước</label>
-                <input type="text" value={registerForm.idNumber} onChange={(e) => setRegisterForm({ ...registerForm, idNumber: e.target.value })}
-                  className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="001234567890" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Ngày đăng ký</label>
-                <input type="date" value={registerForm.registerDate} onChange={(e) => setRegisterForm({ ...registerForm, registerDate: e.target.value })}
-                  className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Ảnh mặt trước căn cước</label>
-                <label className="flex items-center gap-3 p-3 border border-dashed border-slate-300 rounded-xl cursor-pointer hover:border-indigo-400 transition-colors">
-                  <Camera className="w-5 h-5 text-slate-400" />
-                  <span className="text-sm text-slate-500">Chọn ảnh</span>
-                  <input type="file" accept="image/*" className="hidden" onChange={(e) => handleFileChange(e, 'front')} />
-                </label>
-                {idCardFrontPreview && <img src={idCardFrontPreview} alt="Front" className="mt-2 w-full h-32 object-cover rounded-lg" />}
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Ảnh mặt sau căn cước</label>
-                <label className="flex items-center gap-3 p-3 border border-dashed border-slate-300 rounded-xl cursor-pointer hover:border-indigo-400 transition-colors">
-                  <Camera className="w-5 h-5 text-slate-400" />
-                  <span className="text-sm text-slate-500">Chọn ảnh</span>
-                  <input type="file" accept="image/*" className="hidden" onChange={(e) => handleFileChange(e, 'back')} />
-                </label>
-                {idCardBackPreview && <img src={idCardBackPreview} alt="Back" className="mt-2 w-full h-32 object-cover rounded-lg" />}
-              </div>
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-slate-700 mb-1">Địa chỉ</label>
-                <textarea value={registerForm.address} onChange={(e) => setRegisterForm({ ...registerForm, address: e.target.value })}
-                  rows={2} className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Nhập địa chỉ" />
-              </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Tài khoản <span className="text-red-500">*</span></label>
+              <input type="text" required value={registerForm.account} onChange={(e) => setRegisterForm({ ...registerForm, account: e.target.value })}
+                className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Nhập tài khoản" />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Mật khẩu <span className="text-red-500">*</span></label>
+              <input type={showPassword ? 'text' : 'password'} required value={registerForm.password} onChange={(e) => setRegisterForm({ ...registerForm, password: e.target.value })}
+                className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Ít nhất 6 ký tự" />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Xác nhận mật khẩu <span className="text-red-500">*</span></label>
+              <input type={showPassword ? 'text' : 'password'} required value={registerForm.confirmPassword} onChange={(e) => setRegisterForm({ ...registerForm, confirmPassword: e.target.value })}
+                className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Nhập lại mật khẩu" />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Câu lạc bộ <span className="text-red-500">*</span></label>
+              <select required value={registerForm.locationId} onChange={(e) => setRegisterForm({ ...registerForm, locationId: e.target.value })}
+                className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                <option value="">-- Chọn câu lạc bộ --</option>
+                {locations.map((loc: any) => (
+                  <option key={loc._id} value={loc._id}>{loc.address || loc.title || loc.name}</option>
+                ))}
+              </select>
             </div>
 
             <div className="flex items-center gap-2 text-sm">

@@ -1,22 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
 import {
-  LayoutDashboard,
-  CreditCard,
-  History,
-  Calendar,
-  UserCircle,
-  Package,
-  TrendingUp,
-  Settings,
-  LogOut,
-  Menu,
-  X,
-  FileText,
-  Bell,
-  Home,
-  Users,
-  MessageCircle
+  LayoutDashboard, CreditCard, History, Calendar, UserCircle,
+  Package, TrendingUp, Settings, LogOut, Menu, X, FileText,
+  Bell, Home, Users, MessageCircle, AlertTriangle, CheckCircle, XCircle, Clock
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import logo from '../../imports/ChatGPT_Image_May_14__2026__09_48_52_PM.png';
@@ -27,12 +14,75 @@ interface DashboardLayoutProps {
 }
 
 export function DashboardLayout({ children }: DashboardLayoutProps) {
-  const { user, logout } = useAuth();
+  const { user, logout, refreshUser } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-
   const [showNotifications, setShowNotifications] = useState(false);
+  const [profileNotif, setProfileNotif] = useState<{ type: string; title: string; message: string } | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval>>();
+
+  const updateNotifFromStatus = (status: string | undefined) => {
+    if (!status || user?.isStaff) return;
+    if (status === 'pending') {
+      const created = localStorage.getItem('user_created_at');
+      if (created) {
+        const days = Math.floor((Date.now() - new Date(created).getTime()) / (1000 * 60 * 60 * 24));
+        const remaining = Math.max(0, 10 - days);
+        if (remaining > 0 && remaining <= 5) {
+          setProfileNotif({ type: 'warning', title: 'Cảnh báo', message: `Bạn còn ${remaining} ngày để cập nhật thông tin cá nhân!` });
+        } else {
+          setProfileNotif({ type: 'warning', title: 'Thông báo', message: 'Bạn cần nhập đầy đủ thông tin để mua gói tập' });
+        }
+      } else {
+        setProfileNotif({ type: 'warning', title: 'Thông báo', message: 'Bạn cần nhập đầy đủ thông tin để mua gói tập' });
+      }
+    } else if (status === 'pending_approval') {
+      setProfileNotif({ type: 'pending', title: 'Chờ xác nhận', message: 'Thông tin của bạn đang chờ nhân viên xác nhận' });
+    } else if (status === 'approved') {
+      setProfileNotif({ type: 'success', title: 'Xác nhận thành công', message: 'Thông tin của bạn đã được xác nhận' });
+    } else if (status === 'rejected') {
+      setProfileNotif({ type: 'error', title: 'Thông tin không đúng', message: 'Thông tin của bạn không được chấp nhận. Vui lòng cập nhật lại.' });
+    }
+  };
+
+  useEffect(() => {
+    updateNotifFromStatus(user?.status);
+  }, [user?.status, user?.id]);
+
+  useEffect(() => {
+    if (user?.isStaff) return;
+    if (user?.status === 'approved' || user?.status === 'locked') {
+      if (pollRef.current) clearInterval(pollRef.current);
+      return;
+    }
+    pollRef.current = setInterval(async () => {
+      await refreshUser();
+    }, 10000);
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (user?.id && !user?.isStaff && !localStorage.getItem('user_created_at')) {
+      fetch(`/api/customers/my-info`, {
+        headers: { 'Authorization': `Bearer ${user.token}` }
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data?.createdAt) {
+            localStorage.setItem('user_created_at', data.createdAt);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [user]);
+
+  const handleBellClick = async () => {
+    if (!user?.isStaff) await refreshUser();
+    setShowNotifications(!showNotifications);
+  };
+
+  const hasRedDot = user?.status && user.status !== 'approved' && user.status !== 'locked';
 
   const menuItems = [
     { name: 'Tổng quan', href: '/dashboard', icon: LayoutDashboard },
@@ -47,56 +97,25 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     { name: 'Cài đặt', href: '/dashboard/settings', icon: Settings },
   ];
 
-  const notifications = [
-    {
-      id: 1,
-      title: 'Gói tập sắp hết hạn',
-      message: 'Gói PREMIUM của bạn còn 10 ngày nữa sẽ hết hạn',
-      time: '2 giờ trước',
-      type: 'warning'
-    },
-    {
-      id: 2,
-      title: 'Thông báo từ Admin',
-      message: 'Phòng tập sẽ đóng cửa sớm vào ngày 25/12 do lễ Giáng sinh',
-      time: '5 giờ trước',
-      type: 'info'
-    },
-    {
-      id: 3,
-      title: 'Tin nhắn từ lễ tân',
-      message: 'Vui lòng mang theo thẻ hội viên khi đến phòng tập',
-      time: 'Hôm qua',
-      type: 'info'
-    }
-  ];
-
   const handleLogout = () => {
+    localStorage.removeItem('user_created_at');
+    if (pollRef.current) clearInterval(pollRef.current);
     logout();
     navigate('/');
   };
 
   return (
     <div className="min-h-screen bg-slate-50 flex">
-      {/* Sidebar */}
-      <aside
-        className={`fixed inset-y-0 left-0 z-50 bg-white shadow-lg transition-transform duration-300 ${
-          isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
-        } w-72`}
-      >
+      <aside className={`fixed inset-y-0 left-0 z-50 bg-white shadow-lg transition-transform duration-300 ${
+        isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
+      } w-72`}>
         <div className="flex flex-col h-full">
-          {/* Logo */}
           <div className="p-6 border-b border-slate-200">
             <Link to="/">
-              <ImageWithFallback
-                src={logo}
-                alt="ZenFitness Logo"
-                className="h-16 w-auto object-contain"
-              />
+              <ImageWithFallback src={logo} alt="ZenFitness Logo" className="h-16 w-auto object-contain" />
             </Link>
           </div>
 
-          {/* User Info */}
           <div className="p-6 border-b border-slate-200">
             <div className="flex items-center gap-4">
               <img
@@ -111,7 +130,6 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             </div>
           </div>
 
-          {/* Menu Items */}
           <nav className="flex-1 overflow-y-auto p-4">
             <ul className="space-y-1">
               {menuItems.map((item) => {
@@ -119,14 +137,12 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                 const isActive = location.pathname === item.href;
                 return (
                   <li key={item.name}>
-                    <Link
-                      to={item.href}
+                    <Link to={item.href}
                       className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
                         isActive
                           ? 'bg-indigo-50 text-indigo-700 font-semibold'
                           : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                      }`}
-                    >
+                      }`}>
                       <Icon className="w-5 h-5" />
                       <span className="text-sm">{item.name}</span>
                     </Link>
@@ -136,12 +152,9 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             </ul>
           </nav>
 
-          {/* Logout Button */}
           <div className="p-4 border-t border-slate-200">
-            <button
-              onClick={handleLogout}
-              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-red-600 hover:bg-red-50 transition-all"
-            >
+            <button onClick={handleLogout}
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-red-600 hover:bg-red-50 transition-all">
               <LogOut className="w-5 h-5" />
               <span className="text-sm font-medium">Đăng xuất</span>
             </button>
@@ -149,83 +162,63 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
         </div>
       </aside>
 
-      {/* Main Content */}
-      <div
-        className={`flex-1 transition-all duration-300 ${
-          isSidebarOpen ? 'ml-72' : 'ml-0'
-        }`}
-      >
-        {/* Top Bar */}
+      <div className={`flex-1 transition-all duration-300 ${isSidebarOpen ? 'ml-72' : 'ml-0'}`}>
         <header className="bg-white shadow-sm sticky top-0 z-40">
           <div className="flex items-center justify-between px-6 py-4">
-            <button
-              onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-              className="p-2 rounded-lg hover:bg-slate-100 transition-colors"
-            >
-              {isSidebarOpen ? (
-                <X className="w-6 h-6 text-slate-600" />
-              ) : (
-                <Menu className="w-6 h-6 text-slate-600" />
-              )}
+            <button onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+              className="p-2 rounded-lg hover:bg-slate-100 transition-colors">
+              {isSidebarOpen ? <X className="w-6 h-6 text-slate-600" /> : <Menu className="w-6 h-6 text-slate-600" />}
             </button>
 
             <div className="flex items-center gap-4">
-              {/* Notifications */}
               <div className="relative">
-                <button
-                  onClick={() => setShowNotifications(!showNotifications)}
-                  className="p-2 rounded-lg hover:bg-slate-100 transition-colors relative"
-                >
+                <button onClick={handleBellClick}
+                  className="p-2 rounded-lg hover:bg-slate-100 transition-colors relative">
                   <Bell className="w-5 h-5 text-slate-600" />
-                  <span className="absolute top-1.5 right-1.5 block h-2 w-2 rounded-full bg-red-500 ring-2 ring-white" />
+                  {hasRedDot && <span className="absolute top-1.5 right-1.5 block h-2 w-2 rounded-full bg-red-500 ring-2 ring-white" />}
                 </button>
 
-                {/* Notifications Dropdown */}
                 {showNotifications && (
                   <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-xl border border-slate-200 z-50">
                     <div className="p-4 border-b border-slate-200">
                       <h3 className="font-bold text-slate-900">Thông báo</h3>
                     </div>
                     <div className="max-h-96 overflow-y-auto">
-                      {notifications.map((notif) => (
-                        <Link
-                          key={notif.id}
-                          to="/dashboard"
+                      {profileNotif && (
+                        <Link to="/dashboard/settings"
                           onClick={() => setShowNotifications(false)}
-                          className="block p-4 hover:bg-slate-50 border-b border-slate-100 last:border-0"
-                        >
+                          className="block p-4 hover:bg-slate-50 border-b border-slate-100">
                           <div className="flex gap-3">
-                            <div className={`w-2 h-2 rounded-full mt-2 shrink-0 ${
-                              notif.type === 'warning' ? 'bg-amber-500' : 'bg-indigo-500'
-                            }`} />
+                            {profileNotif.type === 'warning' && <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />}
+                            {profileNotif.type === 'pending' && <Clock className="w-5 h-5 text-yellow-500 shrink-0 mt-0.5" />}
+                            {profileNotif.type === 'success' && <CheckCircle className="w-5 h-5 text-green-500 shrink-0 mt-0.5" />}
+                            {profileNotif.type === 'error' && <XCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />}
                             <div className="flex-1 min-w-0">
-                              <h4 className="font-semibold text-slate-900 text-sm mb-1">
-                                {notif.title}
-                              </h4>
-                              <p className="text-sm text-slate-600 mb-1">{notif.message}</p>
-                              <p className="text-xs text-slate-400">{notif.time}</p>
+                              <h4 className="font-semibold text-slate-900 text-sm mb-1">{profileNotif.title}</h4>
+                              <p className="text-sm text-slate-600">{profileNotif.message}</p>
                             </div>
                           </div>
                         </Link>
-                      ))}
+                      )}
+                      {!profileNotif && (
+                        <div className="p-4 text-center text-sm text-slate-500">Không có thông báo</div>
+                      )}
                     </div>
-                    <div className="p-3 border-t border-slate-200 text-center">
-                      <Link
-                        to="/dashboard/community"
-                        onClick={() => setShowNotifications(false)}
-                        className="text-sm text-indigo-600 hover:text-indigo-700 font-medium"
-                      >
-                        Xem tất cả
-                      </Link>
-                    </div>
+                    {profileNotif && (user?.status === 'pending' || user?.status === 'rejected') && (
+                      <div className="p-3 border-t border-slate-200 text-center">
+                        <Link to="/dashboard/settings"
+                          onClick={() => setShowNotifications(false)}
+                          className="text-sm text-indigo-600 hover:text-indigo-700 font-medium">
+                          Cập nhật thông tin ngay
+                        </Link>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
 
-              <Link
-                to="/"
-                className="flex items-center gap-2 text-sm text-slate-600 hover:text-indigo-600 transition-colors"
-              >
+              <Link to="/"
+                className="flex items-center gap-2 text-sm text-slate-600 hover:text-indigo-600 transition-colors">
                 <Home className="w-4 h-4" />
                 Về trang chủ
               </Link>
@@ -233,16 +226,11 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
           </div>
         </header>
 
-        {/* Page Content */}
         <main className="p-6">{children}</main>
       </div>
 
-      {/* Mobile Overlay */}
       {isSidebarOpen && (
-        <div
-          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
-          onClick={() => setIsSidebarOpen(false)}
-        />
+        <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={() => setIsSidebarOpen(false)} />
       )}
     </div>
   );
