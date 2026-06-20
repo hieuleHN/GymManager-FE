@@ -226,7 +226,7 @@ export function PackageCheckout() {
                     }
                   }}
                 >
-                  Xem hợp đồng
+                  Xem điều khoản
                 </Button>
               </div>
             </div>

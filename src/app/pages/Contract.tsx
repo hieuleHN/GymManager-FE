@@ -28,7 +28,7 @@ export function Contract() {
 
   const handlePayment = () => {
     if (!agreed) {
-      alert('Vui lòng đồng ý với các điều khoản hợp đồng');
+      alert('Vui lòng đồng ý với các điều khoản dịch vụ');
       return;
     }
     if (!signature.trim()) {
@@ -54,7 +54,7 @@ export function Contract() {
           {/* Header */}
           <div className="text-center mb-8 pb-8 border-b border-slate-200">
             <ImageWithFallback src={logo} alt="ZenFitness Logo" className="h-16 w-auto object-contain mx-auto mb-4" />
-            <h1 className="text-3xl font-bold text-slate-900 mb-2">HỢP ĐỒNG CUNG CẤP DỊCH VỤ</h1>
+            <h1 className="text-3xl font-bold text-slate-900 mb-2">CHÍNH SÁCH & ĐIỀU KHOẢN DỊCH VỤ</h1>
             <p className="text-lg text-slate-600">Câu Lạc Bộ Thể Hình ZenFitness</p>
           </div>
 
@@ -144,9 +144,9 @@ export function Contract() {
             <div>
               <h2 className="text-xl font-bold text-slate-900 mb-3">IV. ĐIỀU KHOẢN KHÁC</h2>
               <div className="text-sm text-slate-700 space-y-2 bg-slate-50 p-4 rounded-lg">
-                <p>• Hợp đồng có hiệu lực kể từ ngày ký và thanh toán đầy đủ</p>
+                <p>• Chính sách có hiệu lực kể từ ngày ký và thanh toán đầy đủ</p>
                 <p>• Mọi tranh chấp sẽ được giải quyết thông qua thương lượng, hòa giải</p>
-                <p>• Hợp đồng được lập thành 02 bản có giá trị pháp lý như nhau, mỗi bên giữ 01 bản</p>
+                <p>• Điều khoản được lập thành 02 bản có giá trị pháp lý như nhau, mỗi bên giữ 01 bản</p>
               </div>
             </div>
           </div>
@@ -164,7 +164,7 @@ export function Contract() {
                 }
                 label={
                   <span className="text-sm text-slate-700">
-                    Tôi đã đọc, hiểu và đồng ý với tất cả các điều khoản trong hợp đồng này
+                    Tôi đã đọc, hiểu và đồng ý với tất cả các điều khoản dịch vụ này
                   </span>
                 }
               />
