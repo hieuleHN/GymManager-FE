@@ -94,8 +94,8 @@ export function ContractList() {
     <AdminLayout>
       <div className="max-w-7xl mx-auto space-y-6">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900 mb-2">Danh sách hợp đồng</h1>
-          <p className="text-slate-600">Quản lý hợp đồng gắn liền với từng gói tập</p>
+          <h1 className="text-3xl font-bold text-slate-900 mb-2">Danh sách chính sách</h1>
+          <p className="text-slate-600">Quản lý chính sách & điều khoản dịch vụ</p>
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">

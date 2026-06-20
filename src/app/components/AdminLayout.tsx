@@ -110,7 +110,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
       submenu: [
         { name: 'Danh sách gói tập', href: '/admin/packages' },
         { name: 'Thêm gói tập', href: '/admin/packages/add' },
-        { name: 'Danh sách hợp đồng', href: '/admin/contracts' }
+        { name: 'Danh sách chính sách', href: '/admin/contracts' }
       ]
     },
     {

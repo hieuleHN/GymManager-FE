@@ -67,8 +67,8 @@ export function EditContract() {
     <AdminLayout>
       <div className="max-w-4xl mx-auto space-y-6">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900 mb-2">Sửa hợp đồng</h1>
-          <p className="text-slate-600">Cập nhật nội dung hợp đồng gói tập</p>
+          <h1 className="text-3xl font-bold text-slate-900 mb-2">Sửa chính sách</h1>
+          <p className="text-slate-600">Cập nhật nội dung chính sách & điều khoản</p>
         </div>
 
         <form onSubmit={handleSubmit}>
