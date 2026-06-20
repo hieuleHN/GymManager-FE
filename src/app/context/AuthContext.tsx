@@ -13,6 +13,7 @@ export interface User {
   locationId?: string | null;
   avatar?: string;
   permissions?: string[];
+  status?: string;
 }
 
 interface AuthContextType {
@@ -21,6 +22,7 @@ interface AuthContextType {
   logout: () => void;
   loading: boolean;
   hasPermission: (feature: string) => boolean;
+  refreshUser: () => Promise<void>;
 }
 
 const API_URL = '';
@@ -70,11 +72,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       jobId: data.user.jobId,
       locationId: data.user.locationId || null,
       avatar: data.user.avatar,
-      permissions: data.user.permissions || []
+      permissions: data.user.permissions || [],
+      status: data.user.status
     };
 
     localStorage.setItem('auth_user', JSON.stringify(userData));
     setUser(userData);
+  };
+
+  const refreshUser = async () => {
+    const stored = localStorage.getItem('auth_user');
+    if (!stored) return;
+    const current = JSON.parse(stored);
+    if (current.isStaff) return;
+    try {
+      const res = await fetch(`${API_URL}/api/customers/my-info`, {
+        headers: { 'Authorization': `Bearer ${current.token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const updated = {
+          ...current,
+          fullName: data.fullName || current.fullName,
+          name: data.fullName || current.fullName || current.name,
+          status: data.status
+        };
+        localStorage.setItem('auth_user', JSON.stringify(updated));
+        setUser(updated);
+      }
+    } catch {}
   };
 
   const logout = () => {
@@ -84,13 +110,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const hasPermission = (feature: string): boolean => {
     if (!user) return false;
-    if (!user.isStaff) return true; // Members can access member features
+    if (!user.isStaff) return true;
     if (!user.permissions || user.permissions.length === 0) return false;
     return user.permissions.includes(feature);
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, loading, hasPermission }}>
+    <AuthContext.Provider value={{ user, login, logout, loading, hasPermission, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

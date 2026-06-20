@@ -1,17 +1,24 @@
 import { DashboardLayout } from '../../components/DashboardLayout';
 import { Button } from '@mui/material';
-import { User, Lock, Bell, Shield, CreditCard, Globe } from 'lucide-react';
-import { useState } from 'react';
+import { User, Lock, Bell, Shield, CreditCard, Globe, Camera, AlertTriangle, CheckCircle, XCircle, Clock } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { useAuth, getApiUrl, getAuthHeaders } from '../../context/AuthContext';
 
 export function Settings() {
+  const { user, refreshUser } = useAuth();
   const [activeTab, setActiveTab] = useState('profile');
+  const [loading, setLoading] = useState(false);
+  const [fetching, setFetching] = useState(true);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+
   const [formData, setFormData] = useState({
-    fullName: 'Nguyễn Văn A',
-    email: 'nguyenvana@email.com',
-    phone: '0901234567',
-    gender: 'male',
-    birthDate: '1990-01-01',
-    address: '123 Đường ABC, Quận 1, TP.HCM',
+    fullName: '',
+    gender: 'Nam',
+    phone: '',
+    email: '',
+    address: '',
+    idNumber: '',
     currentPassword: '',
     newPassword: '',
     confirmPassword: '',
@@ -23,6 +30,42 @@ export function Settings() {
     sessionTimeout: '30',
     language: 'vi'
   });
+  const [idCardFront, setIdCardFront] = useState<File | null>(null);
+  const [idCardBack, setIdCardBack] = useState<File | null>(null);
+  const [idCardFrontPreview, setIdCardFrontPreview] = useState('');
+  const [idCardBackPreview, setIdCardBackPreview] = useState('');
+
+  const initialFetchDone = useRef(false);
+
+  useEffect(() => {
+    if (initialFetchDone.current) return;
+    if (user?.id && !user?.isStaff) {
+      fetch(`${getApiUrl()}/api/customers/my-info`, {
+        headers: getAuthHeaders()
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data && !data.error) {
+            setFormData(prev => ({
+              ...prev,
+              fullName: data.fullName || '',
+              gender: data.gender || 'Nam',
+              phone: data.phone || '',
+              email: data.email || '',
+              address: data.address || '',
+              idNumber: data.idNumber || ''
+            }));
+            if (data.idCardFront) setIdCardFrontPreview(`${getApiUrl()}/uploads/customers/${data.idCardFront}`);
+            if (data.idCardBack) setIdCardBackPreview(`${getApiUrl()}/uploads/customers/${data.idCardBack}`);
+          }
+        })
+        .catch(() => {})
+        .finally(() => { initialFetchDone.current = true; setFetching(false); });
+    } else {
+      setFetching(false);
+      initialFetchDone.current = true;
+    }
+  }, [user?.id]);
 
   const tabs = [
     { id: 'profile', name: 'Thông tin cá nhân', icon: User },
@@ -37,8 +80,111 @@ export function Settings() {
     setFormData({ ...formData, [field]: value });
   };
 
-  const handleSave = () => {
-    alert('Cập nhật thành công!');
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, side: 'front' | 'back') => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (side === 'front') {
+        setIdCardFront(file);
+        setIdCardFrontPreview(URL.createObjectURL(file));
+      } else {
+        setIdCardBack(file);
+        setIdCardBackPreview(URL.createObjectURL(file));
+      }
+    }
+  };
+
+  const handleSaveProfile = async () => {
+    setError('');
+    setSuccess('');
+    if (!formData.fullName || !formData.phone || !formData.email) {
+      setError('Vui lòng điền đầy đủ họ tên, số điện thoại và email!');
+      return;
+    }
+    const phoneRegex = /(84|0[3|5|7|8|9])+([0-9]{8})\b/;
+    if (!phoneRegex.test(formData.phone)) {
+      setError('Số điện thoại không hợp lệ!');
+      return;
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(formData.email)) {
+      setError('Email không hợp lệ!');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const form = new FormData();
+      form.append('fullName', formData.fullName);
+      form.append('gender', formData.gender);
+      form.append('phone', formData.phone);
+      form.append('email', formData.email);
+      form.append('address', formData.address);
+      form.append('idNumber', formData.idNumber);
+      if (idCardFront) form.append('idCardFront', idCardFront);
+      if (idCardBack) form.append('idCardBack', idCardBack);
+
+      const res = await fetch(`${getApiUrl()}/api/customers/submit-info`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${user?.token}` },
+        body: form
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Lỗi cập nhật!');
+      setSuccess('Gửi thông tin thành công! Vui lòng chờ nhân viên xác nhận.');
+      await refreshUser();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSaveSecurity = async () => {
+    if (formData.newPassword && formData.newPassword !== formData.confirmPassword) {
+      setError('Mật khẩu mới không khớp!');
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await fetch(`${getApiUrl()}/api/customers/${user?.id}`, {
+        method: 'PUT',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          currentPassword: formData.currentPassword,
+          password: formData.newPassword || undefined
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Lỗi cập nhật!');
+      setSuccess('Cập nhật bảo mật thành công!');
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (fetching) {
+    return (
+      <DashboardLayout>
+        <div className="max-w-7xl mx-auto flex items-center justify-center py-20">
+          <p className="text-slate-500">Đang tải...</p>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  const statusBadge = () => {
+    if (!user?.status) return null;
+    const badges: Record<string, { label: string; class: string }> = {
+      pending: { label: 'Chưa điền thông tin', class: 'bg-gray-100 text-gray-700' },
+      pending_approval: { label: 'Chờ xác nhận', class: 'bg-yellow-100 text-yellow-700' },
+      approved: { label: 'Đã xác nhận', class: 'bg-green-100 text-green-700' },
+      rejected: { label: 'Thông tin không đúng', class: 'bg-red-100 text-red-700' },
+      locked: { label: 'Đã khóa', class: 'bg-red-100 text-red-700' },
+    };
+    const b = badges[user.status];
+    return b ? <span className={`inline-flex px-3 py-1 rounded-full text-xs font-semibold ${b.class}`}>{b.label}</span> : null;
   };
 
   return (
@@ -49,22 +195,31 @@ export function Settings() {
           <p className="text-slate-600">Quản lý thông tin tài khoản và tùy chọn của bạn</p>
         </div>
 
+        {user?.status === 'approved' && (
+          <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 flex items-center gap-3">
+            <CheckCircle className="w-5 h-5 text-green-600 shrink-0" />
+            <p className="text-sm text-green-800">Thông tin của bạn đã được xác nhận thành công!</p>
+          </div>
+        )}
+
+        {user?.status === 'rejected' && (
+          <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 flex items-center gap-3">
+            <XCircle className="w-5 h-5 text-red-600 shrink-0" />
+            <p className="text-sm text-red-800">Thông tin của bạn không đúng. Vui lòng cập nhật lại thông tin!</p>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          {/* Sidebar Tabs */}
           <div className="lg:col-span-1">
             <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-2">
               {tabs.map((tab) => {
                 const Icon = tab.icon;
                 return (
-                  <button
-                    key={tab.id}
+                  <button key={tab.id}
                     onClick={() => setActiveTab(tab.id)}
                     className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
-                      activeTab === tab.id
-                        ? 'bg-indigo-50 text-indigo-700'
-                        : 'text-slate-600 hover:bg-slate-50'
-                    }`}
-                  >
+                      activeTab === tab.id ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50'
+                    }`}>
                     <Icon className="w-5 h-5" />
                     <span className="font-medium">{tab.name}</span>
                   </button>
@@ -73,39 +228,31 @@ export function Settings() {
             </div>
           </div>
 
-          {/* Content Area */}
           <div className="lg:col-span-3">
             <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-8">
-              {/* Profile Tab */}
               {activeTab === 'profile' && (
                 <div className="space-y-6">
                   <div>
                     <h2 className="text-2xl font-bold text-slate-900 mb-1">Thông tin cá nhân</h2>
-                    <div className="bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-3 mb-2">
-                      <p className="text-sm text-indigo-900">
-                        <span className="font-semibold">Mã hội viên của bạn là:</span> <span className="text-lg font-bold">ZF-2024-00123</span>
-                      </p>
+                    <div className="flex items-center gap-3 mb-2">
+                      <span className="text-sm text-slate-500">Trạng thái:</span>
+                      {statusBadge()}
                     </div>
-                    <p className="text-slate-600">Cập nhật thông tin cá nhân của bạn</p>
+                    <p className="text-slate-600">Cập nhật thông tin cá nhân và gửi cho nhân viên xác nhận</p>
                   </div>
+
+                  {error && <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm">{error}</div>}
+                  {success && <div className="p-3 bg-green-50 border border-green-200 text-green-700 rounded-xl text-sm">{success}</div>}
 
                   <div className="flex items-center gap-6 pb-6 border-b border-slate-200">
                     <img
-                      src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=150"
+                      src={user?.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=150'}
                       alt="Avatar"
                       className="w-24 h-24 rounded-full object-cover"
                     />
                     <div>
-                      <Button
-                        variant="contained"
-                        sx={{
-                          bgcolor: '#4f46e5',
-                          '&:hover': { bgcolor: '#4338ca' },
-                          textTransform: 'none',
-                          borderRadius: 2,
-                          mb: 1
-                        }}
-                      >
+                      <Button variant="contained"
+                        sx={{ bgcolor: '#4f46e5', '&:hover': { bgcolor: '#4338ca' }, textTransform: 'none', borderRadius: 2, mb: 1 }}>
                         Thay đổi ảnh
                       </Button>
                       <p className="text-sm text-slate-600">JPG, PNG. Tối đa 2MB</p>
@@ -114,101 +261,78 @@ export function Settings() {
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-2">Họ và tên</label>
-                      <input
-                        type="text"
-                        value={formData.fullName}
+                      <label className="block text-sm font-medium text-slate-700 mb-2">Họ và tên <span className="text-red-500">*</span></label>
+                      <input type="text" value={formData.fullName}
                         onChange={(e) => handleInputChange('fullName', e.target.value)}
-                        className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                      />
+                        className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" />
                     </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-2">Email</label>
-                      <input
-                        type="email"
-                        value={formData.email}
-                        onChange={(e) => handleInputChange('email', e.target.value)}
-                        className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-2">Số điện thoại</label>
-                      <input
-                        type="tel"
-                        value={formData.phone}
-                        onChange={(e) => handleInputChange('phone', e.target.value)}
-                        className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                      />
-                    </div>
-
                     <div>
                       <label className="block text-sm font-medium text-slate-700 mb-2">Giới tính</label>
-                      <select
-                        value={formData.gender}
+                      <select value={formData.gender}
                         onChange={(e) => handleInputChange('gender', e.target.value)}
-                        className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                      >
-                        <option value="male">Nam</option>
-                        <option value="female">Nữ</option>
-                        <option value="other">Khác</option>
+                        className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                        <option value="Nam">Nam</option>
+                        <option value="Nữ">Nữ</option>
+                        <option value="Khác">Khác</option>
                       </select>
                     </div>
-
                     <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-2">Ngày sinh</label>
-                      <input
-                        type="date"
-                        value={formData.birthDate}
-                        onChange={(e) => handleInputChange('birthDate', e.target.value)}
-                        className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                      />
+                      <label className="block text-sm font-medium text-slate-700 mb-2">Số điện thoại <span className="text-red-500">*</span></label>
+                      <input type="tel" value={formData.phone}
+                        onChange={(e) => handleInputChange('phone', e.target.value)}
+                        className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" />
                     </div>
-
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">Email <span className="text-red-500">*</span></label>
+                      <input type="email" value={formData.email}
+                        onChange={(e) => handleInputChange('email', e.target.value)}
+                        className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">Số căn cước</label>
+                      <input type="text" value={formData.idNumber}
+                        onChange={(e) => handleInputChange('idNumber', e.target.value)}
+                        className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="001234567890" />
+                    </div>
                     <div className="md:col-span-2">
                       <label className="block text-sm font-medium text-slate-700 mb-2">Địa chỉ</label>
-                      <input
-                        type="text"
-                        value={formData.address}
+                      <input type="text" value={formData.address}
                         onChange={(e) => handleInputChange('address', e.target.value)}
-                        className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                      />
+                        className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">Ảnh mặt trước căn cước</label>
+                      <label className="flex items-center gap-3 p-3 border border-dashed border-slate-300 rounded-xl cursor-pointer hover:border-indigo-400 transition-colors">
+                        <Camera className="w-5 h-5 text-slate-400" />
+                        <span className="text-sm text-slate-500">{idCardFront ? 'Đã chọn' : 'Chọn ảnh'}</span>
+                        <input type="file" accept="image/*" className="hidden" onChange={(e) => handleFileChange(e, 'front')} />
+                      </label>
+                      {idCardFrontPreview && <img src={idCardFrontPreview} alt="Front" className="mt-2 w-full h-32 object-cover rounded-lg" />}
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">Ảnh mặt sau căn cước</label>
+                      <label className="flex items-center gap-3 p-3 border border-dashed border-slate-300 rounded-xl cursor-pointer hover:border-indigo-400 transition-colors">
+                        <Camera className="w-5 h-5 text-slate-400" />
+                        <span className="text-sm text-slate-500">{idCardBack ? 'Đã chọn' : 'Chọn ảnh'}</span>
+                        <input type="file" accept="image/*" className="hidden" onChange={(e) => handleFileChange(e, 'back')} />
+                      </label>
+                      {idCardBackPreview && <img src={idCardBackPreview} alt="Back" className="mt-2 w-full h-32 object-cover rounded-lg" />}
                     </div>
                   </div>
 
                   <div className="flex justify-end gap-3 pt-6 border-t border-slate-200">
-                    <Button
-                      variant="outlined"
-                      sx={{
-                        borderColor: '#cbd5e1',
-                        color: '#475569',
-                        '&:hover': { borderColor: '#94a3b8', bgcolor: '#f8fafc' },
-                        textTransform: 'none',
-                        borderRadius: 2,
-                        px: 4
-                      }}
-                    >
+                    <Button variant="outlined"
+                      sx={{ borderColor: '#cbd5e1', color: '#475569', '&:hover': { borderColor: '#94a3b8', bgcolor: '#f8fafc' }, textTransform: 'none', borderRadius: 2, px: 4 }}>
                       Hủy
                     </Button>
-                    <Button
-                      variant="contained"
-                      onClick={handleSave}
-                      sx={{
-                        bgcolor: '#4f46e5',
-                        '&:hover': { bgcolor: '#4338ca' },
-                        textTransform: 'none',
-                        borderRadius: 2,
-                        px: 4
-                      }}
-                    >
-                      Lưu thay đổi
+                    <Button variant="contained" onClick={handleSaveProfile} disabled={loading}
+                      sx={{ bgcolor: '#4f46e5', '&:hover': { bgcolor: '#4338ca' }, textTransform: 'none', borderRadius: 2, px: 4 }}>
+                      {loading ? 'Đang xử lý...' : 'Lưu thay đổi'}
                     </Button>
                   </div>
                 </div>
               )}
 
-              {/* Security Tab */}
               {activeTab === 'security' && (
                 <div className="space-y-6">
                   <div>
@@ -216,37 +340,28 @@ export function Settings() {
                     <p className="text-slate-600">Quản lý mật khẩu và bảo mật tài khoản</p>
                   </div>
 
+                  {error && <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm">{error}</div>}
+                  {success && <div className="p-3 bg-green-50 border border-green-200 text-green-700 rounded-xl text-sm">{success}</div>}
+
                   <div className="space-y-6">
                     <div>
                       <label className="block text-sm font-medium text-slate-700 mb-2">Mật khẩu hiện tại</label>
-                      <input
-                        type="password"
-                        value={formData.currentPassword}
+                      <input type="password" value={formData.currentPassword}
                         onChange={(e) => handleInputChange('currentPassword', e.target.value)}
-                        className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                      />
+                        className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" />
                     </div>
-
                     <div>
                       <label className="block text-sm font-medium text-slate-700 mb-2">Mật khẩu mới</label>
-                      <input
-                        type="password"
-                        value={formData.newPassword}
+                      <input type="password" value={formData.newPassword}
                         onChange={(e) => handleInputChange('newPassword', e.target.value)}
-                        className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                      />
+                        className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" />
                     </div>
-
                     <div>
                       <label className="block text-sm font-medium text-slate-700 mb-2">Xác nhận mật khẩu mới</label>
-                      <input
-                        type="password"
-                        value={formData.confirmPassword}
+                      <input type="password" value={formData.confirmPassword}
                         onChange={(e) => handleInputChange('confirmPassword', e.target.value)}
-                        className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                      />
+                        className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" />
                     </div>
-
                     <div className="pt-6 border-t border-slate-200">
                       <div className="flex items-center justify-between mb-4">
                         <div>
@@ -254,23 +369,16 @@ export function Settings() {
                           <p className="text-sm text-slate-600">Tăng cường bảo mật cho tài khoản của bạn</p>
                         </div>
                         <label className="relative inline-flex items-center cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={formData.twoFactorAuth}
-                            onChange={(e) => handleInputChange('twoFactorAuth', e.target.checked)}
-                            className="sr-only peer"
-                          />
+                          <input type="checkbox" checked={formData.twoFactorAuth}
+                            onChange={(e) => handleInputChange('twoFactorAuth', e.target.checked)} className="sr-only peer" />
                           <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
                         </label>
                       </div>
-
                       <div>
                         <label className="block text-sm font-medium text-slate-700 mb-2">Thời gian hết phiên (phút)</label>
-                        <select
-                          value={formData.sessionTimeout}
+                        <select value={formData.sessionTimeout}
                           onChange={(e) => handleInputChange('sessionTimeout', e.target.value)}
-                          className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        >
+                          className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500">
                           <option value="15">15 phút</option>
                           <option value="30">30 phút</option>
                           <option value="60">1 giờ</option>
@@ -281,44 +389,24 @@ export function Settings() {
                   </div>
 
                   <div className="flex justify-end gap-3 pt-6 border-t border-slate-200">
-                    <Button
-                      variant="outlined"
-                      sx={{
-                        borderColor: '#cbd5e1',
-                        color: '#475569',
-                        '&:hover': { borderColor: '#94a3b8', bgcolor: '#f8fafc' },
-                        textTransform: 'none',
-                        borderRadius: 2,
-                        px: 4
-                      }}
-                    >
+                    <Button variant="outlined"
+                      sx={{ borderColor: '#cbd5e1', color: '#475569', '&:hover': { borderColor: '#94a3b8', bgcolor: '#f8fafc' }, textTransform: 'none', borderRadius: 2, px: 4 }}>
                       Hủy
                     </Button>
-                    <Button
-                      variant="contained"
-                      onClick={handleSave}
-                      sx={{
-                        bgcolor: '#4f46e5',
-                        '&:hover': { bgcolor: '#4338ca' },
-                        textTransform: 'none',
-                        borderRadius: 2,
-                        px: 4
-                      }}
-                    >
-                      Cập nhật bảo mật
+                    <Button variant="contained" onClick={handleSaveSecurity} disabled={loading}
+                      sx={{ bgcolor: '#4f46e5', '&:hover': { bgcolor: '#4338ca' }, textTransform: 'none', borderRadius: 2, px: 4 }}>
+                      {loading ? 'Đang xử lý...' : 'Cập nhật bảo mật'}
                     </Button>
                   </div>
                 </div>
               )}
 
-              {/* Notifications Tab */}
               {activeTab === 'notifications' && (
                 <div className="space-y-6">
                   <div>
                     <h2 className="text-2xl font-bold text-slate-900 mb-1">Thông báo</h2>
                     <p className="text-slate-600">Quản lý cách bạn nhận thông báo</p>
                   </div>
-
                   <div className="space-y-4">
                     {[
                       { id: 'emailNotifications', label: 'Thông báo qua Email', desc: 'Nhận thông báo về lịch tập, gói tập và tin tức' },
@@ -332,37 +420,22 @@ export function Settings() {
                           <p className="text-sm text-slate-600">{item.desc}</p>
                         </div>
                         <label className="relative inline-flex items-center cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={formData[item.id as keyof typeof formData] as boolean}
-                            onChange={(e) => handleInputChange(item.id, e.target.checked)}
-                            className="sr-only peer"
-                          />
+                          <input type="checkbox" checked={formData[item.id as keyof typeof formData] as boolean}
+                            onChange={(e) => handleInputChange(item.id, e.target.checked)} className="sr-only peer" />
                           <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
                         </label>
                       </div>
                     ))}
                   </div>
-
                   <div className="flex justify-end gap-3 pt-6 border-t border-slate-200">
-                    <Button
-                      variant="contained"
-                      onClick={handleSave}
-                      sx={{
-                        bgcolor: '#4f46e5',
-                        '&:hover': { bgcolor: '#4338ca' },
-                        textTransform: 'none',
-                        borderRadius: 2,
-                        px: 4
-                      }}
-                    >
+                    <Button variant="contained" onClick={() => alert('Cập nhật thành công!')}
+                      sx={{ bgcolor: '#4f46e5', '&:hover': { bgcolor: '#4338ca' }, textTransform: 'none', borderRadius: 2, px: 4 }}>
                       Lưu thay đổi
                     </Button>
                   </div>
                 </div>
               )}
 
-              {/* Privacy, Billing, Preferences - Placeholder */}
               {(activeTab === 'privacy' || activeTab === 'billing' || activeTab === 'preferences') && (
                 <div className="text-center py-12">
                   <p className="text-slate-600">Tính năng này đang được phát triển</p>

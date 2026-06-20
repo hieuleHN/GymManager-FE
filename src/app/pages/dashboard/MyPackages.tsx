@@ -1,9 +1,69 @@
+import { useState, useEffect } from 'react';
 import { DashboardLayout } from '../../components/DashboardLayout';
-import { Calendar, MapPin, Check } from 'lucide-react';
+import { Calendar, MapPin, Check, AlertTriangle, ArrowRight } from 'lucide-react';
 import { Button } from '@mui/material';
-import { Link } from 'react-router';
+import { Link, useNavigate } from 'react-router';
+import { useAuth, getApiUrl, getAuthHeaders } from '../../context/AuthContext';
 
 export function MyPackages() {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const [customer, setCustomer] = useState<any>(null);
+  const [fetching, setFetching] = useState(true);
+
+  useEffect(() => {
+    if (user?.id && !user?.isStaff) {
+      fetch(`${getApiUrl()}/api/customers/my-info`, {
+        headers: getAuthHeaders()
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data && !data.error) {
+            setCustomer(data);
+          }
+        })
+        .catch(() => {})
+        .finally(() => setFetching(false));
+    } else {
+      setFetching(false);
+    }
+  }, [user]);
+
+  if (fetching) {
+    return (
+      <DashboardLayout>
+        <div className="max-w-7xl mx-auto flex items-center justify-center py-20">
+          <p className="text-slate-500">Đang tải...</p>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  if (customer && customer.status !== 'approved') {
+    return (
+      <DashboardLayout>
+        <div className="max-w-7xl mx-auto space-y-6">
+          <div>
+            <h1 className="text-3xl font-bold text-slate-900 mb-2">Gói tập của tôi</h1>
+            <p className="text-slate-600">Quản lý các gói tập đang sử dụng</p>
+          </div>
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-8 text-center">
+            <AlertTriangle className="w-16 h-16 text-amber-500 mx-auto mb-4" />
+            <h2 className="text-2xl font-bold text-amber-900 mb-2">Chưa được xác nhận</h2>
+            <p className="text-amber-700 mb-6">
+              Bạn cần hoàn thiện thông tin cá nhân và được nhân viên xác nhận trước khi đăng ký gói tập.
+            </p>
+            <Button variant="contained" onClick={() => navigate('/dashboard/settings')}
+              sx={{ bgcolor: '#d97706', '&:hover': { bgcolor: '#b45309' }, textTransform: 'none', borderRadius: 2, px: 6, py: 1.5 }}>
+              Đi đến cài đặt
+              <ArrowRight className="ml-2 w-4 h-4" />
+            </Button>
+          </div>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
   const currentPackages = [
     {
       id: 1,
@@ -74,12 +134,10 @@ export function MyPackages() {
           <p className="text-slate-600">Quản lý các gói tập đang sử dụng</p>
         </div>
 
-        {/* Current Packages */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {currentPackages.map((pkg) => (
             <div key={pkg.id} className="bg-white rounded-2xl shadow-sm border-l-4 border-indigo-600 overflow-hidden">
               <div className="p-6">
-                {/* Header */}
                 <div className="flex items-start justify-between mb-4">
                   <div>
                     <div className="inline-block bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-semibold mb-2">
@@ -93,7 +151,6 @@ export function MyPackages() {
                   </div>
                 </div>
 
-                {/* Info */}
                 <div className="space-y-3 mb-4">
                   <div className="flex items-center gap-2 text-sm">
                     <Calendar className="w-4 h-4 text-slate-400" />
@@ -110,7 +167,6 @@ export function MyPackages() {
                   </div>
                 </div>
 
-                {/* Benefits */}
                 <div className="mb-4">
                   <h4 className="text-sm font-semibold text-slate-900 mb-2">Quyền lợi:</h4>
                   <div className="space-y-1.5">
@@ -123,37 +179,16 @@ export function MyPackages() {
                   </div>
                 </div>
 
-                {/* Actions */}
                 <div className="grid grid-cols-2 gap-3">
                   <Link to="/packages">
-                    <Button
-                      fullWidth
-                      variant="outlined"
-                      size="small"
-                      sx={{ textTransform: 'none', borderRadius: 2 }}
-                    >
+                    <Button fullWidth variant="outlined" size="small"
+                      sx={{ textTransform: 'none', borderRadius: 2 }}>
                       Nâng cấp
                     </Button>
                   </Link>
-                  <Link
-                    to="/contract"
-                    state={{
-                      package: { name: pkg.name, price: pkg.price },
-                      club: { name: pkg.club },
-                      durationType: 'renewal'
-                    }}
-                  >
-                    <Button
-                      fullWidth
-                      variant="contained"
-                      size="small"
-                      sx={{
-                        textTransform: 'none',
-                        borderRadius: 2,
-                        bgcolor: '#4f46e5',
-                        '&:hover': { bgcolor: '#4338ca' }
-                      }}
-                    >
+                  <Link to="/contract" state={{ package: { name: pkg.name, price: pkg.price }, club: { name: pkg.club }, durationType: 'renewal' }}>
+                    <Button fullWidth variant="contained" size="small"
+                      sx={{ textTransform: 'none', borderRadius: 2, bgcolor: '#4f46e5', '&:hover': { bgcolor: '#4338ca' } }}>
                       Gia hạn
                     </Button>
                   </Link>
@@ -163,7 +198,6 @@ export function MyPackages() {
           ))}
         </div>
 
-        {/* Other Packages */}
         <div>
           <h2 className="text-2xl font-bold text-slate-900 mb-4">Các gói tập khác</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -186,16 +220,8 @@ export function MyPackages() {
                 </div>
 
                 <Link to={`/packages`}>
-                  <Button
-                    fullWidth
-                    variant="contained"
-                    sx={{
-                      bgcolor: '#4f46e5',
-                      '&:hover': { bgcolor: '#4338ca' },
-                      textTransform: 'none',
-                      borderRadius: 2
-                    }}
-                  >
+                  <Button fullWidth variant="contained"
+                    sx={{ bgcolor: '#4f46e5', '&:hover': { bgcolor: '#4338ca' }, textTransform: 'none', borderRadius: 2 }}>
                     Đăng ký ngay
                   </Button>
                 </Link>
