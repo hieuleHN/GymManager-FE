@@ -15,14 +15,15 @@ interface Discipline {
 export function EditPackage() {
   const navigate = useNavigate();
   const { id } = useParams();
-  const { selectedClub } = useClub();
   const headers = getAuthHeaders();
 
   const [disciplines, setDisciplines] = useState<Discipline[]>([]);
+  const [locations, setLocations] = useState<any[]>([]); // Khai báo list cơ sở
   const [loadingData, setLoadingData] = useState(true);
   const [formData, setFormData] = useState({
     name: '',
     disciplineId: '',
+    locationId: '', // ID cơ sở
     unitPrice: '',
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -37,15 +38,16 @@ export function EditPackage() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const discUrl = selectedClub && selectedClub !== 'all'
-          ? `/api/disciplines?locationId=${selectedClub}`
-          : '/api/disciplines';
-        const pkgUrl = `/api/packages/${id}`;
-
-        const [discRes, pkgRes] = await Promise.all([
-          fetch(discUrl, { headers }),
-          fetch(pkgUrl, { headers }),
+        const [locRes, discRes, pkgRes] = await Promise.all([
+          fetch('/api/locations', { headers: headers as any }),
+          fetch('/api/disciplines', { headers: headers as any }),
+          fetch(`/api/packages/${id}`, { headers: headers as any }),
         ]);
+
+        if (locRes.ok) {
+          const locData = await locRes.json();
+          setLocations(locData);
+        }
 
         if (discRes.ok) {
           const discData = await discRes.json();
@@ -57,7 +59,8 @@ export function EditPackage() {
           const pkg = pkgData.data || pkgData;
           setFormData({
             name: pkg.name || '',
-            disciplineId: typeof pkg.disciplineId === 'object' ? pkg.disciplineId._id : pkg.disciplineId || '',
+            disciplineId: typeof pkg.disciplineId === 'object' ? pkg.disciplineId?._id : pkg.disciplineId || '',
+            locationId: typeof pkg.locationId === 'object' ? pkg.locationId?._id : pkg.locationId || '',
             unitPrice: pkg.unitPrice?.toString() || '',
           });
           setFeatures(pkg.features?.length ? pkg.features : ['']);
@@ -84,7 +87,8 @@ export function EditPackage() {
       }
     };
     fetchData();
-  }, [id, selectedClub]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
 
   const handleChange = (field: string, value: any) => {
     setFormData({ ...formData, [field]: value });
@@ -95,6 +99,7 @@ export function EditPackage() {
     let msg = '';
     if ((field === 'name' || field === 'unitPrice') && !value) msg = 'Vui lòng nhập ' + (field === 'name' ? 'tên gói tập' : 'đơn giá');
     else if (field === 'disciplineId' && !value) msg = 'Vui lòng chọn bộ môn';
+    else if (field === 'locationId' && !value) msg = 'Vui lòng chọn cơ sở';
     else if (field === 'unitPrice' && value && Number(value) <= 0) msg = 'Đơn giá phải lớn hơn 0';
     setErrors(prev => ({ ...prev, [field]: msg }));
   };
@@ -120,6 +125,7 @@ export function EditPackage() {
     const newErrors: Record<string, string> = {};
     if (!formData.name) newErrors.name = 'Vui lòng nhập tên gói tập';
     if (!formData.disciplineId) newErrors.disciplineId = 'Vui lòng chọn bộ môn';
+    if (!formData.locationId) newErrors.locationId = 'Vui lòng chọn cơ sở chi nhánh';
     if (!formData.unitPrice || Number(formData.unitPrice) <= 0) newErrors.unitPrice = !formData.unitPrice ? 'Vui lòng nhập đơn giá' : 'Đơn giá phải lớn hơn 0';
     setErrors(newErrors);
     if (Object.keys(newErrors).length > 0) return;
@@ -129,6 +135,7 @@ export function EditPackage() {
       const body = {
         name: formData.name,
         disciplineId: formData.disciplineId,
+        locationId: formData.locationId,
         unitPrice: Number(formData.unitPrice),
         features: features.filter(f => f.trim()),
         durations: durations
@@ -141,7 +148,7 @@ export function EditPackage() {
 
       const res = await fetch(`/api/packages/${id}`, {
         method: 'PUT',
-        headers,
+        headers: { ...headers, 'Content-Type': 'application/json' } as any,
         body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error('Update failed');
@@ -167,13 +174,13 @@ export function EditPackage() {
       <div className="max-w-4xl mx-auto space-y-6">
         <div>
           <h1 className="text-3xl font-bold text-slate-900 mb-2">Sửa gói tập</h1>
-          <p className="text-slate-600">Cập nhật thông tin gói tập</p>
+          <p className="text-slate-600">Cập nhật thông tương gói tập</p>
         </div>
 
         <form onSubmit={handleSubmit}>
           <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-8 space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
+              <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-slate-700 mb-2">
                   Tên gói tập <span className="text-red-500">*</span>
                 </label>
@@ -187,6 +194,24 @@ export function EditPackage() {
                   placeholder="VD: PREMIUM"
                 />
                 {errors.name && <p className="text-red-500 text-sm mt-1">{errors.name}</p>}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Cơ sở (Chi nhánh) <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={formData.locationId}
+                  onChange={(e) => handleChange('locationId', e.target.value)}
+                  onBlur={() => handleBlur('locationId', formData.locationId)}
+                  className={`w-full p-3 border ${errors.locationId ? 'border-red-400' : 'border-slate-200'} rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+                >
+                  <option value="">Chọn cơ sở</option>
+                  {locations.map((loc) => (
+                    <option key={loc._id} value={loc._id}>{loc.address || loc.title}</option>
+                  ))}
+                </select>
+                {errors.locationId && <p className="text-red-500 text-sm mt-1">{errors.locationId}</p>}
               </div>
 
               <div>

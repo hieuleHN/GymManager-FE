@@ -15,6 +15,10 @@ interface ClubData {
   openTime: string;
   closeTime: string;
   images?: { url: string; description: string }[];
+  bankName?: string;
+  accountNumber?: string;
+  accountName?: string;
+  branch?: string;
 }
 
 const emptyForm = {
@@ -24,6 +28,10 @@ const emptyForm = {
   phone: '',
   openTime: '06:00',
   closeTime: '22:00',
+  bankName: '',
+  accountNumber: '',
+  accountName: '',
+  branch: '',
 };
 
 export function ClubManagement() {
@@ -47,7 +55,7 @@ export function ClubManagement() {
     const fetchClub = async () => {
       setLoading(true);
       try {
-        const res = await fetch(`/api/locations/${selectedClub}`, { headers });
+        const res = await fetch(`/api/locations/${selectedClub}`, { headers: headers as any });
         if (!res.ok) throw new Error('Failed to fetch');
         const data: ClubData = await res.json();
         setFormData({
@@ -57,6 +65,10 @@ export function ClubManagement() {
           phone: data.phone || '',
           openTime: data.openTime || '06:00',
           closeTime: data.closeTime || '22:00',
+          bankName: data.bankName || '',
+          accountNumber: data.accountNumber || '',
+          accountName: data.accountName || '',
+          branch: data.branch || '',
         });
         setFetchedOnce(true);
       } catch {
@@ -103,7 +115,7 @@ export function ClubManagement() {
     try {
       const res = await fetch(`/api/locations/${selectedClub}`, {
         method: 'PUT',
-        headers: { ...headers, 'Content-Type': 'application/json' },
+        headers: { ...headers, 'Content-Type': 'application/json' } as any,
         body: JSON.stringify(formData),
       });
       if (!res.ok) throw new Error('Update failed');
@@ -228,6 +240,52 @@ export function ClubManagement() {
                   className={`w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 ${errors.phone ? 'border-red-500' : 'border-slate-200'}`}
                 />
                 {errors.phone && <p className="text-red-500 text-sm mt-1">{errors.phone}</p>}
+              </div>
+
+              <div className="border-t border-slate-200 pt-6 mt-6">
+                <h3 className="text-lg font-bold text-slate-900 mb-4">Cấu hình Thanh toán Online</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">Mã Ngân hàng (VD: MB, VCB, TCB)</label>
+                    <input
+                      type="text"
+                      value={formData.bankName}
+                      onChange={(e) => handleChange('bankName', e.target.value)}
+                      className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      placeholder="Nhập tên viết tắt ngân hàng..."
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">Số tài khoản</label>
+                    <input
+                      type="text"
+                      value={formData.accountNumber}
+                      onChange={(e) => handleChange('accountNumber', e.target.value)}
+                      className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      placeholder="Nhập số tài khoản..."
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">Tên chủ tài khoản</label>
+                    <input
+                      type="text"
+                      value={formData.accountName}
+                      onChange={(e) => handleChange('accountName', e.target.value)}
+                      className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      placeholder="Nhập tên in hoa không dấu..."
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">Chi nhánh (Không bắt buộc)</label>
+                    <input
+                      type="text"
+                      value={formData.branch}
+                      onChange={(e) => handleChange('branch', e.target.value)}
+                      className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      placeholder="Chi nhánh ngân hàng..."
+                    />
+                  </div>
+                </div>
               </div>
 
               <div className="flex justify-end pt-6 border-t border-slate-200">
