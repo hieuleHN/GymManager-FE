@@ -22,6 +22,8 @@ interface Registration {
   start_date: string;
   end_date: string;
   status: string;
+  payment_status: string;
+  payment_method: string;
   signature: string;
   createdAt: string;
 }
@@ -184,6 +186,12 @@ export function MyPackages() {
                   </div>
 
                   <div className="space-y-3 mb-4">
+                    {reg.payment_status === 'chờ thanh toán' && (
+                      <div className="flex items-center gap-2 text-sm bg-amber-50 border border-amber-200 px-3 py-2 rounded-lg">
+                        <AlertTriangle className="w-4 h-4 text-amber-600" />
+                        <span className="text-amber-700">Chờ xác nhận thanh toán</span>
+                      </div>
+                    )}
                     <div className="flex items-center gap-2 text-sm">
                       <Calendar className="w-4 h-4 text-slate-400" />
                       <span className="text-slate-600">
