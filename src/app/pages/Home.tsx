@@ -1,13 +1,14 @@
-import { ArrowRight, Users, Trophy, Target, ChevronRight, Zap, MapPin, Play, Quote } from 'lucide-react';
-import { Link } from 'react-router';
+import { ArrowRight, Users, Trophy, Target, ChevronRight, Zap, MapPin, Play, Quote, Check } from 'lucide-react';
+import { Link, useNavigate } from 'react-router';
 import { Button } from '@mui/material';
 import { motion, AnimatePresence } from 'motion/react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Slider from 'react-slick';
 import 'slick-carousel/slick/slick.css';
 import 'slick-carousel/slick/slick-theme.css';
 
 import { FloatingContact } from '../components/FloatingContact';
+import { useAuth, getApiUrl } from '../context/AuthContext';
 import { clubsData, disciplinesData } from '../data';
 
 const bannerImages = [
@@ -18,6 +19,18 @@ const bannerImages = [
 
 export function Home() {
   const [activeDiscipline, setActiveDiscipline] = useState(disciplinesData[0]);
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const [allDisciplines, setAllDisciplines] = useState<{ _id: string; name: string }[]>([]);
+  const [packages, setPackages] = useState<any[]>([]);
+  const [selectedDiscipline, setSelectedDiscipline] = useState('all');
+  const [loadingPackages, setLoadingPackages] = useState(true);
+  const [durationSelections, setDurationSelections] = useState<Record<string, number>>({});
+
+  const formatPrice = (price: number) => {
+    if (!price) return '0đ';
+    return price.toLocaleString('vi-VN') + 'đ';
+  };
 
   const bannerSettings = {
     dots: true,
@@ -39,6 +52,36 @@ export function Home() {
     autoplay: true,
     autoplaySpeed: 3000,
     arrows: false,
+  };
+
+  useEffect(() => {
+    fetch(`${getApiUrl()}/api/disciplines?limit=50`)
+      .then(res => res.json())
+      .then(data => {
+        if (data?.data) setAllDisciplines(data.data);
+      })
+      .catch(() => {});
+    fetch(`${getApiUrl()}/api/packages?limit=100`)
+      .then(res => res.json())
+      .then(data => {
+        if (data?.data) setPackages(data.data.filter((p: any) => p.is_active));
+      })
+      .catch(() => {})
+      .finally(() => setLoadingPackages(false));
+  }, []);
+
+  const uniqueNames = Array.from(new Set(allDisciplines.map(d => d.name)));
+  const filteredPackages = selectedDiscipline === 'all'
+    ? packages
+    : packages.filter(p => p.disciplineId?.name === selectedDiscipline);
+
+  const handleRegister = (pkgId: string) => {
+    if (!user) return navigate('/auth');
+    navigate(`/packages/${pkgId}`);
+  };
+
+  const handleViewDetail = (pkgId: string) => {
+    navigate(`/packages/${pkgId}`);
   };
 
   return (
@@ -252,6 +295,151 @@ export function Home() {
               </div>
             </div>
           </div>
+        </div>
+      </section>
+
+      {/* Package Registration Section */}
+      <section className="py-24 bg-slate-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-16">
+            <h2 className="text-3xl font-bold text-slate-900 mb-4">Đăng Ký Gói Tập Ngay</h2>
+            <p className="text-slate-600 max-w-2xl mx-auto">
+              Chọn bộ môn và gói tập phù hợp với bạn. Thanh toán linh hoạt theo tháng hoặc năm.
+            </p>
+          </div>
+
+          {/* Discipline Filter Buttons */}
+          <div className="flex flex-wrap gap-3 justify-center mb-12">
+            <button
+              onClick={() => setSelectedDiscipline('all')}
+              className={`px-6 py-2.5 rounded-full text-sm font-semibold transition-all ${
+                selectedDiscipline === 'all'
+                  ? 'bg-indigo-600 text-white shadow-md'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              Tất cả
+            </button>
+            {uniqueNames.map(name => (
+              <button
+                key={name}
+                onClick={() => setSelectedDiscipline(name)}
+                className={`px-6 py-2.5 rounded-full text-sm font-semibold transition-all ${
+                  selectedDiscipline === name
+                    ? 'bg-indigo-600 text-white shadow-md'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                {name}
+              </button>
+            ))}
+          </div>
+
+          {/* Package Grid */}
+          {loadingPackages ? (
+            <div className="text-center py-12">
+              <p className="text-slate-500">Đang tải gói tập...</p>
+            </div>
+          ) : filteredPackages.length === 0 ? (
+            <div className="text-center py-12">
+              <p className="text-slate-500">Không có gói tập nào cho bộ môn này.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              {filteredPackages.map((plan, index) => {
+                const durIdx = durationSelections[plan._id] ?? 0;
+                const durations = plan.durations || [];
+                const selectedDur = durations[durIdx] || { months: 1, discount: 0 };
+                const totalPrice = plan.unitPrice * selectedDur.months * (1 - selectedDur.discount / 100);
+
+                return (
+                  <motion.div
+                    key={plan._id}
+                    initial={{ opacity: 0, y: 20 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={{ once: true }}
+                    transition={{ delay: index * 0.05 }}
+                    className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-lg transition-shadow p-6 flex flex-col"
+                  >
+                    {plan.disciplineId && (
+                      <span className="text-xs font-semibold text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full self-start mb-3">
+                        {plan.disciplineId.name}
+                      </span>
+                    )}
+                    <h3 className="text-xl font-bold text-slate-900 mb-2">{plan.name}</h3>
+                    <div className="mb-4">
+                      <span className="text-3xl font-extrabold text-slate-900">
+                        {formatPrice(plan.unitPrice)}
+                      </span>
+                      <span className="text-sm text-slate-500 ml-1">/ tháng</span>
+                    </div>
+
+                    {/* Duration Selector */}
+                    {durations.length > 0 && (
+                      <div className="mb-4">
+                        <p className="text-xs font-semibold text-slate-500 mb-2 uppercase">Thời hạn</p>
+                        <div className="flex flex-wrap gap-2">
+                          {durations.map((d: { months: number; discount: number }, idx: number) => {
+                            const isSelected = durIdx === idx;
+                            return (
+                              <button
+                                key={idx}
+                                onClick={() => setDurationSelections(prev => ({ ...prev, [plan._id]: idx }))}
+                                className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                                  isSelected
+                                    ? 'bg-indigo-600 text-white border-indigo-600'
+                                    : 'bg-white text-slate-600 border-slate-300 hover:border-indigo-400'
+                                }`}
+                              >
+                                {d.months} tháng{d.discount > 0 && ` (-${d.discount}%)`}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Total Price */}
+                    <div className="mb-4 p-3 bg-indigo-50 rounded-xl">
+                      <p className="text-xs text-slate-600 mb-1">Tổng tiền:</p>
+                      <p className="text-2xl font-bold text-indigo-600">{formatPrice(totalPrice)}</p>
+                    </div>
+
+                    {/* Features */}
+                    <ul className="space-y-2 mb-6 flex-1">
+                      {(plan.features || []).slice(0, 4).map((feature: string) => (
+                        <li key={feature} className="flex items-start gap-2 text-sm text-slate-600">
+                          <Check className="w-4 h-4 text-green-500 mt-0.5 shrink-0" />
+                          <span>{feature}</span>
+                        </li>
+                      ))}
+                      {(plan.features || []).length > 4 && (
+                        <li className="text-xs text-slate-400">+ thêm {plan.features.length - 4} quyền lợi</li>
+                      )}
+                    </ul>
+
+                    <Button
+                      fullWidth
+                      variant="contained"
+                      size="large"
+                      onClick={() => handleViewDetail(plan._id)}
+                      sx={{
+                        height: 48,
+                        borderRadius: 2,
+                        textTransform: 'none',
+                        fontSize: '0.95rem',
+                        fontWeight: 700,
+                        bgcolor: '#4f46e5',
+                        '&:hover': { bgcolor: '#4338ca' }
+                      }}
+                    >
+                      Xem chi tiết
+                    </Button>
+                  </motion.div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </section>
 

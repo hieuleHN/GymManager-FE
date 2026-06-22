@@ -4,6 +4,7 @@ import { Home } from './pages/Home';
 import { Learn } from './pages/Learn';
 import { PTList } from './pages/PTList';
 import { Packages } from './pages/Packages';
+import { PackageDetail } from './pages/PackageDetail';
 import { Dashboard } from './pages/Dashboard';
 import { Auth } from './pages/Auth';
 import { useAuth } from './context/AuthContext';
@@ -136,7 +137,7 @@ function ProtectedRoute({ children, role }: { children: React.ReactNode, role?: 
       return false;
     })?.[1];
 
-    if (feature && !hasPermission(feature)) {
+    if (feature && !hasPermission(feature) && path !== '/admin/dashboard') {
       return <Navigate to="/admin/dashboard" replace />;
     }
   }
@@ -153,6 +154,7 @@ export const router = createBrowserRouter([
       { path: 'learn', Component: Learn },
       { path: 'trainers', Component: PTList },
       { path: 'packages', Component: Packages },
+      { path: 'packages/:packageId', Component: PackageDetail },
       { path: 'packages/:packageId/checkout', Component: PackageCheckout },
       { path: 'contract', Component: Contract },
       { path: 'payment', Component: Payment },

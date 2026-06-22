@@ -1,29 +1,118 @@
-import { Check, Shield } from 'lucide-react';
+import { Check } from 'lucide-react';
 import { Button } from '@mui/material';
 import { motion } from 'motion/react';
 import { FloatingContact } from '../components/FloatingContact';
-import { useState } from 'react';
-import { packagesData, clubsData } from '../data';
-import { Link } from 'react-router';
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router';
+import { useAuth, getApiUrl, getAuthHeaders } from '../context/AuthContext';
 
-const disciplines = [
-  { id: 'all', name: 'Tất cả' },
-  { id: 'gym', name: 'Gym' },
-  { id: 'yoga', name: 'Yoga' },
-  { id: 'boxing', name: 'Boxing' },
-  { id: 'combo', name: 'Combo' }
-];
+interface PackageItem {
+  _id: string;
+  name: string;
+  unitPrice: number;
+  features: string[];
+  durations: { months: number; discount: number }[];
+  disciplineId?: { _id: string; name: string };
+  locationId?: { _id: string; title: string };
+  is_active: boolean;
+}
+
+interface Discipline {
+  _id: string;
+  name: string;
+}
 
 export function Packages() {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const [packages, setPackages] = useState<PackageItem[]>([]);
+  const [disciplines, setDisciplines] = useState<Discipline[]>([]);
   const [selectedDiscipline, setSelectedDiscipline] = useState('all');
+  const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState('');
+  const [customer, setCustomer] = useState<any>(null);
+  const [customerLoaded, setCustomerLoaded] = useState(false);
 
-  const filteredPackages = selectedDiscipline === 'all'
-    ? packagesData
-    : packagesData.filter(pkg => pkg.discipline === selectedDiscipline);
+  useEffect(() => {
+    if (user && !user.isStaff) {
+      fetch(`${getApiUrl()}/api/customers/my-info`, {
+        headers: getAuthHeaders()
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data && !data.error) setCustomer(data);
+        })
+        .catch(() => {})
+        .finally(() => setCustomerLoaded(true));
+    } else {
+      setCustomerLoaded(true);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    fetch(`${getApiUrl()}/api/disciplines?limit=50`)
+      .then(res => res.json())
+      .then(data => {
+        if (data?.data) setDisciplines(data.data);
+        else if (Array.isArray(data)) setDisciplines(data);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!customerLoaded) return;
+
+    let url = `${getApiUrl()}/api/packages?page=1&limit=50`;
+    if (customer?.locationId) {
+      const locId = typeof customer.locationId === 'object' ? customer.locationId._id : customer.locationId;
+      url += `&locationId=${locId}`;
+    }
+    fetch(url)
+      .then(async res => {
+        if (!res.ok) throw new Error('Lỗi tải dữ liệu');
+        const json = await res.json();
+        if (json?.data) {
+          setPackages(json.data);
+        } else if (Array.isArray(json)) {
+          setPackages(json);
+        }
+      })
+      .catch(err => {
+        setErrorMsg(err.message);
+      })
+      .finally(() => setLoading(false));
+  }, [customer, customerLoaded]);
 
   const formatPrice = (price: number) => {
+    if (!price) return '0đ';
     return price.toLocaleString('vi-VN') + 'đ';
   };
+
+  const handleRegister = (pkgId: string) => {
+    if (!user) {
+      navigate('/auth');
+      return;
+    }
+    navigate(`/packages/${pkgId}`);
+  };
+
+  const activePackages = packages.filter(p => p.is_active);
+
+  const uniqueDisciplines = disciplines.filter(d =>
+    activePackages.some(p => p.disciplineId?._id === d._id)
+  );
+
+  const filteredPackages = selectedDiscipline === 'all'
+    ? activePackages
+    : activePackages.filter(p => p.disciplineId?._id === selectedDiscipline);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-white py-24 px-4 flex items-center justify-center">
+        <p className="text-slate-500">Đang tải gói tập...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-white py-24 px-4">
@@ -35,82 +124,81 @@ export function Packages() {
         </p>
       </div>
 
-      {/* Refund Policy */}
-      <div className="max-w-4xl mx-auto mb-12">
-        <div className="bg-slate-50 rounded-3xl p-8 flex flex-col md:flex-row items-center gap-6 border border-slate-100">
-          <div className="bg-indigo-100 p-4 rounded-2xl shrink-0">
-            <Shield className="w-10 h-10 text-indigo-600" />
-          </div>
-          <div className="flex-1 text-center md:text-left">
-            <h4 className="text-xl font-bold text-slate-900 mb-2">Đảm bảo hoàn tiền trong 20 ngày</h4>
-            <p className="text-slate-600">
-              Nếu bạn không hoàn toàn hài lòng với cơ sở vật chất hoặc dịch vụ của chúng tôi trong vòng 20 ngày đầu tiên,
-              chúng tôi sẽ hoàn trả đầy đủ phí hội viên. Không cần lý do.
-            </p>
-          </div>
-          <Button variant="text" sx={{ color: '#4f46e5', fontWeight: 600, textTransform: 'none', shrink: 0 }}>
-            Tìm hiểu thêm
-          </Button>
-        </div>
-      </div>
-
-      {/* Discipline Tabs */}
-      <div className="max-w-7xl mx-auto mb-12">
-        <div className="flex flex-wrap justify-center gap-3">
-          {disciplines.map((disc) => (
+      {/* Discipline Filter Buttons */}
+      <div className="max-w-7xl mx-auto mb-10">
+        <div className="flex flex-wrap gap-3 justify-center">
+          <button
+            onClick={() => setSelectedDiscipline('all')}
+            className={`px-6 py-2.5 rounded-full text-sm font-semibold transition-all ${
+              selectedDiscipline === 'all'
+                ? 'bg-indigo-600 text-white shadow-md'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+            }`}
+          >
+            Tất cả
+          </button>
+          {uniqueDisciplines.map(d => (
             <button
-              key={disc.id}
-              onClick={() => setSelectedDiscipline(disc.id)}
-              className={`px-6 py-2.5 rounded-full font-semibold transition-all ${
-                selectedDiscipline === disc.id
-                  ? 'bg-red-600 text-white shadow-md'
+              key={d._id}
+              onClick={() => setSelectedDiscipline(d._id)}
+              className={`px-6 py-2.5 rounded-full text-sm font-semibold transition-all ${
+                selectedDiscipline === d._id
+                  ? 'bg-indigo-600 text-white shadow-md'
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
               }`}
             >
-              {disc.name}
+              {d.name}
             </button>
           ))}
         </div>
       </div>
 
-      {/* Packages Grid */}
-      <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {filteredPackages.map((plan, index) => {
-          const isHighlighted = plan.name === 'PREMIUM';
-          const clubNames = plan.clubs.map(clubId => {
-            const club = clubsData.find(c => c.id === clubId);
-            return club?.name.replace('ZenFitness ', '') || '';
-          });
+      {errorMsg && (
+        <div className="max-w-4xl mx-auto mb-8 p-4 bg-red-50 border border-red-200 rounded-xl text-center">
+          <p className="text-red-600">{errorMsg}</p>
+          <Button
+            onClick={() => window.location.reload()}
+            sx={{ mt: 1, textTransform: 'none', color: '#dc2626' }}
+          >
+            Thử lại
+          </Button>
+        </div>
+      )}
 
-          return (
+      {filteredPackages.length === 0 && !errorMsg ? (
+        <div className="max-w-4xl mx-auto text-center py-12">
+          <p className="text-slate-500 text-lg">
+            {selectedDiscipline !== 'all'
+              ? 'Hiện chưa có gói tập nào cho bộ môn này.'
+              : customer?.locationId
+                ? 'Hiện chưa có gói tập nào tại cơ sở của bạn. Vui lòng liên hệ quản lý để được hỗ trợ.'
+                : 'Chưa có gói tập nào. Vui lòng quay lại sau.'}
+          </p>
+        </div>
+      ) : (
+        <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {filteredPackages.map((plan, index) => (
             <motion.div
-              key={plan.id}
+              key={plan._id}
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ delay: index * 0.1 }}
-              className={`relative p-6 rounded-2xl flex flex-col ${
-                isHighlighted
-                  ? 'bg-gradient-to-b from-slate-900 to-slate-800 text-white shadow-2xl'
-                  : 'bg-slate-900 text-white shadow-lg'
-              }`}
+              className="relative p-6 rounded-2xl flex flex-col bg-slate-900 text-white shadow-lg"
             >
-              {plan.name === 'STANDARD' && (
-                <div className="absolute top-4 right-4 bg-yellow-500 text-slate-900 px-3 py-1 rounded-full text-xs font-bold">
-                  HOT
-                </div>
-              )}
-
               <div className="mb-6">
+                {plan.disciplineId && (
+                  <p className="text-sm text-indigo-400 font-semibold mb-1">{plan.disciplineId.name}</p>
+                )}
                 <h3 className="text-2xl font-bold mb-4 tracking-wide">{plan.name}</h3>
                 <div className="flex items-baseline mb-2">
-                  <span className="text-3xl font-extrabold">{formatPrice(plan.price)}</span>
+                  <span className="text-3xl font-extrabold">{formatPrice(plan.unitPrice)}</span>
                 </div>
-                <span className="text-sm text-slate-300">/ {plan.duration}</span>
+                <span className="text-sm text-slate-300">/ tháng</span>
               </div>
 
               <ul className="space-y-3 mb-8 flex-1">
-                {plan.features.map((feature) => (
+                {(plan.features || []).map((feature: string) => (
                   <li key={feature} className="flex items-start gap-2 text-sm">
                     <Check className="w-4 h-4 mt-0.5 shrink-0" />
                     <span>{feature}</span>
@@ -118,38 +206,44 @@ export function Packages() {
                 ))}
               </ul>
 
-              <div className="mb-6 text-xs text-slate-300">
-                <p className="font-semibold mb-1">Cơ sở:</p>
-                <p className="line-clamp-2">{clubNames.join(', ')}</p>
-              </div>
+              {(plan.durations || []).length > 0 && (
+                <div className="mb-4 text-xs text-slate-300">
+                  <p className="font-semibold mb-1">Thời hạn:</p>
+                  <div className="flex flex-wrap gap-1">
+                    {plan.durations.map((d: { months: number; discount: number }, i: number) => (
+                      <span key={i} className="bg-slate-700 px-2 py-0.5 rounded">
+                        {d.months} tháng{d.discount > 0 ? ` (-${d.discount}%)` : ''}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
 
-              <Link to={`/packages/${plan.id}/checkout`}>
-                <Button
-                  fullWidth
-                  variant={isHighlighted ? "contained" : "outlined"}
-                  size="large"
-                  sx={{
-                    height: 48,
-                    borderRadius: 2,
-                    textTransform: 'none',
-                    fontSize: '0.95rem',
-                    fontWeight: 700,
-                    bgcolor: isHighlighted ? '#ef4444' : 'transparent',
-                    borderColor: 'white',
-                    color: 'white',
-                    '&:hover': {
-                      bgcolor: isHighlighted ? '#dc2626' : 'rgba(255, 255, 255, 0.1)',
-                      borderColor: 'white'
-                    }
-                  }}
-                >
-                  {isHighlighted ? 'Đăng ký ngay' : 'Chi tiết'}
-                </Button>
-              </Link>
+              <Button
+                fullWidth
+                variant="outlined"
+                size="large"
+                onClick={() => handleRegister(plan._id)}
+                sx={{
+                  height: 48,
+                  borderRadius: 2,
+                  textTransform: 'none',
+                  fontSize: '0.95rem',
+                  fontWeight: 700,
+                  borderColor: 'white',
+                  color: 'white',
+                  '&:hover': {
+                    bgcolor: 'rgba(255, 255, 255, 0.1)',
+                    borderColor: 'white'
+                  }
+                }}
+              >
+                Đăng ký ngay
+              </Button>
             </motion.div>
-          );
-        })}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
