@@ -111,6 +111,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const hasPermission = (feature: string): boolean => {
     if (!user) return false;
     if (!user.isStaff) return true;
+    if (user.isAdmin) return true;
     if (!user.permissions || user.permissions.length === 0) return false;
     return user.permissions.includes(feature);
   };
