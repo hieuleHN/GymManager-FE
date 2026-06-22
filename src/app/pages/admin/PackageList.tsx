@@ -41,7 +41,7 @@ export function PackageList() {
         const url = selectedClub && selectedClub !== 'all'
           ? `/api/disciplines?locationId=${selectedClub}`
           : '/api/disciplines';
-        const res = await fetch(url, { headers });
+        const res = await fetch(url, { headers: headers as any });
         if (res.ok) {
           const data = await res.json();
           setDisciplines(Array.isArray(data) ? data : data.data || []);
@@ -65,7 +65,7 @@ export function PackageList() {
       } else {
         url = `/api/packages/by-discipline/${disciplineId}`;
       }
-      const res = await fetch(url, { headers });
+      const res = await fetch(url, { headers: headers as any });
       if (!res.ok) throw new Error('Failed to fetch');
       const data = await res.json();
       setPackages(data.data || []);
@@ -96,7 +96,7 @@ export function PackageList() {
     try {
       const res = await fetch(`/api/packages/${id}`, {
         method: 'DELETE',
-        headers,
+        headers: headers as any,
       });
       if (!res.ok) throw new Error('Delete failed');
       toast.success('Đã xóa gói tập');
@@ -111,7 +111,7 @@ export function PackageList() {
     try {
       const res = await fetch(`/api/packages/${pkg._id}`, {
         method: 'PUT',
-        headers,
+        headers: headers as any,
         body: JSON.stringify({ is_active: newActive }),
       });
       if (!res.ok) throw new Error('Toggle failed');

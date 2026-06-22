@@ -5,6 +5,7 @@ import { FloatingContact } from '../components/FloatingContact';
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { useAuth, getApiUrl, getAuthHeaders } from '../context/AuthContext';
+import { useClub } from '../context/ClubContext';
 
 interface PackageItem {
   _id: string;
@@ -25,6 +26,8 @@ interface Discipline {
 export function Packages() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { selectedClub } = useClub();
+
   const [packages, setPackages] = useState<PackageItem[]>([]);
   const [disciplines, setDisciplines] = useState<Discipline[]>([]);
   const [selectedDiscipline, setSelectedDiscipline] = useState('all');
@@ -36,7 +39,7 @@ export function Packages() {
   useEffect(() => {
     if (user && !user.isStaff) {
       fetch(`${getApiUrl()}/api/customers/my-info`, {
-        headers: getAuthHeaders()
+        headers: getAuthHeaders() as any
       })
         .then(res => res.json())
         .then(data => {
@@ -60,28 +63,29 @@ export function Packages() {
   }, []);
 
   useEffect(() => {
-    if (!customerLoaded) return;
+    if (user && !user.isStaff && !customerLoaded) return;
+
+    setLoading(true);
+    setErrorMsg('');
 
     let url = `${getApiUrl()}/api/packages?page=1&limit=50`;
-    if (customer?.locationId) {
-      const locId = typeof customer.locationId === 'object' ? customer.locationId._id : customer.locationId;
-      url += `&locationId=${locId}`;
+    
+    if (selectedClub && selectedClub !== 'all') {
+      url += `&locationId=${selectedClub}`;
     }
+
     fetch(url)
       .then(async res => {
         if (!res.ok) throw new Error('Lỗi tải dữ liệu');
         const json = await res.json();
-        if (json?.data) {
-          setPackages(json.data);
-        } else if (Array.isArray(json)) {
-          setPackages(json);
-        }
+        const list = json?.data || (Array.isArray(json) ? json : []);
+        setPackages(list);
       })
       .catch(err => {
         setErrorMsg(err.message);
       })
       .finally(() => setLoading(false));
-  }, [customer, customerLoaded]);
+  }, [selectedClub, customerLoaded, user]);
 
   const formatPrice = (price: number) => {
     if (!price) return '0đ';
@@ -93,7 +97,7 @@ export function Packages() {
       navigate('/auth');
       return;
     }
-    navigate(`/packages/${pkgId}`);
+    navigate(`/packages/${pkgId}/checkout`);
   };
 
   const activePackages = packages.filter(p => p.is_active);
@@ -109,7 +113,7 @@ export function Packages() {
   if (loading) {
     return (
       <div className="min-h-screen bg-white py-24 px-4 flex items-center justify-center">
-        <p className="text-slate-500">Đang tải gói tập...</p>
+        <p className="text-slate-500">Đang tải danh sách gói tập...</p>
       </div>
     );
   }
@@ -124,7 +128,6 @@ export function Packages() {
         </p>
       </div>
 
-      {/* Discipline Filter Buttons */}
       <div className="max-w-7xl mx-auto mb-10">
         <div className="flex flex-wrap gap-3 justify-center">
           <button
@@ -170,8 +173,8 @@ export function Packages() {
           <p className="text-slate-500 text-lg">
             {selectedDiscipline !== 'all'
               ? 'Hiện chưa có gói tập nào cho bộ môn này.'
-              : customer?.locationId
-                ? 'Hiện chưa có gói tập nào tại cơ sở của bạn. Vui lòng liên hệ quản lý để được hỗ trợ.'
+              : selectedClub && selectedClub !== 'all'
+                ? 'Hiện chưa có gói tập nào tại cơ sở này. Vui lòng chọn cơ sở khác trên thanh menu.'
                 : 'Chưa có gói tập nào. Vui lòng quay lại sau.'}
           </p>
         </div>
