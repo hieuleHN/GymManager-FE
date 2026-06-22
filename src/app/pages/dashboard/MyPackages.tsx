@@ -2,32 +2,105 @@ import { useState, useEffect } from 'react';
 import { DashboardLayout } from '../../components/DashboardLayout';
 import { Calendar, MapPin, Check, AlertTriangle, ArrowRight } from 'lucide-react';
 import { Button } from '@mui/material';
-import { Link, useNavigate } from 'react-router';
+import { Link, useNavigate, useLocation } from 'react-router';
 import { useAuth, getApiUrl, getAuthHeaders } from '../../context/AuthContext';
+
+interface Registration {
+  _id: string;
+  package_id: {
+    _id: string;
+    name: string;
+    unitPrice: number;
+    features: string[];
+  };
+  locationId: {
+    _id: string;
+    title: string;
+  };
+  duration_months: number;
+  total_price: number;
+  start_date: string;
+  end_date: string;
+  status: string;
+  signature: string;
+  createdAt: string;
+}
 
 export function MyPackages() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const [registrations, setRegistrations] = useState<Registration[]>([]);
   const [customer, setCustomer] = useState<any>(null);
   const [fetching, setFetching] = useState(true);
+  const [otherPackages, setOtherPackages] = useState<any[]>([]);
+
+  const registrationSuccess = location.state?.registrationSuccess;
+  const successMessage = location.state?.message;
 
   useEffect(() => {
-    if (user?.id && !user?.isStaff) {
-      fetch(`${getApiUrl()}/api/customers/my-info`, {
-        headers: getAuthHeaders()
-      })
-        .then(res => res.json())
-        .then(data => {
-          if (data && !data.error) {
-            setCustomer(data);
-          }
-        })
-        .catch(() => {})
-        .finally(() => setFetching(false));
-    } else {
-      setFetching(false);
+    if (registrationSuccess) {
+      const timer = setTimeout(() => {
+        window.history.replaceState({}, document.title);
+      }, 5000);
+      return () => clearTimeout(timer);
     }
+  }, [registrationSuccess]);
+
+  useEffect(() => {
+    if (!user || user.isStaff) {
+      setFetching(false);
+      return;
+    }
+
+    const loadData = async () => {
+      try {
+        const [infoRes, regRes] = await Promise.all([
+          fetch(`${getApiUrl()}/api/customers/my-info`, {
+            headers: getAuthHeaders()
+          }),
+          fetch(`${getApiUrl()}/api/user-packages/my`, {
+            headers: getAuthHeaders()
+          })
+        ]);
+
+        const infoData = await infoRes.json();
+        const regData = await regRes.json();
+
+        if (infoData && !infoData.error) setCustomer(infoData);
+        if (Array.isArray(regData)) setRegistrations(regData);
+
+        if (infoData?.locationId) {
+          const locId = typeof infoData.locationId === 'object' ? infoData.locationId._id : infoData.locationId;
+          const pkgRes = await fetch(`${getApiUrl()}/api/packages?page=1&limit=50&locationId=${locId}`);
+          const pkgData = await pkgRes.json();
+          if (pkgData?.data) setOtherPackages(pkgData.data.filter((p: any) => p.is_active));
+        }
+      } catch {}
+      setFetching(false);
+    };
+
+    loadData();
   }, [user]);
+
+  const formatPrice = (price: number) => {
+    if (!price) return '0đ';
+    return price.toLocaleString('vi-VN') + 'đ';
+  };
+
+  const formatDate = (dateStr: string) => {
+    if (!dateStr) return '';
+    const d = new Date(dateStr);
+    return d.toLocaleDateString('vi-VN');
+  };
+
+  const daysRemaining = (endDate: string) => {
+    if (!endDate) return 0;
+    const end = new Date(endDate);
+    const now = new Date();
+    const diff = end.getTime() - now.getTime();
+    return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+  };
 
   if (fetching) {
     return (
@@ -64,171 +137,155 @@ export function MyPackages() {
     );
   }
 
-  const currentPackages = [
-    {
-      id: 1,
-      name: 'PREMIUM',
-      price: 2800000,
-      startDate: '01/05/2024',
-      endDate: '01/06/2024',
-      daysRemaining: 25,
-      club: 'ZenFitness Quận 1',
-      features: [
-        'Sử dụng tất cả các phòng',
-        'Massage miễn phí',
-        '12 buổi Kickfit',
-        '12 buổi GroupX/tháng',
-        'Ứng dụng Workout'
-      ]
-    },
-    {
-      id: 2,
-      name: 'YOGA STANDARD',
-      price: 1500000,
-      startDate: '10/05/2024',
-      endDate: '10/06/2024',
-      daysRemaining: 20,
-      club: 'ZenFitness Quận 2',
-      features: [
-        'Không giới hạn Yoga',
-        'Tủ đồ cá nhân',
-        'Phòng tắm - vệ sinh',
-        'Wifi miễn phí'
-      ]
-    }
-  ];
-
-  const otherPackages = [
-    {
-      id: 1,
-      name: 'BOXING PREMIUM',
-      price: 2500000,
-      discipline: 'Boxing',
-      features: ['Không giới hạn Boxing', 'PT Boxing riêng', 'Bảo hiểm thể thao']
-    },
-    {
-      id: 2,
-      name: 'GYM VIP',
-      price: 4500000,
-      discipline: 'Gym',
-      features: ['Không giới hạn PT', 'Trị liệu làm đẹp', 'Kế hoạch dinh dưỡng']
-    },
-    {
-      id: 3,
-      name: 'COMBO VIP',
-      price: 5000000,
-      discipline: 'Combo',
-      features: ['Tất cả bộ môn', 'Không giới hạn PT', 'Ưu tiên đặt lịch']
-    }
-  ];
-
-  const formatPrice = (price: number) => {
-    return price.toLocaleString('vi-VN') + 'đ';
-  };
+  const activeRegistrations = registrations.filter(r => r.status === 'đang hoạt động' || r.status === 'còn 10 ngày');
 
   return (
     <DashboardLayout>
       <div className="max-w-7xl mx-auto space-y-6">
+        {registrationSuccess && (
+          <div className="bg-green-50 border border-green-200 rounded-2xl p-6 text-center">
+            <Check className="w-12 h-12 text-green-600 mx-auto mb-2" />
+            <h2 className="text-xl font-bold text-green-900 mb-1">{successMessage || 'Đăng ký thành công!'}</h2>
+            <p className="text-green-700">Bạn có thể tiếp tục đăng ký thêm gói tập bên dưới.</p>
+          </div>
+        )}
+
         <div>
           <h1 className="text-3xl font-bold text-slate-900 mb-2">Gói tập của tôi</h1>
           <p className="text-slate-600">Quản lý các gói tập đang sử dụng</p>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {currentPackages.map((pkg) => (
-            <div key={pkg.id} className="bg-white rounded-2xl shadow-sm border-l-4 border-indigo-600 overflow-hidden">
-              <div className="p-6">
-                <div className="flex items-start justify-between mb-4">
-                  <div>
-                    <div className="inline-block bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-semibold mb-2">
-                      Đang hoạt động
-                    </div>
-                    <h3 className="text-2xl font-bold text-slate-900">{pkg.name}</h3>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm text-slate-600">Giá trị</p>
-                    <p className="text-xl font-bold text-indigo-600">{formatPrice(pkg.price)}</p>
-                  </div>
-                </div>
-
-                <div className="space-y-3 mb-4">
-                  <div className="flex items-center gap-2 text-sm">
-                    <Calendar className="w-4 h-4 text-slate-400" />
-                    <span className="text-slate-600">{pkg.startDate} - {pkg.endDate}</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-sm">
-                    <MapPin className="w-4 h-4 text-slate-400" />
-                    <span className="text-slate-600">{pkg.club}</span>
-                  </div>
-                  <div className="bg-amber-50 border border-amber-200 px-3 py-2 rounded-lg">
-                    <p className="text-sm text-amber-800">
-                      Còn <span className="font-bold">{pkg.daysRemaining} ngày</span>
-                    </p>
-                  </div>
-                </div>
-
-                <div className="mb-4">
-                  <h4 className="text-sm font-semibold text-slate-900 mb-2">Quyền lợi:</h4>
-                  <div className="space-y-1.5">
-                    {pkg.features.map((feature, idx) => (
-                      <div key={idx} className="flex items-start gap-2">
-                        <Check className="w-4 h-4 text-green-600 mt-0.5 shrink-0" />
-                        <span className="text-sm text-slate-600">{feature}</span>
+        {activeRegistrations.length === 0 ? (
+          <div className="bg-slate-50 rounded-2xl p-12 text-center border border-slate-200">
+            <p className="text-slate-500 text-lg mb-4">Bạn chưa đăng ký gói tập nào.</p>
+            <Button variant="contained" onClick={() => navigate('/packages')}
+              sx={{ bgcolor: '#4f46e5', '&:hover': { bgcolor: '#4338ca' }, textTransform: 'none', borderRadius: 2, px: 6, py: 1.5 }}>
+              Đăng ký ngay
+            </Button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {activeRegistrations.map((reg) => (
+              <div key={reg._id} className="bg-white rounded-2xl shadow-sm border-l-4 border-indigo-600 overflow-hidden">
+                <div className="p-6">
+                  <div className="flex items-start justify-between mb-4">
+                    <div>
+                      <div className={`inline-block px-3 py-1 rounded-full text-xs font-semibold mb-2 ${
+                        reg.status === 'còn 10 ngày' ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'
+                      }`}>
+                        {reg.status}
                       </div>
-                    ))}
+                      <h3 className="text-2xl font-bold text-slate-900">{reg.package_id?.name || 'Đã xóa'}</h3>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm text-slate-600">Giá trị</p>
+                      <p className="text-xl font-bold text-indigo-600">{formatPrice(reg.total_price)}</p>
+                    </div>
                   </div>
-                </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <Link to="/packages">
-                    <Button fullWidth variant="outlined" size="small"
-                      sx={{ textTransform: 'none', borderRadius: 2 }}>
-                      Nâng cấp
-                    </Button>
-                  </Link>
-                  <Link to="/contract" state={{ package: { name: pkg.name, price: pkg.price }, club: { name: pkg.club }, durationType: 'renewal' }}>
+                  <div className="space-y-3 mb-4">
+                    <div className="flex items-center gap-2 text-sm">
+                      <Calendar className="w-4 h-4 text-slate-400" />
+                      <span className="text-slate-600">
+                        {formatDate(reg.start_date)} - {formatDate(reg.end_date)}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm">
+                      <MapPin className="w-4 h-4 text-slate-400" />
+                      <span className="text-slate-600">{reg.locationId?.title || 'Đang cập nhật'}</span>
+                    </div>
+                    {reg.end_date && (() => {
+                      const remaining = daysRemaining(reg.end_date);
+                      return (
+                        <div className={`px-3 py-2 rounded-lg ${
+                          remaining <= 10 ? 'bg-amber-50 border border-amber-200' : 'bg-slate-50'
+                        }`}>
+                          <p className={`text-sm ${remaining <= 10 ? 'text-amber-800' : 'text-slate-600'}`}>
+                            Còn <span className="font-bold">{remaining} ngày</span>
+                          </p>
+                        </div>
+                      );
+                    })()}
+                  </div>
+
+                  <div className="mb-4">
+                    <h4 className="text-sm font-semibold text-slate-900 mb-2">Quyền lợi:</h4>
+                    <div className="space-y-1.5">
+                      {(reg.package_id?.features || []).map((feature, idx) => (
+                        <div key={idx} className="flex items-start gap-2">
+                          <Check className="w-4 h-4 text-green-600 mt-0.5 shrink-0" />
+                          <span className="text-sm text-slate-600">{feature}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <Link to="/packages">
+                      <Button fullWidth variant="outlined" size="small"
+                        sx={{ textTransform: 'none', borderRadius: 2 }}>
+                        Đăng ký thêm
+                      </Button>
+                    </Link>
                     <Button fullWidth variant="contained" size="small"
+                      onClick={() => navigate(`/packages/${reg.package_id?._id}`)}
                       sx={{ textTransform: 'none', borderRadius: 2, bgcolor: '#4f46e5', '&:hover': { bgcolor: '#4338ca' } }}>
                       Gia hạn
                     </Button>
-                  </Link>
+                  </div>
                 </div>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div>
-          <h2 className="text-2xl font-bold text-slate-900 mb-4">Các gói tập khác</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {otherPackages.map((pkg) => (
-              <div key={pkg.id} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-                <div className="mb-4">
-                  <p className="text-sm text-indigo-600 font-semibold mb-1">{pkg.discipline}</p>
-                  <h3 className="text-xl font-bold text-slate-900 mb-2">{pkg.name}</h3>
-                  <p className="text-2xl font-bold text-slate-900">{formatPrice(pkg.price)}</p>
-                  <p className="text-sm text-slate-500">/tháng</p>
-                </div>
-
-                <div className="space-y-2 mb-6">
-                  {pkg.features.map((feature, idx) => (
-                    <div key={idx} className="flex items-start gap-2">
-                      <Check className="w-4 h-4 text-green-600 mt-0.5 shrink-0" />
-                      <span className="text-sm text-slate-600">{feature}</span>
-                    </div>
-                  ))}
-                </div>
-
-                <Link to={`/packages`}>
-                  <Button fullWidth variant="contained"
-                    sx={{ bgcolor: '#4f46e5', '&:hover': { bgcolor: '#4338ca' }, textTransform: 'none', borderRadius: 2 }}>
-                    Đăng ký ngay
-                  </Button>
-                </Link>
               </div>
             ))}
           </div>
-        </div>
+        )}
+
+        {otherPackages.length > 0 && (
+          <div>
+            <h2 className="text-2xl font-bold text-slate-900 mb-4">Các gói tập khác</h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {otherPackages.map((pkg) => {
+                const alreadyRegistered = registrations.some(
+                  r => r.package_id?._id === pkg._id && (r.status === 'đang hoạt động' || r.status === 'còn 10 ngày')
+                );
+                return (
+                  <div key={pkg._id} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+                    <div className="mb-4">
+                      {pkg.disciplineId && (
+                        <p className="text-sm text-indigo-600 font-semibold mb-1">{pkg.disciplineId.name}</p>
+                      )}
+                      <h3 className="text-xl font-bold text-slate-900 mb-2">{pkg.name}</h3>
+                      <p className="text-2xl font-bold text-slate-900">{formatPrice(pkg.unitPrice)}</p>
+                      <p className="text-sm text-slate-500">/tháng</p>
+                    </div>
+
+                    <div className="space-y-2 mb-6">
+                      {(pkg.features || []).map((feature: string, idx: number) => (
+                        <div key={idx} className="flex items-start gap-2">
+                          <Check className="w-4 h-4 text-green-600 mt-0.5 shrink-0" />
+                          <span className="text-sm text-slate-600">{feature}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {alreadyRegistered ? (
+                      <Button fullWidth variant="outlined" disabled
+                        sx={{ textTransform: 'none', borderRadius: 2 }}>
+                        Đã đăng ký
+                      </Button>
+                    ) : (
+                      <Link to={`/packages/${pkg._id}`}>
+                        <Button fullWidth variant="contained"
+                          sx={{ bgcolor: '#4f46e5', '&:hover': { bgcolor: '#4338ca' }, textTransform: 'none', borderRadius: 2 }}>
+                          Đăng ký ngay
+                        </Button>
+                      </Link>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
     </DashboardLayout>
   );

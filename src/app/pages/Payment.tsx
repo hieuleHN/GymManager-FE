@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { useLocation, Navigate } from 'react-router';
+import { useLocation, useNavigate, Navigate } from 'react-router';
 import { Button } from '@mui/material';
-import { CreditCard, QrCode, Building2, Smartphone, Check } from 'lucide-react';
+import { CreditCard, QrCode, Building2, Smartphone, Check, ArrowRight } from 'lucide-react';
 
 const paymentMethods = [
   {
@@ -38,16 +38,18 @@ const paymentMethods = [
 
 export function Payment() {
   const location = useLocation();
+  const navigate = useNavigate();
   const [selectedMethod, setSelectedMethod] = useState('');
   const [paymentSuccess, setPaymentSuccess] = useState(false);
+  const [processing, setProcessing] = useState(false);
 
   const paymentData = location.state;
 
-  if (!paymentData || !paymentData.package || !paymentData.club) {
+  if (!paymentData || !paymentData.package) {
     return <Navigate to="/packages" />;
   }
 
-  const { package: pkg, club, durationType, totalPrice } = paymentData;
+  const { package: pkg, registration, durationMonths, totalPrice, message } = paymentData;
 
   const formatPrice = (price: number) => {
     return price.toLocaleString('vi-VN') + 'đ';
@@ -59,14 +61,14 @@ export function Payment() {
       return;
     }
 
-    // Simulate payment processing
+    setProcessing(true);
     setTimeout(() => {
+      setProcessing(false);
       setPaymentSuccess(true);
-    }, 1500);
+    }, 2000);
   };
 
   if (paymentSuccess) {
-    const isTrainerBooking = durationType === 'session';
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center py-12 px-4">
         <div className="max-w-md w-full bg-white p-8 rounded-2xl shadow-lg text-center">
@@ -74,16 +76,15 @@ export function Payment() {
             <Check className="w-10 h-10 text-green-600" />
           </div>
           <h2 className="text-2xl font-bold text-slate-900 mb-4">Thanh toán thành công!</h2>
-          <p className="text-slate-600 mb-8">
-            {isTrainerBooking
-              ? 'Lịch tập với huấn luyện viên đã được xác nhận. Thông tin chi tiết đã được gửi vào email của bạn.'
-              : 'Cảm ơn bạn đã đăng ký gói tập tại ZenFitness. Chúng tôi đã gửi thông tin đăng ký vào email của bạn.'}
+          <p className="text-slate-600 mb-2">{message || 'Đăng ký gói tập thành công!'}</p>
+          <p className="text-sm text-slate-500 mb-8">
+            Cảm ơn bạn đã đăng ký gói tập tại ZenFitness. Thông tin chi tiết đã được gửi vào email của bạn.
           </p>
           <Button
             fullWidth
             variant="contained"
             size="large"
-            href={isTrainerBooking ? '/dashboard/schedule' : '/'}
+            onClick={() => navigate('/dashboard/my-packages')}
             sx={{
               height: 56,
               borderRadius: 3,
@@ -91,12 +92,10 @@ export function Payment() {
               fontSize: '1rem',
               fontWeight: 700,
               bgcolor: '#4f46e5',
-              '&:hover': {
-                bgcolor: '#4338ca'
-              }
+              '&:hover': { bgcolor: '#4338ca' }
             }}
           >
-            {isTrainerBooking ? 'Về lịch tập' : 'Về trang chủ'}
+            Về gói tập của tôi
           </Button>
         </div>
       </div>
@@ -202,28 +201,22 @@ export function Payment() {
                   <p className="font-bold text-slate-900">{pkg.name}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-slate-500">Cơ sở</p>
-                  <p className="font-medium text-slate-900">{club.name}</p>
+                  <p className="text-sm text-slate-500">Thời hạn</p>
+                  <p className="font-medium text-slate-900">{durationMonths} tháng</p>
                 </div>
-                <div>
-                  <p className="text-sm text-slate-500">Thời gian</p>
-                  <p className="font-medium text-slate-900">
-                    {durationType === 'month' ? '1 tháng' : '12 tháng'}
-                  </p>
-                </div>
+                {registration && (
+                  <div>
+                    <p className="text-sm text-slate-500">Mã đăng ký</p>
+                    <p className="font-medium text-slate-900 text-xs">{registration.id}</p>
+                  </div>
+                )}
               </div>
 
               <div className="space-y-3 mb-6 pb-6 border-b border-slate-200">
                 <div className="flex justify-between text-slate-600">
                   <span>Giá gói:</span>
-                  <span>{formatPrice(pkg.price)}</span>
+                  <span>{formatPrice(totalPrice)}</span>
                 </div>
-                {durationType === 'year' && (
-                  <div className="flex justify-between text-green-600">
-                    <span>Giảm giá (15%):</span>
-                    <span>-{formatPrice(pkg.price * 12 * 0.15)}</span>
-                  </div>
-                )}
               </div>
 
               <div className="flex justify-between items-center mb-6">
@@ -236,7 +229,7 @@ export function Payment() {
                 variant="contained"
                 size="large"
                 onClick={handlePayment}
-                disabled={!selectedMethod}
+                disabled={!selectedMethod || processing}
                 sx={{
                   height: 56,
                   borderRadius: 3,
@@ -244,12 +237,20 @@ export function Payment() {
                   fontSize: '1rem',
                   fontWeight: 700,
                   bgcolor: '#4f46e5',
-                  '&:hover': {
-                    bgcolor: '#4338ca'
-                  }
+                  '&:hover': { bgcolor: '#4338ca' }
                 }}
               >
-                Xác nhận thanh toán
+                {processing ? 'Đang xử lý...' : 'Xác nhận thanh toán'}
+              </Button>
+
+              <Button
+                fullWidth
+                variant="text"
+                size="small"
+                onClick={() => navigate('/dashboard/my-packages')}
+                sx={{ mt: 1, textTransform: 'none', color: '#94a3b8' }}
+              >
+                Thanh toán sau
               </Button>
             </div>
           </div>
