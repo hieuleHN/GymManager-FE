@@ -38,7 +38,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (stored) {
       try {
         setUser(JSON.parse(stored));
-      } catch {}
+      } catch { }
     }
     setLoading(false);
   }, []);
@@ -100,7 +100,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         localStorage.setItem('auth_user', JSON.stringify(updated));
         setUser(updated);
       }
-    } catch {}
+    } catch { }
   };
 
   const logout = () => {
