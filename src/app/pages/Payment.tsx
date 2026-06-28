@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useLocation, useNavigate, Navigate } from 'react-router';
 import { Button } from '@mui/material';
 import { CreditCard, QrCode, Building2, Smartphone, Check, Loader2 } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import { getApiUrl, getAuthHeaders } from '../context/AuthContext';
 
 const paymentMethods = [
@@ -47,6 +48,8 @@ export function Payment() {
   const [bankInfo, setBankInfo] = useState({ bankName: '', accountNumber: '', accountName: '', branch: '' });
   const [loadingPaymentInfo, setLoadingPaymentInfo] = useState(true);
 
+  const [vnpayData, setVnpayData] = useState<{ paymentUrl: string; amount: number; txnRef: string } | null>(null);
+
   const paymentData = location.state;
 
   if (!paymentData || !paymentData.package) {
@@ -91,14 +94,40 @@ export function Payment() {
       alert('Vui lòng chọn phương thức thanh toán');
       return;
     }
-    if (!registration?.id) {
+    if (!registration?._id) {
       alert('Không tìm thấy thông tin đăng ký!');
       return;
     }
 
     setProcessing(true);
+
+    if (selectedMethod === 'vnpay') {
+      try {
+        const res = await fetch(`${getApiUrl()}/api/user-packages/${registration._id}/vnpay-url`, {
+          headers: getAuthHeaders() as any,
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || 'Lỗi tạo QR VNPay');
+        }
+        const data = await res.json();
+        setVnpayData({ paymentUrl: data.paymentUrl, amount: totalPrice, txnRef: String(Date.now()) });
+
+        await fetch(`${getApiUrl()}/api/user-packages/${registration._id}/payment-method`, {
+          method: 'PATCH',
+          headers: getAuthHeaders() as any,
+          body: JSON.stringify({ payment_method: 'vnpay' })
+        });
+      } catch (err: any) {
+        alert(err.message || 'Có lỗi xảy ra. Vui lòng thử lại.');
+      } finally {
+        setProcessing(false);
+      }
+      return;
+    }
+
     try {
-      const res = await fetch(`${getApiUrl()}/api/user-packages/${registration.id}/payment-method`, {
+      const res = await fetch(`${getApiUrl()}/api/user-packages/${registration._id}/payment-method`, {
         method: 'PATCH',
         headers: getAuthHeaders() as any,
         body: JSON.stringify({ payment_method: selectedMethod })
@@ -148,6 +177,77 @@ export function Payment() {
           >
             Về gói tập của tôi
           </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (vnpayData) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center py-12 px-4">
+        <div className="max-w-md w-full bg-white p-8 rounded-2xl shadow-lg text-center">
+          <div className="w-16 h-16 bg-indigo-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Smartphone className="w-8 h-8 text-indigo-600" />
+          </div>
+          <h2 className="text-2xl font-bold text-slate-900 mb-2">Quét mã QR VNPay</h2>
+          <p className="text-slate-500 mb-6">Sử dụng ứng dụng VNPay để quét mã thanh toán</p>
+
+          <div className="bg-white p-4 rounded-xl border-2 border-indigo-100 inline-block mb-4">
+            <QRCodeSVG value={vnpayData.paymentUrl} size={220} />
+          </div>
+
+          <div className="bg-slate-50 rounded-xl p-4 mb-6 text-left space-y-2">
+            <div className="flex justify-between">
+              <span className="text-slate-600">Số tiền:</span>
+              <span className="font-bold text-xl text-indigo-600">{formatPrice(vnpayData.amount)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-600">Mã giao dịch:</span>
+              <span className="font-mono text-sm text-slate-900">{vnpayData.txnRef}</span>
+            </div>
+          </div>
+
+          <p className="text-sm text-amber-600 mb-6 bg-amber-50 p-3 rounded-lg">
+            Mở ứng dụng VNPay, chọn "Quét mã" và quét QR code trên để thanh toán.
+          </p>
+          <p className="text-xs text-slate-400 mb-4 break-all">
+            {vnpayData.paymentUrl}
+          </p>
+
+          <div className="flex gap-3">
+            <Button
+              fullWidth
+              variant="outlined"
+              size="large"
+              onClick={() => setVnpayData(null)}
+              sx={{
+                height: 56,
+                borderRadius: 3,
+                textTransform: 'none',
+                fontSize: '1rem',
+                fontWeight: 700,
+              }}
+            >
+              Quay lại
+            </Button>
+            <Button
+              fullWidth
+              variant="contained"
+              size="large"
+              onClick={() => navigate('/dashboard/my-packages?vnpay_success=true')}
+              sx={{
+                height: 56,
+                borderRadius: 3,
+                textTransform: 'none',
+                fontSize: '1rem',
+                fontWeight: 700,
+                bgcolor: '#4f46e5',
+                '&:hover': { bgcolor: '#4338ca' }
+              }}
+            >
+              Đã thanh toán
+            </Button>
+          </div>
         </div>
       </div>
     );
@@ -279,7 +379,7 @@ export function Payment() {
                 {registration && (
                   <div>
                     <p className="text-sm text-slate-500">Mã đăng ký</p>
-                    <p className="font-medium text-slate-900 text-xs">{registration.id}</p>
+                    <p className="font-medium text-slate-900 text-xs">{registration._id}</p>
                   </div>
                 )}
               </div>
