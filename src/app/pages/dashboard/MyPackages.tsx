@@ -54,6 +54,12 @@ export function MyPackages() {
   const registrationSuccess = location.state?.registrationSuccess;
   const successMessage = location.state?.message;
 
+  const searchParams = new URLSearchParams(location.search);
+  const vnpaySuccess = searchParams.get("vnpay_success");
+  const vnpayMessage = searchParams.get("message");
+
+  const [notification, setNotification] = useState<{ type: "success" | "error"; message: string } | null>(null);
+
   useEffect(() => {
     if (registrationSuccess) {
       const timer = setTimeout(
@@ -63,6 +69,36 @@ export function MyPackages() {
       return () => clearTimeout(timer);
     }
   }, [registrationSuccess]);
+
+  useEffect(() => {
+    if (vnpaySuccess === "true") {
+      const msg =
+        vnpayMessage === "already_paid"
+          ? "Giao dịch này đã được thanh toán trước đó!"
+          : "Thanh toán VNPay thành công! Cảm ơn bạn.";
+      setNotification({ type: "success", message: msg });
+      const timer = setTimeout(() => {
+        setNotification(null);
+        window.history.replaceState({}, document.title, "/dashboard/my-packages");
+      }, 7000);
+      return () => clearTimeout(timer);
+    } else if (vnpaySuccess === "false") {
+      const msg =
+        vnpayMessage === "verify_error"
+          ? "Lỗi xác thực dữ liệu từ VNPay"
+          : vnpayMessage === "invalid_signature"
+            ? "Chữ ký không hợp lệ"
+            : vnpayMessage === "order_not_found"
+              ? "Không tìm thấy đơn hàng"
+              : "Thanh toán thất bại hoặc đã bị hủy";
+      setNotification({ type: "error", message: msg });
+      const timer = setTimeout(() => {
+        setNotification(null);
+        window.history.replaceState({}, document.title, "/dashboard/my-packages");
+      }, 7000);
+      return () => clearTimeout(timer);
+    }
+  }, [vnpaySuccess, vnpayMessage]);
 
   useEffect(() => {
     if (!user || user.isStaff) {
@@ -250,6 +286,29 @@ export function MyPackages() {
             <Check className="w-12 h-12 text-green-600 mx-auto mb-2" />
             <h2 className="text-xl font-bold text-green-900 mb-1">
               {successMessage || "Đăng ký thành công!"}
+            </h2>
+          </div>
+        )}
+
+        {notification && (
+          <div
+            className={`rounded-2xl p-6 text-center border ${
+              notification.type === "success"
+                ? "bg-green-50 border-green-200"
+                : "bg-red-50 border-red-200"
+            }`}
+          >
+            {notification.type === "success" ? (
+              <Check className="w-12 h-12 text-green-600 mx-auto mb-2" />
+            ) : (
+              <AlertTriangle className="w-12 h-12 text-red-600 mx-auto mb-2" />
+            )}
+            <h2
+              className={`text-xl font-bold mb-1 ${
+                notification.type === "success" ? "text-green-900" : "text-red-900"
+              }`}
+            >
+              {notification.message}
             </h2>
           </div>
         )}
