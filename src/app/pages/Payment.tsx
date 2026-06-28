@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useLocation, useNavigate, Navigate } from 'react-router';
 import { Button } from '@mui/material';
 import { CreditCard, QrCode, Building2, Smartphone, Check, ArrowRight } from 'lucide-react';
+import { useAuth, getApiUrl, getAuthHeaders } from '../context/AuthContext';
 
 const paymentMethods = [
   {
@@ -39,6 +40,7 @@ const paymentMethods = [
 export function Payment() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [selectedMethod, setSelectedMethod] = useState('');
   const [paymentSuccess, setPaymentSuccess] = useState(false);
   const [processing, setProcessing] = useState(false);
@@ -55,18 +57,38 @@ export function Payment() {
     return price.toLocaleString('vi-VN') + 'đ';
   };
 
-  const handlePayment = () => {
+  const handlePayment = async () => {
     if (!selectedMethod) {
       alert('Vui lòng chọn phương thức thanh toán');
       return;
     }
 
     setProcessing(true);
-    setTimeout(() => {
-      setProcessing(false);
+
+    try {
+      const regId = registration?.id || registration?._id;
+      const res = await fetch(`${getApiUrl()}/api/user-packages/${regId}/confirm-payment`, {
+        method: 'POST',
+        headers: getAuthHeaders()
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Thanh toán thất bại');
+      }
+
       setPaymentSuccess(true);
-    }, 2000);
+    } catch (err: any) {
+      alert(err.message || 'Có lỗi xảy ra khi thanh toán. Vui lòng thử lại.');
+    } finally {
+      setProcessing(false);
+    }
   };
+
+  const regId = registration?.id || registration?._id;
+  const pdfToken = encodeURIComponent(JSON.parse(localStorage.getItem('auth_user') || '{}').token || '');
+  const pdfUrl = `${getApiUrl()}/api/user-packages/${regId}/contract-pdf?token=${pdfToken}`;
 
   if (paymentSuccess) {
     return (
@@ -77,9 +99,35 @@ export function Payment() {
           </div>
           <h2 className="text-2xl font-bold text-slate-900 mb-4">Thanh toán thành công!</h2>
           <p className="text-slate-600 mb-2">{message || 'Đăng ký gói tập thành công!'}</p>
-          <p className="text-sm text-slate-500 mb-8">
-            Cảm ơn bạn đã đăng ký gói tập tại ZenFitness. Thông tin chi tiết đã được gửi vào email của bạn.
+          <p className="text-sm text-slate-500 mb-6">
+            Cảm ơn bạn đã đăng ký gói tập tại ZenFitness.
           </p>
+          {registration?.contract_pdf && (
+            <div className="space-y-3 mb-6">
+              <a href={pdfUrl} target="_blank" rel="noopener noreferrer" className="block">
+                <Button
+                  fullWidth
+                  variant="outlined"
+                  size="large"
+                  sx={{
+                    height: 48,
+                    borderRadius: 3,
+                    textTransform: 'none',
+                    fontSize: '1rem',
+                    fontWeight: 600,
+                    color: '#4f46e5',
+                    borderColor: '#4f46e5'
+                  }}
+                >
+                  Xem hợp đồng (PDF)
+                </Button>
+              </a>
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
+                <p className="font-semibold mb-1">Hợp đồng đang chờ xử lý</p>
+                <p>Hợp đồng của bạn đã được ghi nhận. Vui lòng chờ quản lý xác nhận để kích hoạt gói tập.</p>
+              </div>
+            </div>
+          )}
           <Button
             fullWidth
             variant="contained"
