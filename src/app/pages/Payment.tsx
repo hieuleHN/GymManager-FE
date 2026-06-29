@@ -1,22 +1,17 @@
-import { useState, useEffect } from "react";
-import { useLocation, useNavigate, Navigate } from "react-router";
-import { Button } from "@mui/material";
-import {
-  CreditCard,
-  QrCode,
-  Building2,
-  Smartphone,
-  Check,
-  Loader2,
-} from "lucide-react";
-import QRCode from "qrcode";
-import { getApiUrl, getAuthHeaders } from "../context/AuthContext";
+
+import { useState } from 'react';
+import { useLocation, useNavigate, Navigate } from 'react-router';
+import { Button } from '@mui/material';
+import { CreditCard, Building2, Smartphone, Check, Loader2, ExternalLink } from 'lucide-react';
+import { getApiUrl, getAuthHeaders } from '../context/AuthContext';
+
 
 const paymentMethods = [
   {
     id: "vnpay",
     name: "VNPay",
     icon: Smartphone,
+
     description: "Thanh toán qua VNPay (Quét mã QR có sẵn số tiền)",
   },
   {
@@ -30,6 +25,7 @@ const paymentMethods = [
     name: "Thẻ ngân hàng",
     icon: CreditCard,
     description: "Thanh toán bằng thẻ ATM/Visa/Mastercard",
+
   },
   {
     id: "bank-transfer",
@@ -37,6 +33,7 @@ const paymentMethods = [
     icon: Building2,
     description: "Chuyển khoản qua số tài khoản ngân hàng",
   },
+
   {
     id: "qr-code",
     name: "Quét mã VietQR",
@@ -48,7 +45,10 @@ const paymentMethods = [
 export function Payment() {
   const location = useLocation();
   const navigate = useNavigate();
-  const [selectedMethod, setSelectedMethod] = useState("");
+
+  const { user } = useAuth();
+  const [selectedMethod, setSelectedMethod] = useState('');
+
   const [paymentSuccess, setPaymentSuccess] = useState(false);
   const [processing, setProcessing] = useState(false);
 
@@ -62,6 +62,8 @@ export function Payment() {
     branch: "",
   });
   const [loadingPaymentInfo, setLoadingPaymentInfo] = useState(true);
+
+  const [vnpayData, setVnpayData] = useState<{ paymentUrl: string; amount: number; txnRef: string } | null>(null);
 
   const paymentData = location.state;
 
@@ -119,12 +121,60 @@ export function Payment() {
       return;
     }
 
-    if (!regId) {
-      alert("Không tìm thấy thông tin đăng ký!");
+    if (!registration?._id) {
+      alert('Không tìm thấy thông tin đăng ký!');
+
       return;
     }
 
     setProcessing(true);
+
+
+    if (selectedMethod === 'vnpay') {
+      try {
+        await fetch(`${getApiUrl()}/api/user-packages/${registration._id}/payment-method`, {
+          method: 'PATCH',
+          headers: getAuthHeaders() as any,
+          body: JSON.stringify({ payment_method: 'vnpay' }),
+        });
+
+        const res = await fetch(`${getApiUrl()}/api/user-packages/${registration._id}/vnpay-url`, {
+          headers: getAuthHeaders() as any,
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || 'Lỗi tạo URL thanh toán');
+        }
+        const data = await res.json();
+        setVnpayData({ paymentUrl: data.paymentUrl, amount: totalPrice, txnRef: data.txnRef || String(Date.now()) });
+      } catch (err: any) {
+        alert(err.message || 'Có lỗi xảy ra. Vui lòng thử lại.');
+      } finally {
+        setProcessing(false);
+      }
+      return;
+    }
+
+
+
+    try {
+      const res = await fetch(`${getApiUrl()}/api/user-packages/${registration._id}/payment-method`, {
+        method: 'PATCH',
+        headers: getAuthHeaders() as any,
+        body: JSON.stringify({ payment_method: selectedMethod })
+
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Thanh toán thất bại');
+      }
+
+      setPaymentSuccess(true);
+    } catch (err: any) {
+      alert(err.message || 'Có lỗi xảy ra khi thanh toán. Vui lòng thử lại.');
+
     try {
       if (selectedMethod === "vnpay") {
         const res = await fetch(
@@ -170,10 +220,15 @@ export function Payment() {
       }
     } catch (err: any) {
       alert(err.message || "Có lỗi xảy ra. Vui lòng thử lại.");
+
     } finally {
       setProcessing(false);
     }
   };
+
+  const regId = registration?.id || registration?._id;
+  const pdfToken = encodeURIComponent(JSON.parse(localStorage.getItem('auth_user') || '{}').token || '');
+  const pdfUrl = `${getApiUrl()}/api/user-packages/${regId}/contract-pdf?token=${pdfToken}`;
 
   if (paymentSuccess) {
     return (
@@ -182,6 +237,7 @@ export function Payment() {
           <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
             <Check className="w-10 h-10 text-green-600" />
           </div>
+
           <h2 className="text-2xl font-bold text-slate-900 mb-4">
             Đã gửi yêu cầu thanh toán!
           </h2>
@@ -189,8 +245,35 @@ export function Payment() {
             Admin sẽ xác nhận thanh toán trong thời gian sớm nhất.
           </p>
           <p className="text-sm text-slate-500 mb-8">
+
             Cảm ơn bạn đã đăng ký gói tập tại ZenFitness.
           </p>
+          {registration?.contract_pdf && (
+            <div className="space-y-3 mb-6">
+              <a href={pdfUrl} target="_blank" rel="noopener noreferrer" className="block">
+                <Button
+                  fullWidth
+                  variant="outlined"
+                  size="large"
+                  sx={{
+                    height: 48,
+                    borderRadius: 3,
+                    textTransform: 'none',
+                    fontSize: '1rem',
+                    fontWeight: 600,
+                    color: '#4f46e5',
+                    borderColor: '#4f46e5'
+                  }}
+                >
+                  Xem hợp đồng (PDF)
+                </Button>
+              </a>
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
+                <p className="font-semibold mb-1">Hợp đồng đang chờ xử lý</p>
+                <p>Hợp đồng của bạn đã được ghi nhận. Vui lòng chờ quản lý xác nhận để kích hoạt gói tập.</p>
+              </div>
+            </div>
+          )}
           <Button
             fullWidth
             variant="contained"
@@ -213,10 +296,71 @@ export function Payment() {
     );
   }
 
-  const qrDynamicUrl =
-    bankInfo.bankName && bankInfo.accountNumber
-      ? `https://img.vietqr.io/image/${bankInfo.bankName}-${bankInfo.accountNumber}-compact2.png?amount=${totalPrice}&addInfo=${encodeURIComponent(customer?.fullName || customer?.phone || "Thanh toan")} goi ${encodeURIComponent(pkg.name)}&accountName=${encodeURIComponent(bankInfo.accountName)}`
-      : "";
+  if (vnpayData) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center py-12 px-4">
+        <div className="max-w-md w-full bg-white p-8 rounded-2xl shadow-lg text-center">
+          <div className="w-16 h-16 bg-indigo-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <ExternalLink className="w-8 h-8 text-indigo-600" />
+          </div>
+          <h2 className="text-2xl font-bold text-slate-900 mb-2">Chuyển đến cổng thanh toán VNPay</h2>
+          <p className="text-slate-500 mb-6">Bạn sẽ được chuyển đến cổng thanh toán VNPay để hoàn tất giao dịch</p>
+
+          <div className="bg-slate-50 rounded-xl p-4 mb-6 text-left space-y-2">
+            <div className="flex justify-between">
+              <span className="text-slate-600">Số tiền:</span>
+              <span className="font-bold text-xl text-indigo-600">{formatPrice(vnpayData.amount)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-600">Mã giao dịch:</span>
+              <span className="font-mono text-sm text-slate-900">{vnpayData.txnRef}</span>
+            </div>
+          </div>
+
+          <div className="flex gap-3">
+            <Button
+              fullWidth
+              variant="outlined"
+              size="large"
+              onClick={() => setVnpayData(null)}
+              sx={{
+                height: 56,
+                borderRadius: 3,
+                textTransform: 'none',
+                fontSize: '1rem',
+                fontWeight: 700,
+              }}
+            >
+              Quay lại
+            </Button>
+            <Button
+              fullWidth
+              variant="contained"
+              size="large"
+              onClick={() => window.location.href = vnpayData.paymentUrl}
+              sx={{
+                height: 56,
+                borderRadius: 3,
+                textTransform: 'none',
+                fontSize: '1rem',
+                fontWeight: 700,
+                bgcolor: '#4f46e5',
+                '&:hover': { bgcolor: '#4338ca' }
+              }}
+            >
+              Đến VNPay <ExternalLink className="ml-2 w-5 h-5" />
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+
+
+  const qrDynamicUrl = (bankInfo.bankName && bankInfo.accountNumber) 
+    ? `https://img.vietqr.io/image/${bankInfo.bankName}-${bankInfo.accountNumber}-compact2.png?amount=${totalPrice}&addInfo=${encodeURIComponent(customer?.fullName || customer?.phone || 'Thanh toan')} goi ${encodeURIComponent(pkg.name)}&accountName=${encodeURIComponent(bankInfo.accountName)}`
+    : '';
 
   return (
     <div className="min-h-screen bg-slate-50 py-12">
@@ -278,71 +422,9 @@ export function Payment() {
               </div>
             </div>
 
-            {selectedMethod === "vnpay" && (
-              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-                <h3 className="text-lg font-bold text-slate-900 mb-4">
-                  Quét mã QR qua VNPay
-                </h3>
-                <div className="flex flex-col items-center">
-                  {showVNPayQR ? (
-                    <>
-                      <img
-                        src={vnpayQR.dataUrl}
-                        alt="QR VNPay"
-                        className="w-72 h-72 object-contain rounded-xl mb-4 shadow-sm"
-                      />
-                      <p className="text-2xl font-bold text-indigo-600 mb-2">
-                        {formatPrice(vnpayQR.amount)}
-                      </p>
-                      <p className="text-sm text-slate-600 text-center">
-                        Mở ứng dụng ngân hàng hỗ trợ VNPay và quét mã QR để thanh toán
-                      </p>
-                    </>
-                  ) : (
-                    <>
-                      <div className="w-64 h-64 bg-slate-100 rounded-xl flex items-center justify-center mb-4">
-                        <Smartphone className="w-12 h-12 text-slate-400" />
-                      </div>
-                      <p className="text-sm text-slate-600 text-center">
-                        Nhấn "Xác nhận thanh toán" để tạo mã QR VNPay
-                      </p>
-                    </>
-                  )}
-                </div>
-              </div>
-            )}
 
-            {selectedMethod === "qr-code" && (
-              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-                <h3 className="text-lg font-bold text-slate-900 mb-4">
-                  Quét mã VietQR để thanh toán
-                </h3>
-                <div className="flex flex-col items-center">
-                  {loadingPaymentInfo ? (
-                    <div className="w-64 h-64 bg-slate-100 rounded-xl flex items-center justify-center mb-4">
-                      <Loader2 className="w-8 h-8 animate-spin text-slate-400" />
-                    </div>
-                  ) : qrDynamicUrl ? (
-                    <img
-                      src={qrDynamicUrl}
-                      alt="QR thanh toán"
-                      className="w-64 h-64 object-contain rounded-xl mb-4 shadow-sm"
-                    />
-                  ) : (
-                    <div className="w-64 h-64 bg-slate-100 rounded-xl flex items-center justify-center mb-4 text-center p-4">
-                      <p className="text-slate-500 text-sm">
-                        Cơ sở này chưa cấu hình mã QR thanh toán.
-                      </p>
-                    </div>
-                  )}
-                  <p className="text-sm text-slate-600 text-center">
-                    Mở ứng dụng ngân hàng và quét mã QR để thanh toán nhanh
-                  </p>
-                </div>
-              </div>
-            )}
+            {selectedMethod === 'bank-transfer' && (
 
-            {selectedMethod === "bank-transfer" && (
               <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
                 <h3 className="text-lg font-bold text-slate-900 mb-4">
                   Thông tin chuyển khoản
@@ -413,9 +495,9 @@ export function Payment() {
                 {regId && (
                   <div>
                     <p className="text-sm text-slate-500">Mã đăng ký</p>
-                    <p className="font-medium text-slate-900 text-xs">
-                      {regId}
-                    </p>
+
+                    <p className="font-medium text-slate-900 text-xs">{registration._id}</p>
+
                   </div>
                 )}
               </div>

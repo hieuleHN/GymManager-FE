@@ -105,17 +105,33 @@ export function PackageCheckout() {
     ? []
     : packages.filter(p => p.disciplineId?._id === selectedDiscipline);
 
-  // Auto-select first package when discipline changes
+  // Auto-select first package + first duration when discipline changes
   useEffect(() => {
     if (!selectedPkg || selectedPkg.disciplineId?._id !== selectedDiscipline) {
       if (filteredPackages.length > 0) {
         setSelectedPkg(filteredPackages[0]);
+
         if (filteredPackages[0].durations?.length > 0) {
           setSelectedDuration(filteredPackages[0].durations[0]);
         }
+
       }
     }
   }, [selectedDiscipline]);
+
+  // Auto-select first duration when package changes
+  useEffect(() => {
+    if (selectedPkg?.durations?.length > 0) {
+      const stillExists = selectedPkg.durations.some(
+        d => d.months === selectedDuration?.months && d.discount === selectedDuration?.discount
+      );
+      if (!stillExists) {
+        setSelectedDuration(selectedPkg.durations[0]);
+      }
+    } else if (selectedPkg) {
+      setSelectedDuration({ months: 1, discount: 0 });
+    }
+  }, [selectedPkg]);
 
   const selectedDiscName = selectedDiscipline
     ? disciplines.find(d => d._id === selectedDiscipline)?.name || 'Đã chọn'
@@ -134,6 +150,7 @@ export function PackageCheckout() {
       .then(data => {
         if (data?.status === 'approved') {
           navigate(`/contract`, {
+
               state: {
                 package: selectedPkg,
                 customer,
@@ -141,6 +158,7 @@ export function PackageCheckout() {
                 totalPrice,
                 selectedDuration
               }
+
           });
         } else {
           navigate('/dashboard/settings');
@@ -300,6 +318,7 @@ export function PackageCheckout() {
                       );
                     })}
                   </div>
+
                 </div>
               </motion.div>
             )}
