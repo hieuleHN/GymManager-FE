@@ -1,3 +1,5 @@
+import MemberQR from './pages/MemberQR'; // Nhúng màn hình QR vào route
+import { AttendanceScanner } from './pages/admin/AttendanceScanner';
 import { createBrowserRouter, Navigate, useLocation } from 'react-router';
 import { Layout } from './components/Layout';
 import { Home } from './pages/Home';
@@ -33,7 +35,6 @@ import { AddEquipment } from './pages/admin/AddEquipment';
 import { EditEquipment } from './pages/admin/EditEquipment';
 import { Services } from './pages/admin/Services';
 import { ServiceHistory } from './pages/admin/ServiceHistory';
-import { Attendance } from './pages/admin/Attendance';
 import { AttendanceHistory } from './pages/admin/AttendanceHistory';
 import { StaffList } from './pages/admin/StaffList';
 import { StaffSalary } from './pages/admin/StaffSalary';
@@ -148,7 +149,7 @@ function ProtectedRoute({ children, role }: { children: React.ReactNode, role?: 
 export const router = createBrowserRouter([
   {
     path: '/',
-    Component: Layout,
+    Component: Layout, // File Layout chứa thanh Navbar menu màu trắng của bạn
     children: [
       { index: true, Component: Home },
       { path: 'learn', Component: Learn },
@@ -161,6 +162,13 @@ export const router = createBrowserRouter([
       { path: 'clubs/:id', Component: ClubDetail },
       { path: 'disciplines/:id', Component: DisciplineDetail },
       { path: 'auth', Component: Auth },
+
+      // ĐÃ TỐI ƯU TẠI ĐÂY: Đưa trang QR vào làm con của Layout 
+      // để khi mở trang này, thanh menu Navbar màu trắng ở trên vẫn giữ cố định!
+      {
+        path: 'dashboard/qr',
+        element: <ProtectedRoute role="member"><MemberQR /></ProtectedRoute>
+      },
     ],
   },
   {
@@ -210,6 +218,10 @@ export const router = createBrowserRouter([
   {
     path: '/dashboard/services',
     element: <ProtectedRoute role="member"><MemberServices /></ProtectedRoute>
+  },
+  {
+    path: '/admin/attendance',
+    element: <ProtectedRoute role="staff"><AttendanceScanner /></ProtectedRoute>
   },
   {
     path: '/dashboard/settings',
@@ -274,10 +286,6 @@ export const router = createBrowserRouter([
   {
     path: '/admin/services/history',
     element: <ProtectedRoute role="staff"><ServiceHistory /></ProtectedRoute>
-  },
-  {
-    path: '/admin/attendance',
-    element: <ProtectedRoute role="staff"><Attendance /></ProtectedRoute>
   },
   {
     path: '/admin/attendance/history',

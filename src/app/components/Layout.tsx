@@ -13,9 +13,7 @@ import {
   ChevronDown,
   MapPin,
   Activity,
-  Instagram,
-  Youtube,
-  Music2
+  QrCode // Đảm bảo import icon QR Code
 } from 'lucide-react';
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
@@ -34,6 +32,7 @@ export function Layout() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
 
+  // Mảng chứa các menu điều hướng gốc
   const navigation = [
     { name: 'Trang chủ', href: '/', icon: Dumbbell },
     {
@@ -54,8 +53,10 @@ export function Layout() {
     { name: 'Huấn luyện viên', href: '/trainers', icon: Users },
   ];
 
+  // ĐỒNG BỘ TẠI ĐÂY: Nếu hội viên đã login, đẩy cả Dashboard và Điểm danh vào chung mảng
   if (user) {
     navigation.push({ name: 'DASHBOARD HỘI VIÊN', href: '/dashboard', icon: LayoutDashboard });
+    navigation.push({ name: 'Điểm danh', href: '/dashboard/qr', icon: QrCode });
   }
 
   const handleLogout = () => {
@@ -73,11 +74,13 @@ export function Layout() {
               <Link to="/" className="flex items-center gap-2">
                 <ImageWithFallback src={logo} alt="ZenFitness Logo" className="h-20 w-auto object-contain py-2" />
               </Link>
+
+              {/* Danh sách menu trên máy tính - Đã dọn sạch các block button thừa lẻ tẻ */}
               <div className="hidden md:ml-8 lg:flex md:space-x-4 lg:space-x-6">
                 {navigation.map((item) => (
                   item.isDropdown ? (
-                    <div 
-                      key={item.name} 
+                    <div
+                      key={item.name}
                       className="relative group flex items-center h-full"
                       onMouseEnter={() => setOpenDropdown(item.name)}
                       onMouseLeave={() => setOpenDropdown(null)}
@@ -86,7 +89,7 @@ export function Layout() {
                         {item.name}
                         <ChevronDown className="ml-1 w-4 h-4" />
                       </button>
-                      
+
                       {openDropdown === item.name && (
                         <div className="absolute top-full left-0 w-64 bg-white shadow-xl rounded-b-xl border border-slate-100 py-2 z-50">
                           {item.items?.map((subItem) => (
@@ -106,11 +109,10 @@ export function Layout() {
                     <Link
                       key={item.name}
                       to={item.href}
-                      className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium h-full ${
-                        location.pathname === item.href
-                          ? 'border-indigo-500 text-slate-900'
+                      className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium h-full ${location.pathname === item.href
+                          ? 'border-indigo-500 text-slate-900 font-semibold'
                           : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700'
-                      }`}
+                        }`}
                     >
                       {item.name}
                     </Link>
@@ -119,6 +121,7 @@ export function Layout() {
               </div>
             </div>
 
+            {/* Cụm chức năng Avatar / Login bên tay phải */}
             <div className="hidden md:flex items-center gap-4">
               {user ? (
                 <div className="flex items-center gap-4">
@@ -165,7 +168,7 @@ export function Layout() {
           </div>
         </div>
 
-        {/* Mobile menu */}
+        {/* Mobile menu (Hiển thị mượt mà trên điện thoại) */}
         {isMobileMenuOpen && (
           <div className="lg:hidden bg-white border-b border-slate-200 h-[calc(100vh-4rem)] overflow-y-auto">
             <div className="pt-2 pb-3 space-y-1 px-4">
@@ -194,11 +197,10 @@ export function Layout() {
                     <Link
                       to={item.href}
                       onClick={() => setIsMobileMenuOpen(false)}
-                      className={`flex items-center px-3 py-2 rounded-md text-base font-medium ${
-                        location.pathname === item.href
-                          ? 'bg-indigo-50 text-indigo-700'
+                      className={`flex items-center px-3 py-2 rounded-md text-base font-medium ${location.pathname === item.href
+                          ? 'bg-indigo-50 text-indigo-700 font-semibold'
                           : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                      }`}
+                        }`}
                     >
                       <item.icon className="mr-3 h-5 w-5" />
                       {item.name}
@@ -206,6 +208,7 @@ export function Layout() {
                   )}
                 </div>
               ))}
+
               {!user && (
                 <Link
                   to="/auth"
@@ -230,7 +233,6 @@ export function Layout() {
       <footer className="bg-slate-900 text-slate-400 py-12">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
-            {/* Logo và giới thiệu */}
             <div className="col-span-1 md:col-span-1">
               <div className="flex items-center gap-2 mb-4">
                 <ImageWithFallback src={logo} alt="ZenFitness Logo" className="h-20 w-auto object-contain brightness-0 invert" />
@@ -240,7 +242,6 @@ export function Layout() {
               </p>
             </div>
 
-            {/* Dịch vụ */}
             <div>
               <h3 className="text-white font-semibold mb-4 uppercase">Dịch vụ</h3>
               <ul className="space-y-2 text-sm">
@@ -255,7 +256,6 @@ export function Layout() {
               </ul>
             </div>
 
-            {/* Công ty */}
             <div>
               <h3 className="text-white font-semibold mb-4 uppercase">Công ty</h3>
               <ul className="space-y-2 text-sm">
@@ -266,7 +266,6 @@ export function Layout() {
               </ul>
             </div>
 
-            {/* Thông tin */}
             <div>
               <h3 className="text-white font-semibold mb-4 uppercase">Thông tin</h3>
               <ul className="space-y-2 text-sm">
