@@ -110,6 +110,11 @@ export function PackageCheckout() {
     if (!selectedPkg || selectedPkg.disciplineId?._id !== selectedDiscipline) {
       if (filteredPackages.length > 0) {
         setSelectedPkg(filteredPackages[0]);
+
+        if (filteredPackages[0].durations?.length > 0) {
+          setSelectedDuration(filteredPackages[0].durations[0]);
+        }
+
       }
     }
   }, [selectedDiscipline]);
@@ -145,13 +150,15 @@ export function PackageCheckout() {
       .then(data => {
         if (data?.status === 'approved') {
           navigate(`/contract`, {
-            state: {
-              package: selectedPkg,
-              customer,
-              durationMonths: months,
-              totalPrice,
-              selectedDuration
-            }
+
+              state: {
+                package: selectedPkg,
+                customer,
+                durationMonths: months,
+                totalPrice,
+                selectedDuration
+              }
+
           });
         } else {
           navigate('/dashboard/settings');
@@ -280,7 +287,7 @@ export function PackageCheckout() {
             </div>
 
             {/* 3. Chọn thời gian tập */}
-            {selectedPkg && (
+            {selectedPkg && selectedPkg.durations && selectedPkg.durations.length > 0 && (
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -288,87 +295,30 @@ export function PackageCheckout() {
               >
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
                   <h2 className="text-xl font-bold text-slate-900 mb-4">3. Chọn thời gian tập</h2>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    {selectedPkg.durations.map((dur, idx) => {
+                      const isSelected = selectedDuration === dur;
+                      const price = unitPrice * dur.months * (1 - (dur.discount || 0) / 100);
+                      return (
+                        <button
+                          key={idx}
+                          onClick={() => setSelectedDuration(dur)}
+                          className={`p-4 rounded-xl border-2 transition-all text-center ${
+                            isSelected
+                              ? 'border-indigo-600 bg-indigo-50 ring-2 ring-indigo-200'
+                              : 'border-slate-200 hover:border-slate-300 bg-white'
+                          }`}
+                        >
+                          <div className="text-lg font-bold text-slate-900 mb-1">{dur.months} tháng</div>
+                          <div className="text-lg font-extrabold text-indigo-600 mb-1 break-all">{formatPrice(price)}</div>
+                          {dur.discount > 0 && (
+                            <div className="text-xs font-semibold text-green-600">-{dur.discount}%</div>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
 
-                  {selectedPkg.durations && selectedPkg.durations.length > 0 ? (
-                    <>
-                      {/* Tabs: Theo tháng / Theo năm */}
-                      {selectedPkg.durations.some(d => d.months >= 12) && (
-                        <div className="flex gap-2 mb-5 bg-slate-100 p-1 rounded-xl w-fit">
-                          <button
-                            onClick={() => {
-                              const monthlyDurs = selectedPkg.durations.filter(d => d.months < 12);
-                              if (monthlyDurs.length > 0) {
-                                const stillExists = monthlyDurs.some(d => d.months === selectedDuration?.months);
-                                if (!stillExists) setSelectedDuration(monthlyDurs[0]);
-                              }
-                            }}
-                            className={`px-6 py-2.5 rounded-lg text-sm font-semibold transition-all ${
-                              (selectedDuration?.months || 1) < 12
-                                ? 'bg-white text-indigo-700 shadow-sm'
-                                : 'text-slate-500 hover:text-slate-700'
-                            }`}
-                          >
-                            Theo tháng
-                          </button>
-                          <button
-                            onClick={() => {
-                              const yearlyDurs = selectedPkg.durations.filter(d => d.months >= 12);
-                              if (yearlyDurs.length > 0) {
-                                const stillExists = yearlyDurs.some(d => d.months === selectedDuration?.months);
-                                if (!stillExists) setSelectedDuration(yearlyDurs[0]);
-                              }
-                            }}
-                            className={`px-6 py-2.5 rounded-lg text-sm font-semibold transition-all ${
-                              (selectedDuration?.months || 0) >= 12
-                                ? 'bg-white text-indigo-700 shadow-sm'
-                                : 'text-slate-500 hover:text-slate-700'
-                            }`}
-                          >
-                            Theo năm
-                          </button>
-                        </div>
-                      )}
-
-                      {/* Duration cards */}
-                      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                        {selectedPkg.durations
-                          .filter(d => (selectedDuration?.months || 1) < 12 ? d.months < 12 : d.months >= 12)
-                          .map((dur, idx) => {
-                            const isSelected = selectedDuration?.months === dur.months && selectedDuration?.discount === dur.discount;
-                            const price = unitPrice * dur.months * (1 - (dur.discount || 0) / 100);
-                            return (
-                              <button
-                                key={idx}
-                                onClick={() => setSelectedDuration(dur)}
-                                className={`p-5 rounded-xl border-2 transition-all text-center ${
-                                  isSelected
-                                    ? 'border-indigo-600 bg-indigo-50 ring-2 ring-indigo-200'
-                                    : 'border-slate-200 hover:border-slate-300 bg-white'
-                                }`}
-                              >
-                                <div className="text-lg font-bold text-slate-900 mb-1">{dur.months} tháng</div>
-                                <div className="text-2xl font-extrabold text-indigo-600 mb-1">
-                                  {formatPrice(price)}
-                                </div>
-                                {dur.discount > 0 && (
-                                  <div className="inline-block px-2 py-0.5 bg-green-100 text-green-700 text-xs font-semibold rounded-full">
-                                    -{dur.discount}%
-                                  </div>
-                                )}
-                              </button>
-                            );
-                          })}
-                      </div>
-                    </>
-                  ) : (
-                    <div className="p-5 rounded-xl border-2 border-slate-200 bg-white text-center">
-                      <div className="text-lg font-bold text-slate-900 mb-1">1 tháng</div>
-                      <div className="text-2xl font-extrabold text-indigo-600 mb-1">
-                        {formatPrice(unitPrice)}
-                      </div>
-                      <div className="text-xs text-slate-400">Giá mặc định</div>
-                    </div>
-                  )}
                 </div>
               </motion.div>
             )}
@@ -447,7 +397,7 @@ export function PackageCheckout() {
                       '&:hover': { bgcolor: '#4338ca' }
                     }}
                   >
-                    Xem hợp đồng
+                    Xem chính sách
                     <ArrowRight className="ml-2 w-5 h-5" />
                   </Button>
                 </>
