@@ -1,9 +1,11 @@
+
 import { useState, useEffect, useRef } from 'react';
 import { DashboardLayout } from '../../components/DashboardLayout';
 import { Calendar, MapPin, Check, AlertTriangle, ArrowRight, Clock, Bell } from 'lucide-react';
 import { Button } from '@mui/material';
 import { Link, useNavigate, useLocation } from 'react-router';
 import { useAuth, getApiUrl, getAuthHeaders } from '../../context/AuthContext';
+
 
 interface Registration {
   _id: string;
@@ -16,6 +18,7 @@ interface Registration {
   locationId: {
     _id: string;
     title: string;
+    name?: string;
   };
   duration_months: number;
   total_price: number;
@@ -23,8 +26,12 @@ interface Registration {
   end_date: string;
   status: string;
   payment_status: string;
+
   payment_expires_at: string;
   contract_pdf: string;
+
+  payment_method: string;
+
   signature: string;
   createdAt: string;
 }
@@ -33,10 +40,16 @@ export function MyPackages() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+
   const [registrations, setRegistrations] = useState<Registration[]>([]);
   const [customer, setCustomer] = useState<any>(null);
-  const [fetching, setFetching] = useState(true);
+  const [fetching, setFetching] = useState<boolean>(true);
   const [otherPackages, setOtherPackages] = useState<any[]>([]);
+
+  const [renewModalOpen, setRenewModalOpen] = useState<boolean>(false);
+  const [selectedPkg, setSelectedPkg] = useState<any>(null);
+  const [selectedPkgEndDate, setSelectedPkgEndDate] = useState<string>("");
+  const [renewMonths, setRenewMonths] = useState<number>(1);
 
   const registrationSuccess = location.state?.registrationSuccess;
   const successMessage = location.state?.message;
@@ -44,9 +57,10 @@ export function MyPackages() {
 
   useEffect(() => {
     if (registrationSuccess) {
-      const timer = setTimeout(() => {
-        window.history.replaceState({}, document.title);
-      }, 5000);
+      const timer = setTimeout(
+        () => window.history.replaceState({}, document.title),
+        5000,
+      );
       return () => clearTimeout(timer);
     }
   }, [registrationSuccess]);
@@ -61,11 +75,11 @@ export function MyPackages() {
       try {
         const [infoRes, regRes] = await Promise.all([
           fetch(`${getApiUrl()}/api/customers/my-info`, {
-            headers: getAuthHeaders()
+            headers: getAuthHeaders(),
           }),
           fetch(`${getApiUrl()}/api/user-packages/my`, {
-            headers: getAuthHeaders()
-          })
+            headers: getAuthHeaders(),
+          }),
         ]);
 
         const infoData = await infoRes.json();
@@ -75,17 +89,23 @@ export function MyPackages() {
         if (Array.isArray(regData)) setRegistrations(regData);
 
         if (infoData?.locationId) {
-          const locId = typeof infoData.locationId === 'object' ? infoData.locationId._id : infoData.locationId;
-          const pkgRes = await fetch(`${getApiUrl()}/api/packages?page=1&limit=50&locationId=${locId}`);
+          const locId =
+            typeof infoData.locationId === "object"
+              ? infoData.locationId._id
+              : infoData.locationId;
+          const pkgRes = await fetch(
+            `${getApiUrl()}/api/packages?page=1&limit=50&locationId=${locId}`,
+          );
           const pkgData = await pkgRes.json();
-          if (pkgData?.data) setOtherPackages(pkgData.data.filter((p: any) => p.is_active));
+          if (pkgData?.data)
+            setOtherPackages(pkgData.data.filter((p: any) => p.is_active));
         }
       } catch {}
       setFetching(false);
     };
-
     loadData();
   }, [user]);
+
 
   const reloadRef = useRef<() => void>(() => {});
   reloadRef.current = async () => {
@@ -135,56 +155,103 @@ export function MyPackages() {
   const formatPrice = (price: number) => {
     if (!price) return '0đ';
     return price.toLocaleString('vi-VN') + 'đ';
-  };
 
-  const formatDate = (dateStr: string) => {
-    if (!dateStr) return '';
-    const d = new Date(dateStr);
-    return d.toLocaleDateString('vi-VN');
-  };
-
+  const formatPrice = (price: number) =>
+    price ? price.toLocaleString("vi-VN") + "đ" : "0đ";
+  const formatDate = (dateStr: string) =>
+    dateStr ? new Date(dateStr).toLocaleDateString("vi-VN") : "";
   const daysRemaining = (endDate: string) => {
     if (!endDate) return 0;
-    const end = new Date(endDate);
-    const now = new Date();
-    const diff = end.getTime() - now.getTime();
+    const diff = new Date(endDate).getTime() - new Date().getTime();
     return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+
   };
 
-  if (fetching) {
+  const handleOpenRenewModal = (reg: Registration) => {
+    setSelectedPkg(reg.package_id);
+    setSelectedPkgEndDate(reg.end_date);
+    setRenewMonths(1);
+    setRenewModalOpen(true);
+  };
+
+  const handleExecuteRenew = async () => {
+    if (!selectedPkg) return;
+    const computedPrice = renewMonths * (selectedPkg.unitPrice || 0);
+
+    try {
+      const response = await fetch(
+        `${getApiUrl()}/api/user-packages/renew-upgrade`,
+        {
+          method: "POST",
+          headers: getAuthHeaders() as any,
+          body: JSON.stringify({
+            action_type: "renew",
+            package_id: selectedPkg._id,
+            locationId: customer?.locationId?._id || customer?.locationId,
+            duration_months: renewMonths,
+            total_price: computedPrice,
+            current_end_date: selectedPkgEndDate,
+          }),
+        },
+      );
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error);
+
+      navigate("/payment", {
+        state: {
+          package: selectedPkg,
+          registration: { id: data.registration._id },
+          customer: customer,
+          durationMonths: renewMonths,
+          totalPrice: computedPrice,
+        },
+      });
+    } catch (err: any) {
+      alert("Hệ thống cảnh báo lỗi: " + err.message);
+    }
+  };
+
+  if (fetching)
     return (
       <DashboardLayout>
-        <div className="max-w-7xl mx-auto flex items-center justify-center py-20">
-          <p className="text-slate-500">Đang tải...</p>
+        <div className="flex items-center justify-center py-20 text-slate-500">
+          Đang tải...
         </div>
       </DashboardLayout>
     );
-  }
 
-  if (customer && customer.status !== 'approved') {
+  if (customer && customer.status !== "approved") {
     return (
       <DashboardLayout>
         <div className="max-w-7xl mx-auto space-y-6">
-          <div>
-            <h1 className="text-3xl font-bold text-slate-900 mb-2">Gói tập của tôi</h1>
-            <p className="text-slate-600">Quản lý các gói tập đang sử dụng</p>
-          </div>
           <div className="bg-amber-50 border border-amber-200 rounded-2xl p-8 text-center">
             <AlertTriangle className="w-16 h-16 text-amber-500 mx-auto mb-4" />
-            <h2 className="text-2xl font-bold text-amber-900 mb-2">Chưa được xác nhận</h2>
+            <h2 className="text-2xl font-bold text-amber-900 mb-2">
+              Chưa được xác nhận
+            </h2>
             <p className="text-amber-700 mb-6">
-              Bạn cần hoàn thiện thông tin cá nhân và được nhân viên xác nhận trước khi đăng ký gói tập.
+              Bạn cần hoàn thiện thông tin cá nhân và được nhân viên xác nhận
+              trước khi đăng ký gói tập.
             </p>
-            <Button variant="contained" onClick={() => navigate('/dashboard/settings')}
-              sx={{ bgcolor: '#d97706', '&:hover': { bgcolor: '#b45309' }, textTransform: 'none', borderRadius: 2, px: 6, py: 1.5 }}>
-              Đi đến cài đặt
-              <ArrowRight className="ml-2 w-4 h-4" />
+            <Button
+              variant="contained"
+              onClick={() => navigate("/dashboard/settings")}
+              sx={{
+                bgcolor: "#d97706",
+                "&:hover": { bgcolor: "#b45309" },
+                textTransform: "none",
+                borderRadius: 2,
+              }}
+            >
+              Đi đến cài đặt <ArrowRight className="ml-2 w-4 h-4" />
             </Button>
           </div>
         </div>
       </DashboardLayout>
     );
   }
+
 
   const activeRegistrations = registrations.filter(r =>
     r.status === 'đang hoạt động' || r.status === 'còn 10 ngày'
@@ -195,6 +262,45 @@ export function MyPackages() {
   const pendingRegistrations = registrations.filter(r =>
     r.status === 'chờ xác nhận' && r.payment_status !== 'paid'
   );
+
+  const groupedRegistrationsMap = new Map<string, Registration>();
+  const groups: Record<string, Registration[]> = {};
+
+  // 1. Phân nhóm các hóa đơn theo cùng một gói tập
+  activeRegistrations.forEach((reg) => {
+    const pkgId = reg.package_id?._id;
+    if (!pkgId) return;
+    if (!groups[pkgId]) groups[pkgId] = [];
+    groups[pkgId].push(reg);
+  });
+
+  // 2. Xử lý logic hiển thị cho từng nhóm
+  Object.keys(groups).forEach((pkgId) => {
+    const group = groups[pkgId];
+    // Lấy thẻ đầu tiên làm gốc
+    const displayReg = { ...group[0] };
+
+    // Nếu trong nhóm có hóa đơn đang "chờ thanh toán" -> Bật cảnh báo vàng
+    const hasPending = group.some((r) => r.payment_status === "chờ thanh toán");
+    displayReg.payment_status = hasPending ? "chờ thanh toán" : "đã thanh toán";
+
+    // CHỐT NGÀY: Chỉ tính ngày kết thúc dựa trên những hóa đơn ĐÃ THANH TOÁN
+    const paidRegs = group.filter((r) => r.payment_status !== "chờ thanh toán");
+    if (paidRegs.length > 0) {
+      const maxPaidReg = paidRegs.reduce((prev, current) => {
+        return new Date(prev.end_date) > new Date(current.end_date)
+          ? prev
+          : current;
+      });
+      displayReg.end_date = maxPaidReg.end_date;
+      displayReg.status = maxPaidReg.status;
+    }
+
+    groupedRegistrationsMap.set(pkgId, displayReg);
+  });
+
+  const displayRegistrations = Array.from(groupedRegistrationsMap.values());
+
 
   return (
     <DashboardLayout>
@@ -210,79 +316,95 @@ export function MyPackages() {
         {registrationSuccess && !approvedRegId && (
           <div className="bg-green-50 border border-green-200 rounded-2xl p-6 text-center">
             <Check className="w-12 h-12 text-green-600 mx-auto mb-2" />
-            <h2 className="text-xl font-bold text-green-900 mb-1">{successMessage || 'Đăng ký thành công!'}</h2>
-            <p className="text-green-700">Bạn có thể tiếp tục đăng ký thêm gói tập bên dưới.</p>
+            <h2 className="text-xl font-bold text-green-900 mb-1">
+              {successMessage || "Đăng ký thành công!"}
+            </h2>
           </div>
         )}
 
         <div>
-          <h1 className="text-3xl font-bold text-slate-900 mb-2">Gói tập của tôi</h1>
+          <h1 className="text-3xl font-bold text-slate-900 mb-2">
+            Gói tập của tôi
+          </h1>
           <p className="text-slate-600">Quản lý các gói tập đang sử dụng</p>
         </div>
 
-        {activeRegistrations.length === 0 ? (
+        {displayRegistrations.length === 0 ? (
           <div className="bg-slate-50 rounded-2xl p-12 text-center border border-slate-200">
-            <p className="text-slate-500 text-lg mb-4">Bạn chưa đăng ký gói tập nào.</p>
-            <Button variant="contained" onClick={() => navigate('/packages')}
-              sx={{ bgcolor: '#4f46e5', '&:hover': { bgcolor: '#4338ca' }, textTransform: 'none', borderRadius: 2, px: 6, py: 1.5 }}>
+            <p className="text-slate-500 text-lg mb-4">
+              Bạn chưa đăng ký gói tập nào.
+            </p>
+            <Button
+              variant="contained"
+              onClick={() => navigate("/packages")}
+              sx={{
+                bgcolor: "#4f46e5",
+                textTransform: "none",
+                borderRadius: 2,
+              }}
+            >
               Đăng ký ngay
             </Button>
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {activeRegistrations.map((reg) => (
-              <div key={reg._id} className="bg-white rounded-2xl shadow-sm border-l-4 border-indigo-600 overflow-hidden">
+            {displayRegistrations.map((reg) => (
+              <div
+                key={reg._id}
+                className="bg-white rounded-2xl shadow-sm border-l-4 border-indigo-600 overflow-hidden"
+              >
                 <div className="p-6">
                   <div className="flex items-start justify-between mb-4">
                     <div>
-                      <div className={`inline-block px-3 py-1 rounded-full text-xs font-semibold mb-2 ${
-                        reg.status === 'còn 10 ngày' ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'
-                      }`}>
+                      <div
+                        className={`inline-block px-3 py-1 rounded-full text-xs font-semibold mb-2 ${reg.status === "còn 10 ngày" ? "bg-amber-100 text-amber-700" : "bg-green-100 text-green-700"}`}
+                      >
                         {reg.status}
                       </div>
-                      <h3 className="text-2xl font-bold text-slate-900">{reg.package_id?.name || 'Đã xóa'}</h3>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm text-slate-600">Giá trị</p>
-                      <p className="text-xl font-bold text-indigo-600">{formatPrice(reg.total_price)}</p>
+                      <h3 className="text-2xl font-bold text-slate-900">
+                        {reg.package_id?.name || "Đã xóa"}
+                      </h3>
                     </div>
                   </div>
 
                   <div className="space-y-3 mb-4">
+                    {reg.payment_status === "chờ thanh toán" && (
+                      <div className="flex items-center gap-2 text-sm bg-amber-50 border border-amber-200 px-3 py-2 rounded-lg">
+                        <AlertTriangle className="w-4 h-4 text-amber-600" />
+                        <span className="text-amber-700">
+                          Đang có yêu cầu Gia hạn chờ duyệt
+                        </span>
+                      </div>
+                    )}
+
                     <div className="flex items-center gap-2 text-sm">
                       <Calendar className="w-4 h-4 text-slate-400" />
-                      <span className="text-slate-600">
-                        {formatDate(reg.start_date)} - {formatDate(reg.end_date)}
+                      <span className="text-slate-600 font-medium">
+                        Hạn sử dụng: đến {formatDate(reg.end_date)}
                       </span>
                     </div>
+
                     <div className="flex items-center gap-2 text-sm">
                       <MapPin className="w-4 h-4 text-slate-400" />
-                      <span className="text-slate-600">{reg.locationId?.title || 'Đang cập nhật'}</span>
+                      <span className="text-slate-600">
+                        {reg.locationId?.title ||
+                          reg.locationId?.name ||
+                          customer?.locationId?.title ||
+                          customer?.locationId?.name ||
+                          "Đang cập nhật"}
+                      </span>
                     </div>
-                    {reg.end_date && (() => {
-                      const remaining = daysRemaining(reg.end_date);
-                      return (
-                        <div className={`px-3 py-2 rounded-lg ${
-                          remaining <= 10 ? 'bg-amber-50 border border-amber-200' : 'bg-slate-50'
-                        }`}>
-                          <p className={`text-sm ${remaining <= 10 ? 'text-amber-800' : 'text-slate-600'}`}>
-                            Còn <span className="font-bold">{remaining} ngày</span>
-                          </p>
-                        </div>
-                      );
-                    })()}
-                  </div>
 
-                  <div className="mb-4">
-                    <h4 className="text-sm font-semibold text-slate-900 mb-2">Quyền lợi:</h4>
-                    <div className="space-y-1.5">
-                      {(reg.package_id?.features || []).map((feature, idx) => (
-                        <div key={idx} className="flex items-start gap-2">
-                          <Check className="w-4 h-4 text-green-600 mt-0.5 shrink-0" />
-                          <span className="text-sm text-slate-600">{feature}</span>
-                        </div>
-                      ))}
-                    </div>
+                    {reg.end_date && (
+                      <div className="px-3 py-2 rounded-lg bg-indigo-50 inline-block border border-indigo-100">
+                        <p className="text-sm text-indigo-700">
+                          Còn lại{" "}
+                          <span className="font-bold text-indigo-900">
+                            {daysRemaining(reg.end_date)} ngày
+                          </span>
+                        </p>
+                      </div>
+                    )}
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
@@ -455,41 +577,58 @@ export function MyPackages() {
 
         {otherPackages.length > 0 && (
           <div>
-            <h2 className="text-2xl font-bold text-slate-900 mb-4">Các gói tập khác</h2>
+            <h2 className="text-2xl font-bold text-slate-900 mb-4">
+              Các gói tập khác
+            </h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {otherPackages.map((pkg) => {
                 const alreadyRegistered = registrations.some(
-                  r => r.package_id?._id === pkg._id && (r.status === 'đang hoạt động' || r.status === 'còn 10 ngày')
+                  (r) =>
+                    r.package_id?._id === pkg._id &&
+                    (r.status === "đang hoạt động" ||
+                      r.status === "còn 10 ngày"),
                 );
                 return (
-                  <div key={pkg._id} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+                  <div
+                    key={pkg._id}
+                    className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100"
+                  >
                     <div className="mb-4">
                       {pkg.disciplineId && (
-                        <p className="text-sm text-indigo-600 font-semibold mb-1">{pkg.disciplineId.name}</p>
+                        <p className="text-sm text-indigo-600 font-semibold mb-1">
+                          {pkg.disciplineId.name}
+                        </p>
                       )}
-                      <h3 className="text-xl font-bold text-slate-900 mb-2">{pkg.name}</h3>
-                      <p className="text-2xl font-bold text-slate-900">{formatPrice(pkg.unitPrice)}</p>
-                      <p className="text-sm text-slate-500">/tháng</p>
+                      <h3 className="text-xl font-bold text-slate-900 mb-2">
+                        {pkg.name}
+                      </h3>
+                      <p className="text-2xl font-bold text-slate-900">
+                        {formatPrice(pkg.unitPrice)}
+                        <span className="text-sm text-slate-500 font-normal">
+                          /tháng
+                        </span>
+                      </p>
                     </div>
-
-                    <div className="space-y-2 mb-6">
-                      {(pkg.features || []).map((feature: string, idx: number) => (
-                        <div key={idx} className="flex items-start gap-2">
-                          <Check className="w-4 h-4 text-green-600 mt-0.5 shrink-0" />
-                          <span className="text-sm text-slate-600">{feature}</span>
-                        </div>
-                      ))}
-                    </div>
-
                     {alreadyRegistered ? (
-                      <Button fullWidth variant="outlined" disabled
-                        sx={{ textTransform: 'none', borderRadius: 2 }}>
+                      <Button
+                        fullWidth
+                        variant="outlined"
+                        disabled
+                        sx={{ textTransform: "none", borderRadius: 2 }}
+                      >
                         Đã đăng ký
                       </Button>
                     ) : (
                       <Link to={`/packages/${pkg._id}`}>
-                        <Button fullWidth variant="contained"
-                          sx={{ bgcolor: '#4f46e5', '&:hover': { bgcolor: '#4338ca' }, textTransform: 'none', borderRadius: 2 }}>
+                        <Button
+                          fullWidth
+                          variant="contained"
+                          sx={{
+                            bgcolor: "#4f46e5",
+                            textTransform: "none",
+                            borderRadius: 2,
+                          }}
+                        >
                           Đăng ký ngay
                         </Button>
                       </Link>
@@ -497,6 +636,71 @@ export function MyPackages() {
                   </div>
                 );
               })}
+            </div>
+          </div>
+        )}
+
+        {renewModalOpen && selectedPkg && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-xl">
+              <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center">
+                <h3 className="font-bold text-lg text-slate-900">
+                  Gia hạn gói tập
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setRenewModalOpen(false)}
+                  className="p-1 hover:bg-slate-100 rounded-full"
+                >
+                  <X className="w-5 h-5 text-slate-500" />
+                </button>
+              </div>
+              <div className="p-6">
+                <p className="mb-4 text-slate-600">
+                  Đối tượng xử lý:{" "}
+                  <strong className="text-slate-900">{selectedPkg.name}</strong>
+                </p>
+                <div className="grid grid-cols-3 gap-3 mb-6">
+                  {[1, 3, 6].map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => setRenewMonths(m)}
+                      className={`py-2 rounded-xl border-2 font-semibold transition-all ${renewMonths === m ? "border-indigo-600 bg-indigo-50 text-indigo-700" : "border-slate-200 text-slate-600"}`}
+                    >
+                      {m} Tháng
+                    </button>
+                  ))}
+                </div>
+                <div className="flex justify-between items-center font-bold text-lg bg-slate-50 p-4 rounded-xl border border-slate-100">
+                  <span>Thành tiền:</span>
+                  <span className="text-indigo-600">
+                    {formatPrice(selectedPkg.unitPrice * renewMonths)}
+                  </span>
+                </div>
+              </div>
+              <div className="p-4 bg-slate-50 border-t flex gap-3">
+                <Button
+                  fullWidth
+                  variant="outlined"
+                  onClick={() => setRenewModalOpen(false)}
+                  sx={{ textTransform: "none", borderRadius: 2 }}
+                >
+                  Hủy
+                </Button>
+                <Button
+                  fullWidth
+                  variant="contained"
+                  onClick={handleExecuteRenew}
+                  sx={{
+                    bgcolor: "#4f46e5",
+                    textTransform: "none",
+                    borderRadius: 2,
+                  }}
+                >
+                  Tới trang thanh toán
+                </Button>
+              </div>
             </div>
           </div>
         )}
