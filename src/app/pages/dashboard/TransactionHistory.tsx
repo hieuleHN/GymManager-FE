@@ -1,156 +1,210 @@
 import { DashboardLayout } from '../../components/DashboardLayout';
-import { useState } from 'react';
-import { Download } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { getApiUrl, getAuthHeaders } from '../../context/AuthContext';
+import { Loader2 } from 'lucide-react';
+
+interface Transaction {
+  _id: string;
+  package_id: {
+    _id: string;
+    name: string;
+    unitPrice: number;
+  };
+  locationId?: {
+    bankName?: string;
+    accountNumber?: string;
+    accountName?: string;
+    branch?: string;
+  };
+  total_price: number;
+  payment_method: string;
+  payment_status: string;
+  createdAt: string;
+  start_date: string;
+  end_date: string;
+  duration_months: number;
+  vnpay_bank_code?: string;
+  vnpay_bank_tran_no?: string;
+  vnpay_card_type?: string;
+  vnpay_transaction_no?: string;
+}
+
+const bankNameMap: Record<string, string> = {
+  'NCB': 'Ngân hàng NCB',
+  'VNPAY': 'VNPay',
+  'VISA': 'Visa',
+  'MB': 'Ngân hàng Quân đội (MB)',
+  'BIDV': 'Ngân hàng BIDV',
+  'VIETCOM': 'Ngân hàng Vietcombank',
+  'VIETIN': 'Ngân hàng VietinBank',
+  'AGRI': 'Ngân hàng Agribank',
+  'TECH': 'Ngân hàng Techcombank',
+  'VP': 'Ngân hàng VPBank',
+  'TP': 'Ngân hàng TPBank',
+  'ACB': 'Ngân hàng ACB',
+  'HDB': 'Ngân hàng HDBank',
+  'SHB': 'Ngân hàng SHB',
+  'SCB': 'Ngân hàng SCB',
+  'EXIM': 'Ngân hàng Eximbank',
+  'MSB': 'Ngân hàng MSB',
+  'NAMAB': 'Ngân hàng Nam Á Bank',
+  'SACOM': 'Ngân hàng Sacombank',
+  'SEA': 'Ngân hàng Seabank',
+  'OJB': 'Ngân hàng OCB',
+  'VIB': 'Ngân hàng VIB',
+  'PGB': 'Ngân hàng PG Bank',
+  'BVB': 'Ngân hàng Bảo Việt',
+  'DAB': 'Ngân hàng Đông Á',
+  'STB': 'Ngân hàng Sacombank',
+  'PVC': 'Ngân hàng PVcomBank',
+  'VAB': 'Ngân hàng Việt Á',
+};
+
+const paymentMethodLabels: Record<string, string> = {
+  'vnpay': 'VNPay',
+  'momo': 'MoMo',
+  'bank-card': 'Thẻ ngân hàng',
+  'bank-transfer': 'Chuyển khoản',
+  'qr-code': 'VietQR',
+};
+
+const statusConfig: Record<string, { label: string; className: string }> = {
+  'đã thanh toán': { label: 'Thành công', className: 'bg-green-100 text-green-700' },
+  'chờ thanh toán': { label: 'Chờ thanh toán', className: 'bg-amber-100 text-amber-700' },
+  'đã hủy': { label: 'Đã hủy', className: 'bg-red-100 text-red-700' },
+};
 
 export function TransactionHistory() {
-  const [activeTab, setActiveTab] = useState('all');
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const transactions = [
-    {
-      id: 1,
-      date: '01/05/2024',
-      package: 'Gói tập PREMIUM',
-      type: 'Gói phòng',
-      amount: 2800000,
-      method: 'VNPay',
-      status: 'Thành công'
-    },
-    {
-      id: 2,
-      date: '15/05/2024',
-      package: 'Whey Protein Gold Standard',
-      type: 'Sản phẩm',
-      amount: 1400000,
-      method: 'Momo',
-      status: 'Thành công'
-    },
-    {
-      id: 3,
-      date: '14/05/2024',
-      package: 'Shaker Bottle 700ml',
-      type: 'Sản phẩm',
-      amount: 120000,
-      method: 'Tiền mặt',
-      status: 'Thành công'
-    },
-    {
-      id: 4,
-      date: '16/05/2024',
-      package: 'Gói băng gối Mộc',
-      type: 'Dịch vụ',
-      amount: 500000,
-      method: 'VNPay',
-      status: 'Đang xử lý'
-    },
-  ];
+  useEffect(() => {
+    fetch(`${getApiUrl()}/api/user-packages/transactions`, {
+      headers: getAuthHeaders(),
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) setTransactions(data);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
 
-  const tabs = [
-    { id: 'all', name: 'Tất cả' },
-    { id: 'package', name: 'Gói tập' },
-    { id: 'product', name: 'Sản phẩm' },
-    { id: 'service', name: 'Dịch vụ' }
-  ];
+  const formatPrice = (price: number) =>
+    price.toLocaleString('vi-VN') + 'đ';
 
-  const formatPrice = (price: number) => {
-    return price.toLocaleString('vi-VN') + 'đ';
+  const formatDate = (dateStr: string) => {
+    const d = new Date(dateStr);
+    return d.toLocaleDateString('vi-VN');
   };
 
-  const getFilteredTransactions = () => {
-    if (activeTab === 'all') return transactions;
-    const typeMap: { [key: string]: string } = {
-      'package': 'Gói phòng',
-      'product': 'Sản phẩm',
-      'service': 'Dịch vụ'
-    };
-    return transactions.filter(t => t.type === typeMap[activeTab]);
+  const getMethodLabel = (method: string) =>
+    paymentMethodLabels[method] || method || '---';
+
+  const getStatusInfo = (status: string) =>
+    statusConfig[status] || { label: status, className: 'bg-slate-100 text-slate-700' };
+
+  const getBankInfo = (tx: Transaction) => {
+    if (tx.payment_method === 'vnpay' && tx.vnpay_bank_code) {
+      return bankNameMap[tx.vnpay_bank_code] || `Ngân hàng ${tx.vnpay_bank_code}`;
+    }
+    if (tx.payment_method === 'bank-transfer' || tx.payment_method === 'qr-code') {
+      return tx.locationId?.bankName || '---';
+    }
+    return '---';
   };
+
+  const getAccountNumber = (tx: Transaction) => {
+    if (tx.payment_method === 'vnpay' && tx.vnpay_bank_tran_no) {
+      return tx.vnpay_bank_tran_no;
+    }
+    if (tx.payment_method === 'bank-transfer' || tx.payment_method === 'qr-code') {
+      return tx.locationId?.accountNumber || '---';
+    }
+    return '---';
+  };
+
+  if (loading) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center py-20">
+          <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout>
       <div className="max-w-7xl mx-auto space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-slate-900 mb-2">Lịch sử giao dịch</h1>
-            <p className="text-slate-600">Theo dõi chi tiêu và thanh toán của bạn</p>
-          </div>
-          <button className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors">
-            <Download className="w-4 h-4" />
-            Xuất báo cáo
-          </button>
+        <div>
+          <h1 className="text-3xl font-bold text-slate-900 mb-2">Lịch sử giao dịch</h1>
+          <p className="text-slate-600">Theo dõi chi tiêu và thanh toán của bạn</p>
         </div>
 
-        {/* Tabs */}
-        <div className="bg-white p-2 rounded-xl shadow-sm border border-slate-100 inline-flex gap-2">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`px-6 py-2.5 rounded-lg font-semibold transition-all ${
-                activeTab === tab.id
-                  ? 'bg-indigo-600 text-white shadow-md'
-                  : 'text-slate-600 hover:bg-slate-50'
-              }`}
-            >
-              {tab.name}
-            </button>
-          ))}
-        </div>
-
-        {/* Table */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-slate-900">Ngày</th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-slate-900">Nội dung</th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-slate-900">Loại</th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-slate-900">Số tiền</th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-slate-900">Phương thức</th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-slate-900">Trạng thái</th>
+                  <th className="px-4 py-4 text-left text-sm font-semibold text-slate-900 whitespace-nowrap">Ngày</th>
+                  <th className="px-4 py-4 text-left text-sm font-semibold text-slate-900 whitespace-nowrap">Nội dung</th>
+                  <th className="px-4 py-4 text-left text-sm font-semibold text-slate-900 whitespace-nowrap">Loại</th>
+                  <th className="px-4 py-4 text-left text-sm font-semibold text-slate-900 whitespace-nowrap">Số tiền</th>
+                  <th className="px-4 py-4 text-left text-sm font-semibold text-slate-900 whitespace-nowrap">Phương thức</th>
+                  <th className="px-4 py-4 text-left text-sm font-semibold text-slate-900 whitespace-nowrap">Ngân hàng</th>
+                  <th className="px-4 py-4 text-left text-sm font-semibold text-slate-900 whitespace-nowrap">Số tài khoản</th>
+                  <th className="px-4 py-4 text-left text-sm font-semibold text-slate-900 whitespace-nowrap">Trạng thái</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {getFilteredTransactions().map((transaction) => (
-                  <tr key={transaction.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-6 py-4 text-sm text-slate-600">{transaction.date}</td>
-                    <td className="px-6 py-4">
-                      <p className="font-medium text-slate-900">{transaction.package}</p>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-slate-600">{transaction.type}</td>
-                    <td className="px-6 py-4">
-                      <span className="font-semibold text-slate-900">{formatPrice(transaction.amount)}</span>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-slate-600">{transaction.method}</td>
-                    <td className="px-6 py-4">
-                      <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${
-                        transaction.status === 'Thành công'
-                          ? 'bg-green-100 text-green-700'
-                          : 'bg-amber-100 text-amber-700'
-                      }`}>
-                        {transaction.status}
-                      </span>
+                {transactions.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="px-4 py-12 text-center text-slate-400">
+                      Chưa có giao dịch nào
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  transactions.map((tx) => {
+                    const status = getStatusInfo(tx.payment_status);
+                    return (
+                      <tr key={tx._id} className="hover:bg-slate-50 transition-colors">
+                        <td className="px-4 py-4 text-sm text-slate-600 whitespace-nowrap">
+                          {formatDate(tx.createdAt)}
+                        </td>
+                        <td className="px-4 py-4">
+                          <p className="font-medium text-slate-900">
+                            {tx.package_id?.name || 'Đã xóa'}
+                          </p>
+                        </td>
+                        <td className="px-4 py-4 text-sm text-slate-600 whitespace-nowrap">
+                          Gói tập
+                        </td>
+                        <td className="px-4 py-4">
+                          <span className="font-semibold text-slate-900 whitespace-nowrap">
+                            {formatPrice(tx.total_price)}
+                          </span>
+                        </td>
+                        <td className="px-4 py-4 text-sm text-slate-600 whitespace-nowrap">
+                          {getMethodLabel(tx.payment_method)}
+                        </td>
+                        <td className="px-4 py-4 text-sm text-slate-600 whitespace-nowrap">
+                          {getBankInfo(tx)}
+                        </td>
+                        <td className="px-4 py-4 text-sm text-slate-600 whitespace-nowrap">
+                          {getAccountNumber(tx)}
+                        </td>
+                        <td className="px-4 py-4 whitespace-nowrap">
+                          <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${status.className}`}>
+                            {status.label}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
               </tbody>
             </table>
-          </div>
-        </div>
-
-        {/* Summary */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-            <h3 className="text-sm text-slate-600 mb-2">Tổng chi tiêu tháng này</h3>
-            <p className="text-3xl font-bold text-slate-900">{formatPrice(4820000)}</p>
-          </div>
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-            <h3 className="text-sm text-slate-600 mb-2">Số giao dịch</h3>
-            <p className="text-3xl font-bold text-indigo-600">{transactions.length}</p>
-          </div>
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-            <h3 className="text-sm text-slate-600 mb-2">Phương thức phổ biến</h3>
-            <p className="text-3xl font-bold text-purple-600">VNPay</p>
           </div>
         </div>
       </div>

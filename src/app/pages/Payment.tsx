@@ -1,9 +1,10 @@
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useLocation, useNavigate, Navigate } from 'react-router';
 import { Button } from '@mui/material';
-import { CreditCard, Building2, Smartphone, Check, Loader2, ExternalLink } from 'lucide-react';
-import { getApiUrl, getAuthHeaders } from '../context/AuthContext';
+import { CreditCard, Building2, Smartphone, Check, Loader2, ExternalLink, QrCode } from 'lucide-react';
+import { useAuth, getApiUrl, getAuthHeaders } from '../context/AuthContext';
+
 
 
 const paymentMethods = [
@@ -11,8 +12,8 @@ const paymentMethods = [
     id: "vnpay",
     name: "VNPay",
     icon: Smartphone,
+    description: "Thanh toán qua VNPay (ATM/Internet Banking)",
 
-    description: "Thanh toán qua VNPay (Quét mã QR có sẵn số tiền)",
   },
   {
     id: "momo",
@@ -51,9 +52,6 @@ export function Payment() {
 
   const [paymentSuccess, setPaymentSuccess] = useState(false);
   const [processing, setProcessing] = useState(false);
-
-  const [vnpayQR, setVnpayQR] = useState({ dataUrl: "", amount: 0 });
-  const [showVNPayQR, setShowVNPayQR] = useState(false);
 
   const [bankInfo, setBankInfo] = useState({
     bankName: "",
@@ -121,59 +119,12 @@ export function Payment() {
       return;
     }
 
-    if (!registration?._id) {
+    if (!regId) {
       alert('Không tìm thấy thông tin đăng ký!');
-
       return;
     }
 
     setProcessing(true);
-
-
-    if (selectedMethod === 'vnpay') {
-      try {
-        await fetch(`${getApiUrl()}/api/user-packages/${registration._id}/payment-method`, {
-          method: 'PATCH',
-          headers: getAuthHeaders() as any,
-          body: JSON.stringify({ payment_method: 'vnpay' }),
-        });
-
-        const res = await fetch(`${getApiUrl()}/api/user-packages/${registration._id}/vnpay-url`, {
-          headers: getAuthHeaders() as any,
-        });
-        if (!res.ok) {
-          const err = await res.json();
-          throw new Error(err.error || 'Lỗi tạo URL thanh toán');
-        }
-        const data = await res.json();
-        setVnpayData({ paymentUrl: data.paymentUrl, amount: totalPrice, txnRef: data.txnRef || String(Date.now()) });
-      } catch (err: any) {
-        alert(err.message || 'Có lỗi xảy ra. Vui lòng thử lại.');
-      } finally {
-        setProcessing(false);
-      }
-      return;
-    }
-
-
-
-    try {
-      const res = await fetch(`${getApiUrl()}/api/user-packages/${registration._id}/payment-method`, {
-        method: 'PATCH',
-        headers: getAuthHeaders() as any,
-        body: JSON.stringify({ payment_method: selectedMethod })
-
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || 'Thanh toán thất bại');
-      }
-
-      setPaymentSuccess(true);
-    } catch (err: any) {
-      alert(err.message || 'Có lỗi xảy ra khi thanh toán. Vui lòng thử lại.');
 
     try {
       if (selectedMethod === "vnpay") {
@@ -188,13 +139,6 @@ export function Payment() {
           throw new Error(err.error || "Lỗi kết nối VNPAY");
         }
         const data = await res.json();
-        const dataUrl = await QRCode.toDataURL(data.paymentUrl, {
-          width: 300,
-          margin: 2,
-          color: { dark: "#000000", light: "#ffffff" },
-        });
-        setVnpayQR({ dataUrl, amount: totalPrice });
-        setShowVNPayQR(true);
         await fetch(
           `${getApiUrl()}/api/user-packages/${regId}/payment-method`,
           {
@@ -203,6 +147,7 @@ export function Payment() {
             body: JSON.stringify({ payment_method: "vnpay" }),
           },
         );
+        window.location.href = data.paymentUrl;
       } else {
         const res = await fetch(
           `${getApiUrl()}/api/user-packages/${regId}/payment-method`,
@@ -220,13 +165,11 @@ export function Payment() {
       }
     } catch (err: any) {
       alert(err.message || "Có lỗi xảy ra. Vui lòng thử lại.");
-
     } finally {
       setProcessing(false);
     }
   };
 
-  const regId = registration?.id || registration?._id;
   const pdfToken = encodeURIComponent(JSON.parse(localStorage.getItem('auth_user') || '{}').token || '');
   const pdfUrl = `${getApiUrl()}/api/user-packages/${regId}/contract-pdf?token=${pdfToken}`;
 
@@ -422,6 +365,86 @@ export function Payment() {
               </div>
             </div>
 
+            {selectedMethod === "vnpay" && (
+              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+                <h3 className="text-lg font-bold text-slate-900 mb-4">
+                  Thanh toán qua VNPay
+                </h3>
+                <div className="flex flex-col items-center">
+                  <div className="w-64 h-64 bg-slate-100 rounded-xl flex items-center justify-center mb-4">
+                    <Smartphone className="w-12 h-12 text-slate-400" />
+                  </div>
+                  <p className="text-sm text-slate-600 text-center">
+                    Nhấn nút <strong>"Thanh toán VNPay"</strong> ở cột bên phải để được chuyển đến cổng thanh toán của VNPay.
+                    <br />
+                    Hỗ trợ: Internet Banking, ATM, Visa/Mastercard.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {selectedMethod === "qr-code" && (
+              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+                <h3 className="text-lg font-bold text-slate-900 mb-4">
+                  Quét mã VietQR để thanh toán
+                </h3>
+                <div className="flex flex-col items-center">
+                  {loadingPaymentInfo ? (
+                    <div className="w-64 h-64 bg-slate-100 rounded-xl flex items-center justify-center mb-4">
+                      <Loader2 className="w-8 h-8 animate-spin text-slate-400" />
+                    </div>
+                  ) : qrDynamicUrl ? (
+                    <>
+                      <img
+                        src={qrDynamicUrl}
+                        alt="QR thanh toán"
+                        className="w-64 h-64 object-contain rounded-xl mb-4 shadow-sm"
+                      />
+                      <div className="w-full space-y-3 bg-slate-50 p-4 rounded-xl">
+                        <div>
+                          <p className="text-sm text-slate-600">Ngân hàng:</p>
+                          <p className="font-bold text-slate-900">
+                            {bankInfo.bankName || "Đang cập nhật"}
+                            {bankInfo.branch ? ` - ${bankInfo.branch}` : ""}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-slate-600">Số tài khoản:</p>
+                          <p className="font-bold text-slate-900 text-lg">
+                            {bankInfo.accountNumber || "Đang cập nhật"}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-slate-600">Chủ tài khoản:</p>
+                          <p className="font-bold text-slate-900">
+                            {bankInfo.accountName || "Đang cập nhật"}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-slate-600">Số tiền:</p>
+                          <p className="font-bold text-indigo-600 text-lg">{formatPrice(totalPrice)}</p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-slate-600">Nội dung chuyển khoản:</p>
+                          <p className="font-bold text-slate-900">
+                            {customer?.fullName || customer?.phone || "Hội viên"} - {pkg.name}
+                          </p>
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="w-64 h-64 bg-slate-100 rounded-xl flex items-center justify-center mb-4 text-center p-4">
+                      <p className="text-slate-500 text-sm">
+                        Cơ sở này chưa cấu hình mã QR thanh toán.
+                      </p>
+                    </div>
+                  )}
+                  <p className="text-sm text-slate-600 text-center mt-4">
+                    Mở ứng dụng ngân hàng và quét mã QR để thanh toán nhanh
+                  </p>
+                </div>
+              </div>
+            )}
 
             {selectedMethod === 'bank-transfer' && (
 
@@ -518,60 +541,38 @@ export function Payment() {
                 </span>
               </div>
 
-              {showVNPayQR ? (
-                <Button
-                  fullWidth
-                  variant="contained"
-                  size="large"
-                  onClick={() => navigate("/dashboard/my-packages")}
-                  sx={{
-                    height: 56,
-                    borderRadius: 3,
-                    textTransform: "none",
-                    fontSize: "1rem",
-                    fontWeight: 700,
-                    bgcolor: "#4f46e5",
-                    "&:hover": { bgcolor: "#4338ca" },
-                  }}
-                >
-                  Về gói tập của tôi
-                </Button>
-              ) : (
-                <Button
-                  fullWidth
-                  variant="contained"
-                  size="large"
-                  onClick={handlePayment}
-                  disabled={!selectedMethod || processing}
-                  sx={{
-                    height: 56,
-                    borderRadius: 3,
-                    textTransform: "none",
-                    fontSize: "1rem",
-                    fontWeight: 700,
-                    bgcolor: "#4f46e5",
-                    "&:hover": { bgcolor: "#4338ca" },
-                  }}
-                >
-                  {processing
-                    ? "Đang xử lý..."
-                    : selectedMethod === "vnpay"
-                      ? "Tạo mã QR VNPay"
-                      : "Xác nhận thanh toán"}
-                </Button>
-              )}
+              <Button
+                fullWidth
+                variant="contained"
+                size="large"
+                onClick={handlePayment}
+                disabled={!selectedMethod || processing}
+                sx={{
+                  height: 56,
+                  borderRadius: 3,
+                  textTransform: "none",
+                  fontSize: "1rem",
+                  fontWeight: 700,
+                  bgcolor: "#4f46e5",
+                  "&:hover": { bgcolor: "#4338ca" },
+                }}
+              >
+                {processing
+                  ? "Đang xử lý..."
+                  : selectedMethod === "vnpay"
+                    ? "Thanh toán VNPay"
+                    : "Xác nhận thanh toán"}
+              </Button>
 
-              {!showVNPayQR && (
-                <Button
-                  fullWidth
-                  variant="text"
-                  size="small"
-                  onClick={() => navigate("/dashboard/my-packages")}
-                  sx={{ mt: 1, textTransform: "none", color: "#94a3b8" }}
-                >
-                  Thanh toán sau
-                </Button>
-              )}
+              <Button
+                fullWidth
+                variant="text"
+                size="small"
+                onClick={() => navigate("/dashboard/my-packages")}
+                sx={{ mt: 1, textTransform: "none", color: "#94a3b8" }}
+              >
+                Thanh toán sau
+              </Button>
             </div>
           </div>
         </div>
