@@ -188,10 +188,6 @@ export function MyPackages() {
     }
   }, [registrations]);
 
-  const formatPrice = (price: number) => {
-    if (!price) return '0đ';
-    return price.toLocaleString('vi-VN') + 'đ';
-
   const formatPrice = (price: number) =>
     price ? price.toLocaleString("vi-VN") + "đ" : "0đ";
   const formatDate = (dateStr: string) =>
@@ -200,7 +196,6 @@ export function MyPackages() {
     if (!endDate) return 0;
     const diff = new Date(endDate).getTime() - new Date().getTime();
     return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
-
   };
 
   const handleOpenRenewModal = (reg: Registration) => {
