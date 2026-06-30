@@ -481,23 +481,10 @@ export function PaymentManagement() {
                     Sau
                   </button>
                 </div>
-
-              </button>
-              <button
-                onClick={() => setActiveTab('registrations')}
-                className={`px-6 py-3 font-medium text-sm transition-all ${
-                  activeTab === 'registrations'
-                    ? 'text-indigo-600 border-b-2 border-indigo-600'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <Check className="w-4 h-4" />
-                  Xác nhận đăng ký
-                </div>
-              </button>
             </div>
-
+          )}
+            </div>
+          )}
 
         {/* Bank Transfer Tab */}
         {activeTab === 'bank' && (
@@ -642,8 +629,9 @@ export function PaymentManagement() {
                   <p className="text-sm text-slate-600">Mở ứng dụng ngân hàng trên điện thoại, chọn chức năng quét mã QR và hướng camera vào mã QR trên để thực hiện thanh toán nhanh chóng.</p>
                 </div>
               </div>
+            </div>
 
-            )}
+          ))}
 
             {/* Registrations Tab */}
             {activeTab === 'registrations' && (
@@ -771,8 +759,6 @@ export function PaymentManagement() {
                 )}
               </div>
             )}
-          </>
-        )}
       </div>
     </AdminLayout>
   );
