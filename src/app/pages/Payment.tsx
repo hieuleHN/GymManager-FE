@@ -65,8 +65,10 @@ export function Payment() {
 
   const paymentData = location.state;
 
+  const isBookingPayment = paymentData?.type === 'trainer_booking';
+
   if (!paymentData || !paymentData.package) {
-    return <Navigate to="/packages" />;
+    return <Navigate to={isBookingPayment ? '/dashboard/trainers' : '/packages'} />;
   }
 
   const {
@@ -75,18 +77,24 @@ export function Payment() {
     customer,
     durationMonths,
     totalPrice,
+    booking,
+    trainer
   } = paymentData;
 
   // Lấy ID đăng ký an toàn (hỗ trợ cả id và _id)
   const regId = registration?.id || registration?._id;
+  const bookingId = booking?._id || booking?.id;
 
   useEffect(() => {
     const locationId =
+      booking?.locationId?._id || booking?.locationId ||
       registration?.locationId ||
       pkg?.locationId?._id ||
       pkg?.locationId ||
       customer?.locationId?._id ||
-      customer?.locationId;
+      customer?.locationId ||
+      trainer?.locationId?._id ||
+      trainer?.locationId;
 
     if (!locationId) {
       setLoadingPaymentInfo(false);
@@ -107,7 +115,7 @@ export function Payment() {
       })
       .catch(() => {})
       .finally(() => setLoadingPaymentInfo(false));
-  }, [customer, registration, pkg]);
+  }, [customer, registration, pkg, booking, trainer]);
 
   const formatPrice = (price: number) => {
     return price.toLocaleString("vi-VN") + "đ";
@@ -119,49 +127,87 @@ export function Payment() {
       return;
     }
 
-    if (!regId) {
-      alert('Không tìm thấy thông tin đăng ký!');
-      return;
-    }
-
     setProcessing(true);
 
     try {
-      if (selectedMethod === "vnpay") {
-        const res = await fetch(
-          `${getApiUrl()}/api/user-packages/${regId}/vnpay-url`,
-          {
-            headers: getAuthHeaders() as any,
-          },
-        );
-        if (!res.ok) {
-          const err = await res.json();
-          throw new Error(err.error || "Lỗi kết nối VNPAY");
+      if (isBookingPayment) {
+        if (!bookingId) {
+          alert('DEBUG: bookingId is falsy! booking=', booking?._id, booking?.id);
+          throw new Error('Không tìm thấy thông tin đặt lịch!');
         }
-        const data = await res.json();
-        await fetch(
-          `${getApiUrl()}/api/user-packages/${regId}/payment-method`,
-          {
-            method: "PATCH",
+        if (selectedMethod === "vnpay") {
+          alert('DEBUG: Entering VNPAY branch for booking, bookingId=' + bookingId);
+          const res = await fetch(
+            `${getApiUrl()}/api/bookings/${bookingId}/vnpay-url`,
+            { headers: getAuthHeaders() as any },
+          );
+          if (!res.ok) {
+            let errMsg = "Lỗi kết nối VNPAY";
+            try { const err = await res.json(); errMsg = err.error || errMsg; } catch { errMsg = `HTTP ${res.status}`; }
+            alert('DEBUG: VNPAY fetch failed: ' + errMsg);
+            throw new Error(errMsg);
+          }
+          const data = await res.json();
+          alert('DEBUG: VNPAY URL received: ' + (data.paymentUrl || 'UNDEFINED!'));
+          if (!data.paymentUrl) {
+            alert('DEBUG: paymentUrl is undefined/empty!');
+            throw new Error('Không nhận được URL thanh toán VNPAY');
+          }
+          window.location.href = data.paymentUrl;
+        } else {
+          alert('DEBUG: selectedMethod is NOT vnpay, it is: "' + selectedMethod + '"');
+          const res = await fetch(`${getApiUrl()}/api/bookings/${bookingId}/payment`, {
+            method: 'PUT',
             headers: getAuthHeaders() as any,
-            body: JSON.stringify({ payment_method: "vnpay" }),
-          },
-        );
-        window.location.href = data.paymentUrl;
+            body: JSON.stringify({ paymentMethod: selectedMethod })
+          });
+          if (!res.ok) {
+            let errMsg = 'Cập nhật thất bại';
+            try { const err = await res.json(); errMsg = err.error || errMsg; } catch { errMsg = `HTTP ${res.status}`; }
+            throw new Error(errMsg);
+          }
+          setPaymentSuccess(true);
+        }
       } else {
-        const res = await fetch(
-          `${getApiUrl()}/api/user-packages/${regId}/payment-method`,
-          {
-            method: "PATCH",
-            headers: getAuthHeaders() as any,
-            body: JSON.stringify({ payment_method: selectedMethod }),
-          },
-        );
-        if (!res.ok) {
-          const err = await res.json();
-          throw new Error(err.error || "Cập nhật thất bại");
+        if (!regId) {
+          alert('Không tìm thấy thông tin đăng ký!');
+          return;
         }
-        setPaymentSuccess(true);
+        if (selectedMethod === "vnpay") {
+          const res = await fetch(
+            `${getApiUrl()}/api/user-packages/${regId}/vnpay-url`,
+            { headers: getAuthHeaders() as any },
+          );
+          if (!res.ok) {
+            let errMsg = "Lỗi kết nối VNPAY";
+            try { const err = await res.json(); errMsg = err.error || errMsg; } catch { errMsg = `HTTP ${res.status}`; }
+            throw new Error(errMsg);
+          }
+          const data = await res.json();
+          await fetch(
+            `${getApiUrl()}/api/user-packages/${regId}/payment-method`,
+            {
+              method: "PATCH",
+              headers: getAuthHeaders() as any,
+              body: JSON.stringify({ payment_method: "vnpay" }),
+            },
+          );
+          window.location.href = data.paymentUrl;
+        } else {
+          const res = await fetch(
+            `${getApiUrl()}/api/user-packages/${regId}/payment-method`,
+            {
+              method: "PATCH",
+              headers: getAuthHeaders() as any,
+              body: JSON.stringify({ payment_method: selectedMethod }),
+            },
+          );
+          if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.error || "Cập nhật thất bại");
+          }
+          setPaymentSuccess(true);
+        }
       }
     } catch (err: any) {
       alert(err.message || "Có lỗi xảy ra. Vui lòng thử lại.");
@@ -221,7 +267,7 @@ export function Payment() {
             fullWidth
             variant="contained"
             size="large"
-            onClick={() => navigate("/dashboard/my-packages")}
+            onClick={() => navigate(isBookingPayment ? "/dashboard/schedule" : "/dashboard/my-packages")}
             sx={{
               height: 56,
               borderRadius: 3,
@@ -232,7 +278,7 @@ export function Payment() {
               "&:hover": { bgcolor: "#4338ca" },
             }}
           >
-            Về gói tập của tôi
+            {isBookingPayment ? 'Về lịch tập' : 'Về gói tập của tôi'}
           </Button>
         </div>
       </div>
@@ -505,23 +551,44 @@ export function Payment() {
               </h2>
 
               <div className="space-y-4 mb-6 pb-6 border-b border-slate-200">
-                <div>
-                  <p className="text-sm text-slate-500">Gói tập</p>
-                  <p className="font-bold text-slate-900">{pkg.name}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-slate-500">Thời hạn</p>
-                  <p className="font-medium text-slate-900">
-                    {durationMonths} tháng
-                  </p>
-                </div>
-                {regId && (
-                  <div>
-                    <p className="text-sm text-slate-500">Mã đăng ký</p>
-
-                    <p className="font-medium text-slate-900 text-xs">{registration._id}</p>
-
-                  </div>
+                {isBookingPayment ? (
+                  <>
+                    <div>
+                      <p className="text-sm text-slate-500">Dịch vụ</p>
+                      <p className="font-bold text-slate-900">{pkg.name}</p>
+                    </div>
+                    {trainer && (
+                      <div>
+                        <p className="text-sm text-slate-500">HLV</p>
+                        <p className="font-bold text-slate-900">{trainer.fullName}</p>
+                      </div>
+                    )}
+                    {booking && (
+                      <div>
+                        <p className="text-sm text-slate-500">Mã đặt lịch</p>
+                        <p className="font-medium text-slate-900 text-xs">{booking._id}</p>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <div>
+                      <p className="text-sm text-slate-500">Gói tập</p>
+                      <p className="font-bold text-slate-900">{pkg.name}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-slate-500">Thời hạn</p>
+                      <p className="font-medium text-slate-900">
+                        {durationMonths} tháng
+                      </p>
+                    </div>
+                    {regId && (
+                      <div>
+                        <p className="text-sm text-slate-500">Mã đăng ký</p>
+                        <p className="font-medium text-slate-900 text-xs">{registration._id}</p>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
 

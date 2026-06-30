@@ -22,6 +22,7 @@ import { BookSchedule } from './pages/dashboard/BookSchedule';
 import { Trainers } from './pages/dashboard/Trainers';
 import { BookTrainer } from './pages/dashboard/BookTrainer';
 import { ConfirmTrainerBooking } from './pages/dashboard/ConfirmTrainerBooking';
+import { TrainerDetail } from './pages/dashboard/TrainerDetail';
 import { Progress } from './pages/dashboard/Progress';
 import { Services as MemberServices } from './pages/dashboard/Services';
 import { Settings } from './pages/dashboard/Settings';
@@ -194,6 +195,10 @@ export const router = createBrowserRouter([
   {
     path: '/dashboard/trainers',
     element: <ProtectedRoute role="member"><Trainers /></ProtectedRoute>
+  },
+  {
+    path: '/dashboard/trainers/:trainerId',
+    element: <ProtectedRoute role="member"><TrainerDetail /></ProtectedRoute>
   },
   {
     path: '/dashboard/trainers/:trainerId/book',
