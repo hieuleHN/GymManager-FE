@@ -31,8 +31,6 @@ const fallbackTrainers: Trainer[] = [
     rating: 4.9,
     totalReviews: 124,
     experience: '8 năm kinh nghiệm'
-
-
   },
   {
     _id: '2',
@@ -45,8 +43,6 @@ const fallbackTrainers: Trainer[] = [
     rating: 5.0,
     totalReviews: 89,
     experience: '10 năm kinh nghiệm'
-
-
   },
   {
     _id: '3',
@@ -59,8 +55,6 @@ const fallbackTrainers: Trainer[] = [
     rating: 4.8,
     totalReviews: 215,
     experience: '6 năm kinh nghiệm'
-
-
   },
   {
     _id: '4',
@@ -73,8 +67,6 @@ const fallbackTrainers: Trainer[] = [
     rating: 4.9,
     totalReviews: 156,
     experience: '5 năm kinh nghiệm'
-
-
   }
 ];
 
@@ -162,13 +154,6 @@ export function PTList() {
             }}
             sx={{ bgcolor: 'white', borderRadius: 2 }}
           />
-
-
-
-
-
-
-
         </div>
 
         {/* Specialty Filter */}
@@ -177,10 +162,11 @@ export function PTList() {
             <Filter className="w-5 h-5 text-indigo-600" />
             <button
               onClick={() => setSelectedSpecialty('all')}
-              className={`px-5 py-2.5 rounded-xl font-semibold transition-all ${selectedSpecialty === 'all'
+              className={`px-5 py-2.5 rounded-xl font-semibold transition-all ${
+                selectedSpecialty === 'all'
                   ? 'bg-indigo-600 text-white shadow-md'
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                }`}
+              }`}
             >
               Tất cả
             </button>
@@ -188,10 +174,11 @@ export function PTList() {
               <button
                 key={spec.id}
                 onClick={() => setSelectedSpecialty(spec.id)}
-                className={`px-5 py-2.5 rounded-xl font-semibold transition-all ${selectedSpecialty === spec.id
+                className={`px-5 py-2.5 rounded-xl font-semibold transition-all ${
+                  selectedSpecialty === spec.id
                     ? 'bg-indigo-600 text-white shadow-md'
                     : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
+                }`}
               >
                 {spec.name}
               </button>

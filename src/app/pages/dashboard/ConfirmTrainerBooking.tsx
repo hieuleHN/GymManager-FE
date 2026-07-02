@@ -9,7 +9,7 @@ import { toast } from 'sonner';
 interface BookingDetail {
   _id: string;
   customerId: { _id: string; fullName: string; phone: string; email: string };
-  trainerId: { _id: string; fullName: string; phone?: string; avatar?: string };
+  trainerId: { _id: string; fullName: string; phone?: string };
   date: string;
   time: string;
   status: 'pending' | 'confirmed' | 'rejected' | 'cancelled';
@@ -110,7 +110,7 @@ export function ConfirmTrainerBooking() {
             <p className="text-slate-500 mb-6">Lịch đặt không tồn tại hoặc đã bị xóa.</p>
             <Button
               variant="contained"
-              onClick={() => navigate('/dashboard/schedule/book')}
+              onClick={() => navigate('/dashboard/schedule')}
               sx={{ textTransform: 'none', bgcolor: '#4f46e5', '&:hover': { bgcolor: '#4338ca' } }}
             >
               Quay lại lịch tập
@@ -154,18 +154,10 @@ export function ConfirmTrainerBooking() {
             <h2 className="text-xl font-bold text-slate-900 mb-6">Thông tin Huấn luyện viên</h2>
 
             <div className="flex gap-6 mb-6">
-              <div className="w-32 h-32 bg-indigo-100 rounded-2xl flex items-center justify-center overflow-hidden">
-                {booking.trainerId?.avatar ? (
-                  <img
-                    src={booking.trainerId.avatar}
-                    alt={booking.trainerId.fullName}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <span className="text-4xl font-bold text-indigo-600">
-                    {booking.trainerId?.fullName?.charAt(0) || 'H'}
-                  </span>
-                )}
+              <div className="w-32 h-32 bg-indigo-100 rounded-2xl flex items-center justify-center">
+                <span className="text-4xl font-bold text-indigo-600">
+                  {booking.trainerId?.fullName?.charAt(0) || 'H'}
+                </span>
               </div>
               <div className="flex-1">
                 <h3 className="text-2xl font-bold text-slate-900 mb-1">{booking.trainerId?.fullName || 'N/A'}</h3>
@@ -232,7 +224,7 @@ export function ConfirmTrainerBooking() {
               <Button
                 fullWidth
                 variant="contained"
-                onClick={() => navigate('/dashboard/schedule/book')}
+                onClick={() => navigate('/dashboard/schedule')}
                 sx={{
                   height: 48,
                   borderRadius: 3,
