@@ -11,6 +11,7 @@ import {
 import { AdminLayout } from "../../components/AdminLayout";
 import { getAuthHeaders } from "../../context/AuthContext";
 import { toast } from "sonner";
+import {useLocation, useNavigate} from "react-router";
 
 interface Booking {
   _id: string;
@@ -26,6 +27,10 @@ interface Booking {
 }
 
 export function ScheduleConfirmations() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const bookingIdFromNav = (location.state as any)?.bookingId;
+
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
@@ -35,24 +40,40 @@ export function ScheduleConfirmations() {
   const [rejectionReason, setRejectionReason] = useState("");
 
   useEffect(() => {
-    fetchBookings();
-  }, []);
+  fetchBookings();
+}, []);
 
+// Xóa state navigation sau khi đã dùng
+useEffect(() => {
+  if (showDetailModal) {
+    window.history.replaceState({}, document.title);
+  }
+}, [showDetailModal]);
   const fetchBookings = async () => {
-    try {
-      setLoading(true);
-      const headers = getAuthHeaders();
-      const res = await fetch("/api/bookings?limit=100", { headers });
-      if (res.ok) {
-        const data = await res.json();
-        setBookings(data.data || []);
+  try {
+    setLoading(true);
+    const headers = getAuthHeaders();
+    const res = await fetch("/api/bookings?limit=100", { headers });
+    if (res.ok) {
+      const data = await res.json();
+      const list = data.data || [];
+      setBookings(list);
+
+      // Tự mở modal nếu có bookingId từ navigation
+      if (bookingIdFromNav) {
+        const found = list.find((b: Booking) => b._id === bookingIdFromNav);
+        if (found) {
+          setSelectedBooking(found);
+          setShowDetailModal(true);
+        }
       }
-    } catch (err) {
-      toast.error("Lỗi tải danh sách lịch đặt!");
-    } finally {
-      setLoading(false);
     }
-  };
+  } catch (err) {
+    toast.error("Lỗi tải danh sách lịch đặt!");
+  } finally {
+    setLoading(false);
+  }
+};
 
   const handleConfirm = async (bookingId: string) => {
     try {
