@@ -30,6 +30,7 @@ export function ScheduleConfirmations() {
   const navigate = useNavigate();
   const location = useLocation();
   const bookingIdFromNav = (location.state as any)?.bookingId;
+  const [statusFilter, setStatusFilter] = useState<'all'|'pending'|'confirmed'|'rejected'>('all');
 
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
@@ -153,6 +154,10 @@ useEffect(() => {
   const confirmedCount = bookings.filter((b) => b.status === "confirmed").length;
   const rejectedCount = bookings.filter((b) => b.status === "rejected").length;
 
+  const filteredBookings = statusFilter === 'all'
+  ? bookings
+  : bookings.filter(b => b.status === statusFilter);
+
   return (
     <AdminLayout>
       <div className="space-y-6">
@@ -167,30 +172,51 @@ useEffect(() => {
 
         {/* Stats */}
         <div className="grid md:grid-cols-3 gap-4">
-          <div className="bg-gradient-to-br from-yellow-500 to-yellow-600 rounded-2xl p-6 text-white">
-            <div className="flex items-center gap-3 mb-2">
-              <Clock className="w-6 h-6" />
-              <h3 className="font-semibold">Chờ xác nhận</h3>
-            </div>
-            <p className="text-4xl font-bold">{pendingCount}</p>
-          </div>
+  <button
+    onClick={() => setStatusFilter('pending')}
+    className={`rounded-2xl p-6 text-left transition-all ${
+      statusFilter === 'pending'
+        ? 'bg-gradient-to-br from-yellow-500 to-yellow-600 text-white'
+        : 'bg-white border border-slate-200 hover:border-yellow-400'
+    }`}
+  >
+    <div className="flex items-center gap-3 mb-2">
+      <Clock className={`w-6 h-6 ${statusFilter === 'pending' ? 'text-white' : 'text-yellow-600'}`} />
+      <h3 className={`font-semibold ${statusFilter === 'pending' ? 'text-white' : 'text-slate-900'}`}>Chờ xác nhận</h3>
+    </div>
+    <p className={`text-4xl font-bold ${statusFilter === 'pending' ? 'text-white' : 'text-slate-900'}`}>{pendingCount}</p>
+  </button>
 
-          <div className="bg-white rounded-2xl p-6 border border-slate-200">
-            <div className="flex items-center gap-3 mb-2 text-green-600">
-              <CheckCircle className="w-6 h-6" />
-              <h3 className="font-semibold text-slate-900">Đã xác nhận</h3>
-            </div>
-            <p className="text-4xl font-bold text-slate-900">{confirmedCount}</p>
-          </div>
+  <button
+    onClick={() => setStatusFilter('confirmed')}
+    className={`rounded-2xl p-6 text-left transition-all ${
+      statusFilter === 'confirmed'
+        ? 'bg-gradient-to-br from-green-500 to-green-600 text-white'
+        : 'bg-white border border-slate-200 hover:border-green-400'
+    }`}
+  >
+    <div className="flex items-center gap-3 mb-2">
+      <CheckCircle className={`w-6 h-6 ${statusFilter === 'confirmed' ? 'text-white' : 'text-green-600'}`} />
+      <h3 className={`font-semibold ${statusFilter === 'confirmed' ? 'text-white' : 'text-slate-900'}`}>Đã xác nhận</h3>
+    </div>
+    <p className={`text-4xl font-bold ${statusFilter === 'confirmed' ? 'text-white' : 'text-slate-900'}`}>{confirmedCount}</p>
+  </button>
 
-          <div className="bg-white rounded-2xl p-6 border border-slate-200">
-            <div className="flex items-center gap-3 mb-2 text-red-600">
-              <X className="w-6 h-6" />
-              <h3 className="font-semibold text-slate-900">Đã từ chối</h3>
-            </div>
-            <p className="text-4xl font-bold text-slate-900">{rejectedCount}</p>
-          </div>
-        </div>
+  <button
+    onClick={() => setStatusFilter('rejected')}
+    className={`rounded-2xl p-6 text-left transition-all ${
+      statusFilter === 'rejected'
+        ? 'bg-gradient-to-br from-red-500 to-red-600 text-white'
+        : 'bg-white border border-slate-200 hover:border-red-400'
+    }`}
+  >
+    <div className="flex items-center gap-3 mb-2">
+      <X className={`w-6 h-6 ${statusFilter === 'rejected' ? 'text-white' : 'text-red-600'}`} />
+      <h3 className={`font-semibold ${statusFilter === 'rejected' ? 'text-white' : 'text-slate-900'}`}>Đã từ chối</h3>
+    </div>
+    <p className={`text-4xl font-bold ${statusFilter === 'rejected' ? 'text-white' : 'text-slate-900'}`}>{rejectedCount}</p>
+  </button>
+</div>
 
         {/* Requests List */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200">
@@ -205,14 +231,14 @@ useEffect(() => {
               <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
               <p className="text-slate-500">Đang tải...</p>
             </div>
-          ) : bookings.length === 0 ? (
+          ) : filteredBookings.length === 0 ? (
             <div className="p-12 text-center">
               <Calendar className="w-16 h-16 text-slate-300 mx-auto mb-4" />
               <p className="text-slate-500">Chưa có yêu cầu đặt lịch nào</p>
             </div>
           ) : (
             <div className="divide-y divide-slate-200">
-              {bookings.map((booking) => (
+              {filteredBookings.map((booking) => (
                 <div
                   key={booking._id}
                   className="p-6 hover:bg-slate-50 transition-colors"
