@@ -48,7 +48,12 @@ export function BookSchedule() {
   };
 
   const weekDays = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
-  const hours = ['06:00', '08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00'];
+  const hours = [
+    '06:00', '06:30', '07:00', '07:30', '08:00', '08:30', '09:00', '09:30',
+    '10:00', '10:30', '11:00', '11:30', '12:00', '12:30', '13:00', '13:30',
+    '14:00', '14:30', '15:00', '15:30', '16:00', '16:30', '17:00', '17:30',
+    '18:00', '18:30', '19:00', '19:30', '20:00'
+  ];
 
   const getWeekDays = useMemo(() => {
     const days = [];
@@ -221,7 +226,7 @@ export function BookSchedule() {
           {/* Calendar Content */}
           <div className="flex-1 overflow-hidden">
             {viewMode === 'week' ? (
-              <div className="h-full flex flex-col">
+              <div className="h-[calc(100vh-16rem)] flex flex-col">
                 {/* Week Header */}
                 <div className="grid grid-cols-8 gap-2 mb-2">
                   <div className="text-sm text-slate-600 font-medium"></div>
@@ -236,8 +241,8 @@ export function BookSchedule() {
                 </div>
 
                 {/* Week Grid */}
-                <div className="flex-1 border border-slate-200 rounded-xl overflow-hidden">
-                  <div className="h-full grid grid-rows-8 gap-px bg-slate-200">
+                <div className="flex-1 border border-slate-200 rounded-xl overflow-y-auto">
+                  <div className="grid grid-rows-29 gap-px bg-slate-200 min-h-[1450px]">
                     {hours.map((hour, hourIdx) => (
                       <div key={hour} className="grid grid-cols-8 gap-px">
                         <div className="bg-white p-2 text-sm text-slate-600 font-medium flex items-center justify-center">
@@ -246,7 +251,7 @@ export function BookSchedule() {
                         {getWeekDays.map((date, dayIdx) => {
                           const hourBookings = getBookingsForHour(date, hour);
                           return (
-                            <div key={dayIdx} className="bg-white p-1 relative min-h-[60px]">
+                            <div key={dayIdx} className="bg-white p-1 relative min-h-[50px]">
                               {hourBookings.map((booking) => {
                                 const statusConfig = getStatusConfig(booking.status);
                                 return (
@@ -303,7 +308,7 @@ export function BookSchedule() {
                           }`}
                         >
                           {isValid && (
-                            <div className="h-full flex flex-col">
+              <div className="h-[calc(100vh-16rem)] flex flex-col overflow-hidden">
                               <div className={`font-bold text-sm mb-1 ${todayFlag ? 'text-green-600' : 'text-slate-900'}`}>
                                 {dayNum}
                               </div>

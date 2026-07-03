@@ -110,7 +110,7 @@ export function ConfirmTrainerBooking() {
             <p className="text-slate-500 mb-6">Lịch đặt không tồn tại hoặc đã bị xóa.</p>
             <Button
               variant="contained"
-              onClick={() => navigate('/dashboard/schedule')}
+              onClick={() => navigate('/dashboard/schedule/book')}
               sx={{ textTransform: 'none', bgcolor: '#4f46e5', '&:hover': { bgcolor: '#4338ca' } }}
             >
               Quay lại lịch tập
@@ -224,7 +224,7 @@ export function ConfirmTrainerBooking() {
               <Button
                 fullWidth
                 variant="contained"
-                onClick={() => navigate('/dashboard/schedule')}
+                onClick={() => navigate('/dashboard/schedule/book')}
                 sx={{
                   height: 48,
                   borderRadius: 3,
