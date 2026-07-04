@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useLocation, useNavigate, Navigate } from 'react-router';
 import { Button } from '@mui/material';
-import { CreditCard, Building2, Smartphone, Check, Loader2, ExternalLink, QrCode } from 'lucide-react';
+import { CreditCard, Building2, Smartphone, Check, Loader2, ExternalLink, QrCode, X } from 'lucide-react';
 import { useAuth, getApiUrl, getAuthHeaders } from '../context/AuthContext';
 
 
@@ -49,7 +49,6 @@ export function Payment() {
 
   const { user } = useAuth();
   const [selectedMethod, setSelectedMethod] = useState('');
-
   const [paymentSuccess, setPaymentSuccess] = useState(false);
   const [processing, setProcessing] = useState(false);
 
@@ -66,6 +65,50 @@ export function Payment() {
   const paymentData = location.state;
 
   const isBookingPayment = paymentData?.type === 'trainer_booking';
+
+  const params = new URLSearchParams(location.search);
+  const vnpaySuccess = params.get('vnpay_success') === 'true';
+  const vnpayFailed = params.get('vnpay_success') === 'false';
+  const transactionNo = params.get('transactionNo');
+
+  if (vnpaySuccess && transactionNo) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center py-12 px-4">
+        <div className="max-w-md w-full bg-white p-8 rounded-2xl shadow-lg text-center">
+          <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
+            <Check className="w-10 h-10 text-green-600" />
+          </div>
+          <h2 className="text-2xl font-bold text-slate-900 mb-4">Thanh toán thành công!</h2>
+          <p className="text-slate-600 mb-2">Giao dịch VNPAY đã hoàn tất.</p>
+          <p className="text-sm text-slate-500 mb-8">Mã giao dịch: {transactionNo}</p>
+          <Button fullWidth variant="contained" size="large"
+            onClick={() => navigate(isBookingPayment ? '/dashboard/schedule' : '/dashboard/my-packages')}
+            sx={{ height: 56, borderRadius: 3, textTransform: 'none', fontSize: '1rem', fontWeight: 700, bgcolor: '#4f46e5', '&:hover': { bgcolor: '#4338ca' } }}>
+            {isBookingPayment ? 'Về lịch tập' : 'Về gói tập của tôi'}
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (vnpayFailed) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center py-12 px-4">
+        <div className="max-w-md w-full bg-white p-8 rounded-2xl shadow-lg text-center">
+          <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
+            <X className="w-10 h-10 text-red-600" />
+          </div>
+          <h2 className="text-2xl font-bold text-slate-900 mb-4">Thanh toán thất bại</h2>
+          <p className="text-slate-600 mb-8">Giao dịch VNPAY không thành công. Vui lòng thử lại.</p>
+          <Button fullWidth variant="contained" size="large"
+            onClick={() => navigate(isBookingPayment ? '/dashboard/trainers' : '/packages')}
+            sx={{ height: 56, borderRadius: 3, textTransform: 'none', fontSize: '1rem', fontWeight: 700, bgcolor: '#4f46e5', '&:hover': { bgcolor: '#4338ca' } }}>
+            Thử lại
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   if (!paymentData || !paymentData.package) {
     return <Navigate to={isBookingPayment ? '/dashboard/trainers' : '/packages'} />;
@@ -131,31 +174,20 @@ export function Payment() {
 
     try {
       if (isBookingPayment) {
-        if (!bookingId) {
-          alert('DEBUG: bookingId is falsy! booking=', booking?._id, booking?.id);
-          throw new Error('Không tìm thấy thông tin đặt lịch!');
-        }
+        if (!bookingId) throw new Error('Không tìm thấy thông tin đặt lịch!');
         if (selectedMethod === "vnpay") {
-          alert('DEBUG: Entering VNPAY branch for booking, bookingId=' + bookingId);
-          const res = await fetch(
-            `${getApiUrl()}/api/bookings/${bookingId}/vnpay-url`,
-            { headers: getAuthHeaders() as any },
-          );
+          const res = await fetch(`${getApiUrl()}/api/bookings/${bookingId}/vnpay-url`, {
+            headers: getAuthHeaders() as any,
+          });
           if (!res.ok) {
             let errMsg = "Lỗi kết nối VNPAY";
             try { const err = await res.json(); errMsg = err.error || errMsg; } catch { errMsg = `HTTP ${res.status}`; }
-            alert('DEBUG: VNPAY fetch failed: ' + errMsg);
             throw new Error(errMsg);
           }
           const data = await res.json();
-          alert('DEBUG: VNPAY URL received: ' + (data.paymentUrl || 'UNDEFINED!'));
-          if (!data.paymentUrl) {
-            alert('DEBUG: paymentUrl is undefined/empty!');
-            throw new Error('Không nhận được URL thanh toán VNPAY');
-          }
+          if (!data.paymentUrl) throw new Error('Không nhận được URL thanh toán VNPAY');
           window.location.href = data.paymentUrl;
         } else {
-          alert('DEBUG: selectedMethod is NOT vnpay, it is: "' + selectedMethod + '"');
           const res = await fetch(`${getApiUrl()}/api/bookings/${bookingId}/payment`, {
             method: 'PUT',
             headers: getAuthHeaders() as any,
@@ -174,34 +206,27 @@ export function Payment() {
           return;
         }
         if (selectedMethod === "vnpay") {
-          const res = await fetch(
-            `${getApiUrl()}/api/user-packages/${regId}/vnpay-url`,
-            { headers: getAuthHeaders() as any },
-          );
+          const res = await fetch(`${getApiUrl()}/api/user-packages/${regId}/vnpay-url`, {
+            headers: getAuthHeaders() as any,
+          });
           if (!res.ok) {
             let errMsg = "Lỗi kết nối VNPAY";
             try { const err = await res.json(); errMsg = err.error || errMsg; } catch { errMsg = `HTTP ${res.status}`; }
             throw new Error(errMsg);
           }
           const data = await res.json();
-          await fetch(
-            `${getApiUrl()}/api/user-packages/${regId}/payment-method`,
-            {
-              method: "PATCH",
-              headers: getAuthHeaders() as any,
-              body: JSON.stringify({ payment_method: "vnpay" }),
-            },
-          );
+          await fetch(`${getApiUrl()}/api/user-packages/${regId}/payment-method`, {
+            method: "PATCH",
+            headers: getAuthHeaders() as any,
+            body: JSON.stringify({ payment_method: "vnpay" }),
+          });
           window.location.href = data.paymentUrl;
         } else {
-          const res = await fetch(
-            `${getApiUrl()}/api/user-packages/${regId}/payment-method`,
-            {
-              method: "PATCH",
-              headers: getAuthHeaders() as any,
-              body: JSON.stringify({ payment_method: selectedMethod }),
-            },
-          );
+          const res = await fetch(`${getApiUrl()}/api/user-packages/${regId}/payment-method`, {
+            method: "PATCH",
+            headers: getAuthHeaders() as any,
+            body: JSON.stringify({ payment_method: selectedMethod }),
+          });
           if (!res.ok) {
             const err = await res.json();
             throw new Error(err.error || "Cập nhật thất bại");

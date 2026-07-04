@@ -2,6 +2,8 @@ import { useState, useEffect } from "react";
 import { CheckCircle, Calendar, Clock, User, Check, X, Info, Loader2 } from "lucide-react";
 import { AdminLayout } from "../../components/AdminLayout";
 import { getApiUrl, getAuthHeaders } from "../../context/AuthContext";
+import { toast } from "sonner";
+import { useLocation, useNavigate } from "react-router";
 
 interface Booking {
   _id: string;
@@ -10,13 +12,17 @@ interface Booking {
   locationId?: { _id: string; title: string };
   date: string;
   time: string;
-  status: "pending" | "confirmed" | "rejected";
+  status: "pending" | "confirmed" | "rejected" | "cancelled";
   note?: string;
   rejectionReason?: string;
   createdAt: string;
 }
 
 export function ScheduleConfirmations() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const bookingIdFromNav = (location.state as any)?.bookingId;
+  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'confirmed' | 'rejected'>('all');
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
@@ -35,11 +41,20 @@ export function ScheduleConfirmations() {
         headers: getAuthHeaders()
       });
       const data = await res.json();
-      if (data?.data) {
-        setBookings(data.data);
-        setTotalPages(data.totalPages || 1);
+      const list = data?.data || [];
+      setBookings(list);
+      setTotalPages(data.totalPages || 1);
+
+      if (bookingIdFromNav) {
+        const found = list.find((b: Booking) => b._id === bookingIdFromNav);
+        if (found) {
+          setSelectedBooking(found);
+          setShowDetailModal(true);
+        }
       }
-    } catch {}
+    } catch {
+      toast.error("Lỗi tải danh sách lịch đặt!");
+    }
     setLoading(false);
   };
 
@@ -53,20 +68,22 @@ export function ScheduleConfirmations() {
         headers: getAuthHeaders()
       });
       if (res.ok) {
-        alert('Đã xác nhận lịch tập!');
+        toast.success("Đã xác nhận lịch tập!");
         setShowDetailModal(false);
         fetchBookings(page);
       } else {
         const err = await res.json();
-        alert(err.error || 'Xác nhận thất bại');
+        toast.error(err.error || 'Xác nhận thất bại');
       }
-    } catch { alert('Lỗi kết nối'); }
+    } catch {
+      toast.error('Lỗi kết nối');
+    }
     setActionLoading(false);
   };
 
   const handleReject = async () => {
     if (!rejectTargetId || !rejectReason.trim()) {
-      alert('Vui lòng nhập lý do từ chối');
+      toast.error('Vui lòng nhập lý do từ chối');
       return;
     }
     setActionLoading(true);
@@ -74,10 +91,10 @@ export function ScheduleConfirmations() {
       const res = await fetch(`${getApiUrl()}/api/bookings/${rejectTargetId}/reject`, {
         method: 'PUT',
         headers: { ...getAuthHeaders() as any, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rejectionReason })
+        body: JSON.stringify({ rejectionReason: rejectReason })
       });
       if (res.ok) {
-        alert('Đã từ chối lịch tập!');
+        toast.success('Đã từ chối lịch tập!');
         setShowRejectModal(false);
         setShowDetailModal(false);
         setRejectReason('');
@@ -85,9 +102,11 @@ export function ScheduleConfirmations() {
         fetchBookings(page);
       } else {
         const err = await res.json();
-        alert(err.error || 'Từ chối thất bại');
+        toast.error(err.error || 'Từ chối thất bại');
       }
-    } catch { alert('Lỗi kết nối'); }
+    } catch {
+      toast.error('Lỗi kết nối');
+    }
     setActionLoading(false);
   };
 
@@ -95,11 +114,16 @@ export function ScheduleConfirmations() {
   const confirmedCount = bookings.filter(b => b.status === 'confirmed').length;
   const rejectedCount = bookings.filter(b => b.status === 'rejected').length;
 
+  const filteredBookings = statusFilter === 'all'
+    ? bookings
+    : bookings.filter(b => b.status === statusFilter);
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case "pending": return "bg-yellow-100 text-yellow-700";
       case "confirmed": return "bg-green-100 text-green-700";
       case "rejected": return "bg-red-100 text-red-700";
+      case "cancelled": return "bg-slate-100 text-slate-700";
       default: return "bg-slate-100 text-slate-700";
     }
   };
@@ -109,6 +133,7 @@ export function ScheduleConfirmations() {
       case "pending": return "Chờ xác nhận";
       case "confirmed": return "Đã xác nhận";
       case "rejected": return "Đã từ chối";
+      case "cancelled": return "Đã hủy";
       default: return status;
     }
   };
@@ -121,28 +146,39 @@ export function ScheduleConfirmations() {
           <p className="text-slate-600 mt-2">Xác nhận yêu cầu đặt lịch từ hội viên</p>
         </div>
 
-        <div className="grid md:grid-cols-3 gap-4">
-          <div className="bg-gradient-to-br from-yellow-500 to-yellow-600 rounded-2xl p-6 text-white">
+        <div className="grid md:grid-cols-4 gap-4">
+          <button onClick={() => setStatusFilter('all')}
+            className={`rounded-2xl p-6 text-left transition-all ${statusFilter === 'all' ? 'bg-gradient-to-br from-slate-600 to-slate-700 text-white' : 'bg-white border border-slate-200 hover:border-slate-400'}`}>
             <div className="flex items-center gap-3 mb-2">
-              <Clock className="w-6 h-6" />
-              <h3 className="font-semibold">Chờ xác nhận</h3>
+              <Info className={`w-6 h-6 ${statusFilter === 'all' ? 'text-white' : 'text-slate-600'}`} />
+              <h3 className={`font-semibold ${statusFilter === 'all' ? 'text-white' : 'text-slate-900'}`}>Tất cả</h3>
             </div>
-            <p className="text-4xl font-bold">{pendingCount}</p>
-          </div>
-          <div className="bg-white rounded-2xl p-6 border border-slate-200">
-            <div className="flex items-center gap-3 mb-2 text-green-600">
-              <CheckCircle className="w-6 h-6" />
-              <h3 className="font-semibold text-slate-900">Đã xác nhận</h3>
+            <p className={`text-4xl font-bold ${statusFilter === 'all' ? 'text-white' : 'text-slate-900'}`}>{bookings.length}</p>
+          </button>
+          <button onClick={() => setStatusFilter('pending')}
+            className={`rounded-2xl p-6 text-left transition-all ${statusFilter === 'pending' ? 'bg-gradient-to-br from-yellow-500 to-yellow-600 text-white' : 'bg-white border border-slate-200 hover:border-yellow-400'}`}>
+            <div className="flex items-center gap-3 mb-2">
+              <Clock className={`w-6 h-6 ${statusFilter === 'pending' ? 'text-white' : 'text-yellow-600'}`} />
+              <h3 className={`font-semibold ${statusFilter === 'pending' ? 'text-white' : 'text-slate-900'}`}>Chờ xác nhận</h3>
             </div>
-            <p className="text-4xl font-bold text-slate-900">{confirmedCount}</p>
-          </div>
-          <div className="bg-white rounded-2xl p-6 border border-slate-200">
-            <div className="flex items-center gap-3 mb-2 text-red-600">
-              <X className="w-6 h-6" />
-              <h3 className="font-semibold text-slate-900">Đã từ chối</h3>
+            <p className={`text-4xl font-bold ${statusFilter === 'pending' ? 'text-white' : 'text-slate-900'}`}>{pendingCount}</p>
+          </button>
+          <button onClick={() => setStatusFilter('confirmed')}
+            className={`rounded-2xl p-6 text-left transition-all ${statusFilter === 'confirmed' ? 'bg-gradient-to-br from-green-500 to-green-600 text-white' : 'bg-white border border-slate-200 hover:border-green-400'}`}>
+            <div className="flex items-center gap-3 mb-2">
+              <CheckCircle className={`w-6 h-6 ${statusFilter === 'confirmed' ? 'text-white' : 'text-green-600'}`} />
+              <h3 className={`font-semibold ${statusFilter === 'confirmed' ? 'text-white' : 'text-slate-900'}`}>Đã xác nhận</h3>
             </div>
-            <p className="text-4xl font-bold text-slate-900">{rejectedCount}</p>
-          </div>
+            <p className={`text-4xl font-bold ${statusFilter === 'confirmed' ? 'text-white' : 'text-slate-900'}`}>{confirmedCount}</p>
+          </button>
+          <button onClick={() => setStatusFilter('rejected')}
+            className={`rounded-2xl p-6 text-left transition-all ${statusFilter === 'rejected' ? 'bg-gradient-to-br from-red-500 to-red-600 text-white' : 'bg-white border border-slate-200 hover:border-red-400'}`}>
+            <div className="flex items-center gap-3 mb-2">
+              <X className={`w-6 h-6 ${statusFilter === 'rejected' ? 'text-white' : 'text-red-600'}`} />
+              <h3 className={`font-semibold ${statusFilter === 'rejected' ? 'text-white' : 'text-slate-900'}`}>Đã từ chối</h3>
+            </div>
+            <p className={`text-4xl font-bold ${statusFilter === 'rejected' ? 'text-white' : 'text-slate-900'}`}>{rejectedCount}</p>
+          </button>
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200">
@@ -154,10 +190,15 @@ export function ScheduleConfirmations() {
             <div className="p-12 text-center text-slate-500 flex items-center justify-center gap-2">
               <Loader2 className="w-5 h-5 animate-spin" /> Đang tải...
             </div>
+          ) : filteredBookings.length === 0 ? (
+            <div className="p-12 text-center">
+              <Calendar className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+              <p className="text-slate-500">Chưa có yêu cầu đặt lịch nào</p>
+            </div>
           ) : (
             <>
               <div className="divide-y divide-slate-200">
-                {bookings.map((booking) => (
+                {filteredBookings.map((booking) => (
                   <div key={booking._id} className="p-6 hover:bg-slate-50 transition-colors">
                     <div className="flex items-start gap-4">
                       <div className="w-16 h-16 rounded-full bg-indigo-100 flex items-center justify-center ring-2 ring-slate-200">
@@ -202,7 +243,7 @@ export function ScheduleConfirmations() {
                           </div>
                         )}
                         {booking.rejectionReason && (
-                          <div className="p-3 bg-red-50 rounded-lg border border-red-200 text-sm">
+                          <div className="p-3 bg-red-50 rounded-lg border border-red-200 text-sm mt-2">
                             <span className="font-semibold text-red-900">Lý do từ chối:</span>
                             <span className="text-red-800 ml-2">{booking.rejectionReason}</span>
                           </div>
@@ -231,9 +272,6 @@ export function ScheduleConfirmations() {
                     </div>
                   </div>
                 ))}
-                {bookings.length === 0 && (
-                  <div className="p-12 text-center text-slate-500">Chưa có yêu cầu đặt lịch nào</div>
-                )}
               </div>
 
               {totalPages > 1 && (
