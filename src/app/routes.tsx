@@ -69,6 +69,11 @@ import { ScheduleConfirmations } from './pages/admin/ScheduleConfirmations';
 import { Community } from './pages/dashboard/Community';
 import { Messages } from './pages/dashboard/Messages';
 import { Tasks } from './pages/admin/Tasks';
+import { Invoices } from './pages/admin/Invoices';
+import { BookingManagement } from './pages/admin/BookingManagement';
+import { PostManagement } from './pages/admin/PostManagement';
+import { AdminCommunity } from './pages/admin/AdminCommunity';
+import { AdminMessages } from './pages/admin/AdminMessages';
 
 const routeFeatures: Record<string, string> = {
   '/admin/dashboard': 'statistics',
@@ -112,7 +117,12 @@ const routeFeatures: Record<string, string> = {
   '/admin/training-schedule': 'training',
   '/admin/lockers': 'equipment',
   '/admin/schedule-confirmations': 'schedule',
-  '/admin/tasks': 'tasks'
+  '/admin/tasks': 'tasks',
+  '/admin/bookings': 'schedule',
+  '/admin/invoices': 'payment',
+  '/admin/posts': 'services',
+  '/admin/community': 'services',
+  '/admin/messages': 'services'
 };
 
 function ProtectedRoute({ children, role }: { children: React.ReactNode, role?: 'member' | 'staff' }) {
@@ -394,5 +404,25 @@ export const router = createBrowserRouter([
   {
     path: '/admin/tasks',
     element: <ProtectedRoute role="staff"><Tasks /></ProtectedRoute>
+  },
+  {
+    path: '/admin/bookings',
+    element: <ProtectedRoute role="staff"><BookingManagement /></ProtectedRoute>
+  },
+  {
+    path: '/admin/invoices',
+    element: <ProtectedRoute role="staff"><Invoices /></ProtectedRoute>
+  },
+  {
+    path: '/admin/posts',
+    element: <ProtectedRoute role="staff"><PostManagement /></ProtectedRoute>
+  },
+  {
+    path: '/admin/community',
+    element: <ProtectedRoute role="staff"><AdminCommunity /></ProtectedRoute>
+  },
+  {
+    path: '/admin/messages',
+    element: <ProtectedRoute role="staff"><AdminMessages /></ProtectedRoute>
   },
 ]);
