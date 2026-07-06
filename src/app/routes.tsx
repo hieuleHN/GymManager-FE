@@ -65,6 +65,7 @@ import { ExpenseManagement } from './pages/admin/ExpenseManagement';
 import { TrainerProfile } from './pages/admin/TrainerProfile';
 import { TrainingSchedule } from './pages/admin/TrainingSchedule';
 import { LockerManagement } from './pages/admin/LockerManagement';
+import { LockerIssueReport } from './pages/dashboard/LockerIssueReport';
 import { ScheduleConfirmations } from './pages/admin/ScheduleConfirmations';
 import { Invoices } from './pages/admin/Invoices';
 import { EditCustomer } from './pages/admin/EditCustomer';
@@ -76,7 +77,11 @@ function ProtectedRoute({ children, role }: { children: React.ReactNode, role?: 
   const { user } = useAuth();
   if (!user) return <Navigate to="/auth" replace />;
   if (role === 'admin' && !user.isStaff) return <Navigate to="/" replace />;
-  if (role && role !== 'admin' && user.role !== role) return <Navigate to="/" replace />;
+  // 'lockerAdmin': dùng riêng cho các hành động duyệt/xử lý tủ đồ - bắt buộc đúng cờ isAdmin
+  // (không dùng chung với role='admin' ở trên vì nhiều trang staff khác vẫn đang cố ý cho
+  // mọi nhân viên (isStaff) vào, đổi lại 'admin' ở đây có thể ảnh hưởng các trang đó).
+  if (role === 'lockerAdmin' && !user.isAdmin) return <Navigate to="/" replace />;
+  if (role && role !== 'admin' && role !== 'lockerAdmin' && user.role !== role) return <Navigate to="/" replace />;
   return <>{children}</>;
 }
 
@@ -120,6 +125,13 @@ export const router = createBrowserRouter([
   {
     path: '/dashboard/trainers',
     element: <ProtectedRoute><Trainers /></ProtectedRoute>
+  },
+  {
+    // Dành cho HLV/nhân viên: báo cáo sự cố tủ đồ + xem trạng thái báo cáo của chính mình.
+    // role="admin" ở đây thực chất chỉ kiểm tra user.isStaff (xem ProtectedRoute phía trên),
+    // nên mọi nhân viên (kể cả PT) đăng nhập đều vào được, không riêng người có isAdmin.
+    path: '/dashboard/locker-issues',
+    element: <ProtectedRoute role="admin"><LockerIssueReport /></ProtectedRoute>
   },
   {
     path: '/dashboard/trainers/:trainerId/book',
@@ -319,7 +331,7 @@ export const router = createBrowserRouter([
   },
   {
     path: '/admin/lockers',
-    element: <ProtectedRoute role="admin"><LockerManagement /></ProtectedRoute>,
+    element: <ProtectedRoute role="lockerAdmin"><LockerManagement /></ProtectedRoute>,
   },
   {
     path: '/admin/schedule-confirmations',
