@@ -21,6 +21,7 @@ import { Schedule } from './pages/dashboard/Schedule';
 import { BookSchedule } from './pages/dashboard/BookSchedule';
 import { Trainers } from './pages/dashboard/Trainers';
 import { BookTrainer } from './pages/dashboard/BookTrainer';
+import { BookingStatus } from './pages/dashboard/BookingStatus';
 import { ConfirmTrainerBooking } from './pages/dashboard/ConfirmTrainerBooking';
 import { TrainerDetail } from './pages/dashboard/TrainerDetail';
 import { Progress } from './pages/dashboard/Progress';
@@ -217,6 +218,10 @@ export const router = createBrowserRouter([
   {
     path: '/dashboard/trainers/:trainerId/confirm',
     element: <ProtectedRoute role="member"><ConfirmTrainerBooking /></ProtectedRoute>
+  },
+  {
+    path: '/dashboard/bookings/:bookingId/status',
+    element: <ProtectedRoute role="member"><BookingStatus /></ProtectedRoute>
   },
   {
     path: '/dashboard/progress',

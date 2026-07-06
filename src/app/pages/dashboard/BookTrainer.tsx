@@ -16,7 +16,22 @@ interface Trainer {
   avatar?: string;
   experience?: string;
   pricePerSession?: number;
+  disciplineId?: { _id: string; name: string } | null;
+  specialties?: string[];
 }
+
+const timeSlots = [
+  { start: '06:00', end: '07:30' },
+  { start: '07:30', end: '09:00' },
+  { start: '09:00', end: '10:30' },
+  { start: '10:30', end: '12:00' },
+  { start: '12:00', end: '13:30' },
+  { start: '13:30', end: '15:00' },
+  { start: '15:00', end: '16:30' },
+  { start: '16:30', end: '18:00' },
+  { start: '18:00', end: '19:30' },
+  { start: '19:30', end: '21:00' }
+];
 
 export function BookTrainer() {
   const { trainerId } = useParams();
@@ -25,17 +40,12 @@ export function BookTrainer() {
   const [trainer, setTrainer] = useState<Trainer | null>(null);
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
-  const [selectedTime, setSelectedTime] = useState<string | null>(null);
+  const [selectedTime, setSelectedTime] = useState<{ start: string; end: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [checkingConflict, setCheckingConflict] = useState(false);
   const [showContact, setShowContact] = useState(false);
-
-  const timeSlots = [
-    '06:00', '06:30', '07:00', '07:30', '08:00', '08:30', '09:00', '09:30',
-    '10:00', '10:30', '11:00', '11:30', '12:00', '12:30', '13:00', '13:30',
-    '14:00', '14:30', '15:00', '15:30', '16:00', '16:30', '17:00', '17:30',
-    '18:00', '18:30', '19:00', '19:30', '20:00', '20:30'
-  ];
+  const [bookedTimes, setBookedTimes] = useState<Set<string>>(new Set());
+  const [selectedDisciplineId, setSelectedDisciplineId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchTrainer();
@@ -57,13 +67,41 @@ export function BookTrainer() {
     }
   };
 
-  const isTimeDisabled = (time: string): boolean => {
+  useEffect(() => {
+    if (!selectedDate || !trainerId) return;
+    fetchTrainerBookings();
+  }, [selectedDate, trainerId]);
+
+  const fetchTrainerBookings = async () => {
+    if (!selectedDate || !trainerId) return;
+    try {
+      const dateStr = selectedDate.toISOString().split('T')[0];
+      const res = await fetch(
+        `${getApiUrl()}/api/bookings/trainer/${trainerId}?date=${dateStr}`,
+        { headers: getAuthHeaders() }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        const times = new Set<string>();
+        if (Array.isArray(data)) {
+          data.forEach((b: any) => { if (b.time) times.add(b.time); });
+        }
+        setBookedTimes(times);
+      }
+    } catch {}
+  };
+
+  const isTimeDisabled = (slot: { start: string; end: string }): boolean => {
     if (!selectedDate) return true;
     const now = new Date();
     const selectedDateTime = new Date(selectedDate);
-    const [hours, minutes] = time.split(':').map(Number);
+    const [hours, minutes] = slot.start.split(':').map(Number);
     selectedDateTime.setHours(hours, minutes, 0, 0);
-    return selectedDateTime <= now;
+    if (selectedDateTime <= now) return true;
+    for (const t of bookedTimes) {
+      if (t >= slot.start && t < slot.end) return true;
+    }
+    return false;
   };
 
   const getDaysInMonth = (date: Date) => {
@@ -91,9 +129,9 @@ export function BookTrainer() {
     setSelectedTime(null);
   };
 
-  const handleTimeSelect = (time: string) => {
-    if (isTimeDisabled(time)) return;
-    setSelectedTime(time);
+  const handleTimeSelect = (slot: { start: string; end: string }) => {
+    if (isTimeDisabled(slot)) return;
+    setSelectedTime(slot);
   };
 
   const handlePayment = async () => {
@@ -105,19 +143,6 @@ export function BookTrainer() {
     setCheckingConflict(true);
     try {
       const dateStr = selectedDate.toISOString().split('T')[0];
-
-      const conflictRes = await fetch(
-        `${getApiUrl()}/api/bookings/check-conflict?trainerId=${trainer._id}&date=${dateStr}&time=${selectedTime}`,
-        { headers: getAuthHeaders() }
-      );
-      const conflictData = await conflictRes.json();
-
-      if (conflictData.hasConflict) {
-        toast.error('HLV đã có lịch vào thời gian này! Vui lòng chọn thời gian khác.');
-        setCheckingConflict(false);
-        return;
-      }
-
       const locId = trainer.locationId?._id || user?.locationId || null;
       const price = trainer.pricePerSession || 500000;
 
@@ -126,8 +151,9 @@ export function BookTrainer() {
         headers: { ...getAuthHeaders() as any, 'Content-Type': 'application/json' },
         body: JSON.stringify({
           trainerId: trainer._id,
+          disciplineId: selectedDisciplineId,
           date: dateStr,
-          time: selectedTime,
+          time: selectedTime.start,
           locationId: locId,
           price
         })
@@ -136,18 +162,15 @@ export function BookTrainer() {
       const bookingData = await bookingRes.json();
       if (!bookingRes.ok) throw new Error(bookingData.error || 'Đặt lịch thất bại');
 
-      toast.success('Đặt lịch thành công!');
-      setTimeout(() => {
-        navigate('/payment', {
-          state: {
-            type: 'trainer_booking',
-            booking: bookingData.booking || bookingData,
-            trainer,
-            totalPrice: price,
-            package: { name: `PT 1 buổi với ${trainer.fullName}`, price }
-          }
-        });
-      }, 1000);
+      navigate('/payment', {
+        state: {
+          type: 'trainer_booking',
+          booking: bookingData.booking || bookingData,
+          trainer,
+          totalPrice: price,
+          package: { name: `PT 1 buổi với ${trainer.fullName}`, price }
+        }
+      });
     } catch (err: any) {
       toast.error(err.message || 'Lỗi kết nối server!');
     } finally {
@@ -198,9 +221,23 @@ export function BookTrainer() {
             <div className="w-14 h-14 bg-indigo-100 rounded-full flex items-center justify-center">
               <User className="w-7 h-7 text-indigo-600" />
             </div>
-            <div>
+            <div className="flex-1">
               <h3 className="font-bold text-slate-900">{trainer.fullName}</h3>
               <p className="text-sm text-slate-500">{trainer.job?.name || 'HLV'}</p>
+              {(trainer.disciplineId || (trainer.specialties && trainer.specialties.length > 0)) && (
+                <div className="flex flex-wrap gap-1 mt-2">
+                  {trainer.disciplineId && (
+                    <span className="px-2 py-0.5 text-xs font-semibold bg-indigo-100 text-indigo-700 rounded-full">
+                      {trainer.disciplineId.name}
+                    </span>
+                  )}
+                  {trainer.specialties?.map(s => (
+                    <span key={s} className="px-2 py-0.5 text-xs font-medium bg-slate-100 text-slate-600 rounded-full">
+                      {s}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
             {trainer.locationId && (
               <div className="ml-auto flex items-center gap-1 text-sm text-slate-500">
@@ -209,6 +246,35 @@ export function BookTrainer() {
               </div>
             )}
           </div>
+        </div>
+
+        {/* Chọn bộ môn */}
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+          <h3 className="font-bold text-slate-900 mb-4">Chọn bộ môn tập</h3>
+          {(() => {
+            const items: { id: string; name: string; isMain: boolean }[] = [];
+            if (trainer.disciplineId) items.push({ id: trainer.disciplineId._id, name: trainer.disciplineId.name, isMain: true });
+            trainer.specialties?.forEach(s => {
+              if (!items.find(i => i.name === s)) items.push({ id: s, name: s, isMain: false });
+            });
+            return items.length > 0 ? (
+              <div className="flex flex-wrap gap-3">
+                {items.map(item => (
+                  <button key={item.id} onClick={() => setSelectedDisciplineId(item.id)}
+                    className={`px-5 py-2.5 rounded-xl border-2 font-semibold transition-all ${
+                      selectedDisciplineId === item.id
+                        ? 'border-indigo-600 bg-indigo-600 text-white shadow-md'
+                        : 'border-slate-200 hover:border-indigo-300 hover:bg-slate-50'
+                    }`}>
+                    {item.name}
+                    {item.isMain && <span className="ml-1.5 text-[10px] opacity-70">(Chính)</span>}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="text-slate-400 text-sm">HLV chưa có bộ môn nào</p>
+            );
+          })()}
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -273,18 +339,18 @@ export function BookTrainer() {
 
             {selectedDate ? (
               <div className="grid grid-cols-2 gap-3 max-h-[500px] overflow-y-auto pr-2">
-                {timeSlots.map((time) => {
-                  const disabled = isTimeDisabled(time);
+                {timeSlots.map((slot) => {
+                  const disabled = isTimeDisabled(slot);
                   return (
-                    <button key={time} onClick={() => handleTimeSelect(time)} disabled={disabled}
+                    <button key={slot.start} onClick={() => handleTimeSelect(slot)} disabled={disabled}
                       className={`px-4 py-3 rounded-xl border-2 font-semibold transition-all ${
                         disabled
                           ? 'border-slate-100 bg-slate-50 text-slate-300 cursor-not-allowed'
-                          : selectedTime === time
+                          : selectedTime?.start === slot.start
                           ? 'border-indigo-600 bg-indigo-600 text-white shadow-md'
                           : 'border-slate-200 hover:border-indigo-300 hover:bg-slate-50'
                       }`}>
-                      {time}
+                      {slot.start} - {slot.end}
                     </button>
                   );
                 })}
@@ -304,7 +370,7 @@ export function BookTrainer() {
           <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-6">
             <h4 className="font-semibold text-indigo-900 mb-2">Thông tin đặt lịch:</h4>
             <p className="text-indigo-700 mb-2">
-              Ngày: <span className="font-bold">{selectedDate.getDate()}/{selectedDate.getMonth() + 1}/{selectedDate.getFullYear()}</span> - Giờ: <span className="font-bold">{selectedTime}</span>
+              Ngày: <span className="font-bold">{selectedDate.getDate()}/{selectedDate.getMonth() + 1}/{selectedDate.getFullYear()}</span> - Giờ: <span className="font-bold">{selectedTime.start} - {selectedTime.end}</span>
             </p>
             <div className="flex justify-between items-center pt-3 border-t border-indigo-200">
               <span className="text-indigo-800 font-medium">Phí HLV:</span>

@@ -68,12 +68,12 @@ export function Trainers() {
           fetch(`${getApiUrl()}/api/staff/trainers?locationId=${user?.locationId || ''}`, {
             headers: getAuthHeaders()
           }),
-          fetch(`${getApiUrl()}/api/disciplines`)
+          fetch(`${getApiUrl()}/api/disciplines?locationId=${user?.locationId || ''}`)
         ]);
         const trainerData = await trainerRes.json();
         const discData = await discRes.json();
         if (Array.isArray(trainerData)) setTrainers(trainerData);
-        if (Array.isArray(discData)) setDisciplines(discData);
+        if (discData?.data && Array.isArray(discData.data)) setDisciplines(discData.data);
       } catch (e) {
         console.error(e);
       }
@@ -84,10 +84,12 @@ export function Trainers() {
 
   const filteredTrainers = selectedDiscipline === 'all'
     ? trainers
-    : trainers.filter(t =>
-        t.disciplineId?._id === selectedDiscipline ||
-        t.job?.name?.toLowerCase().includes(disciplines.find(d => d._id === selectedDiscipline)?.name?.toLowerCase() || '')
-      );
+    : trainers.filter(t => {
+        const discName = disciplines.find(d => d._id === selectedDiscipline)?.name?.toLowerCase() || '';
+        return t.disciplineId?._id === selectedDiscipline ||
+          t.specialties?.some(s => s.toLowerCase() === discName) ||
+          t.job?.name?.toLowerCase().includes(discName);
+      });
 
   const handleReport = async () => {
     if (!reportModal || !reportReason.trim()) return;
@@ -151,30 +153,17 @@ export function Trainers() {
           <div className="text-center py-20 text-slate-500">Đang tải...</div>
         ) : (
           <>
-            <div className="flex gap-3 flex-wrap">
-              <button
-                onClick={() => setSelectedDiscipline('all')}
-                className={`px-6 py-2.5 rounded-lg font-semibold transition-all ${
-                  selectedDiscipline === 'all'
-                    ? 'bg-indigo-600 text-white shadow-md'
-                    : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200'
-                }`}
+            <div className="max-w-xs">
+              <select
+                value={selectedDiscipline}
+                onChange={(e) => setSelectedDiscipline(e.target.value)}
+                className="w-full px-4 py-2.5 rounded-lg border border-slate-200 bg-white text-slate-700 font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 cursor-pointer"
               >
-                Tất cả
-              </button>
-              {disciplines.map((disc) => (
-                <button
-                  key={disc._id}
-                  onClick={() => setSelectedDiscipline(disc._id)}
-                  className={`px-6 py-2.5 rounded-lg font-semibold transition-all ${
-                    selectedDiscipline === disc._id
-                      ? 'bg-indigo-600 text-white shadow-md'
-                      : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200'
-                  }`}
-                >
-                  {disc.name}
-                </button>
-              ))}
+                <option value="all">Tất cả bộ môn</option>
+                {disciplines.map((disc) => (
+                  <option key={disc._id} value={disc._id}>{disc.name}</option>
+                ))}
+              </select>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
