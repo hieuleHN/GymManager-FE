@@ -179,7 +179,7 @@ export const router = createBrowserRouter([
       {
         path: 'dashboard/qr',
         element: <ProtectedRoute role="member"><MemberQR /></ProtectedRoute>
-      },
+      }
     ],
   },
   {
