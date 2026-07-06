@@ -1,4 +1,4 @@
-import { Link, useLocation, useNavigate, Outlet } from 'react-router';
+import { Link, useLocation, useNavigate, Outlet } from "react-router";
 import {
   Dumbbell,
   Users,
@@ -13,17 +13,17 @@ import {
   ChevronDown,
   MapPin,
   Activity,
-  QrCode // Đảm bảo import icon QR Code
-} from 'lucide-react';
-import { useState } from 'react';
-import { useAuth } from '../context/AuthContext';
-import { Button } from '@mui/material';
+  QrCode, // Đảm bảo import icon QR Code
+} from "lucide-react";
+import { useState } from "react";
+import { useAuth } from "../context/AuthContext";
+import { Button } from "@mui/material";
 
-import logo from '../../imports/ChatGPT_Image_May_14__2026__09_48_52_PM.png';
-import { ImageWithFallback } from './figma/ImageWithFallback';
-import { clubsData, disciplinesData } from '../data';
-import 'slick-carousel/slick/slick.css';
-import 'slick-carousel/slick/slick-theme.css';
+import logo from "../../imports/ChatGPT_Image_May_14__2026__09_48_52_PM.png";
+import { ImageWithFallback } from "./figma/ImageWithFallback";
+import { clubsData, disciplinesData } from "../data";
+import "slick-carousel/slick/slick.css";
+import "slick-carousel/slick/slick-theme.css";
 
 export function Layout() {
   const { user, logout } = useAuth();
@@ -34,34 +34,41 @@ export function Layout() {
 
   // Mảng chứa các menu điều hướng gốc
   const navigation = [
-    { name: 'Trang chủ', href: '/', icon: Dumbbell },
+    { name: "Trang chủ", href: "/", icon: Dumbbell },
     {
-      name: 'Câu Lạc Bộ',
-      href: '#',
+      name: "Câu Lạc Bộ",
+      href: "#",
       icon: MapPin,
       isDropdown: true,
-      items: clubsData.map(c => ({ name: c.name, href: `/clubs/${c.id}` }))
+      items: clubsData.map((c) => ({ name: c.name, href: `/clubs/${c.id}` })),
     },
     {
-      name: 'Bộ Môn',
-      href: '#',
+      name: "Bộ Môn",
+      href: "#",
       icon: Activity,
       isDropdown: true,
-      items: disciplinesData.map(d => ({ name: d.name, href: `/disciplines/${d.id}` }))
+      items: disciplinesData.map((d) => ({
+        name: d.name,
+        href: `/disciplines/${d.id}`,
+      })),
     },
-    { name: 'Gói tập', href: '/packages', icon: CreditCard },
-    { name: 'Huấn luyện viên', href: '/trainers', icon: Users },
+    { name: "Gói tập", href: "/packages", icon: CreditCard },
+    { name: "Huấn luyện viên", href: "/trainers", icon: Users },
   ];
 
   // ĐỒNG BỘ TẠI ĐÂY: Nếu hội viên đã login, đẩy cả Dashboard và Điểm danh vào chung mảng
   if (user) {
-    navigation.push({ name: 'DASHBOARD HỘI VIÊN', href: '/dashboard', icon: LayoutDashboard });
-    navigation.push({ name: 'Điểm danh', href: '/dashboard/qr', icon: QrCode });
+    navigation.push({
+      name: "DASHBOARD HỘI VIÊN",
+      href: "/dashboard",
+      icon: LayoutDashboard,
+    });
+    navigation.push({ name: "Điểm danh", href: "/dashboard/qr", icon: QrCode });
   }
 
   const handleLogout = () => {
     logout();
-    navigate('/');
+    navigate("/");
   };
 
   return (
@@ -72,12 +79,16 @@ export function Layout() {
           <div className="flex justify-between h-16">
             <div className="flex items-center">
               <Link to="/" className="flex items-center gap-2">
-                <ImageWithFallback src={logo} alt="ZenFitness Logo" className="h-20 w-auto object-contain py-2" />
+                <ImageWithFallback
+                  src={logo}
+                  alt="ZenFitness Logo"
+                  className="h-20 w-auto object-contain py-2"
+                />
               </Link>
 
               {/* Danh sách menu trên máy tính - Đã dọn sạch các block button thừa lẻ tẻ */}
               <div className="hidden md:ml-8 lg:flex md:space-x-4 lg:space-x-6">
-                {navigation.map((item) => (
+                {navigation.map((item) =>
                   item.isDropdown ? (
                     <div
                       key={item.name}
@@ -109,15 +120,16 @@ export function Layout() {
                     <Link
                       key={item.name}
                       to={item.href}
-                      className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium h-full ${location.pathname === item.href
-                          ? 'border-indigo-500 text-slate-900 font-semibold'
-                          : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700'
-                        }`}
+                      className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium h-full ${
+                        location.pathname === item.href
+                          ? "border-indigo-500 text-slate-900 font-semibold"
+                          : "border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700"
+                      }`}
                     >
                       {item.name}
                     </Link>
-                  )
-                ))}
+                  ),
+                )}
               </div>
             </div>
 
@@ -131,13 +143,26 @@ export function Layout() {
                   </button>
                   <div className="flex items-center gap-3 pl-4 border-l border-slate-200">
                     <div className="text-right">
-                      <p className="text-sm font-medium text-slate-900">{user.name}</p>
+                      <p className="text-sm font-medium text-slate-900">
+                        {user.name}
+                      </p>
                       <p className="text-xs text-slate-500 capitalize">
-                        {user.role === 'member' ? 'Hội viên' : (user.isStaff ? 'Nhân viên' : 'Hội viên')}
+                        {user.role === "member"
+                          ? "Hội viên"
+                          : user.isStaff
+                            ? "Nhân viên"
+                            : "Hội viên"}
                       </p>
                     </div>
-                    <img className="h-8 w-8 rounded-full ring-2 ring-indigo-100" src={user.avatar} alt="" />
-                    <button onClick={handleLogout} className="text-slate-400 hover:text-red-500">
+                    <img
+                      className="h-8 w-8 rounded-full ring-2 ring-indigo-100"
+                      src={user.avatar}
+                      alt=""
+                    />
+                    <button
+                      onClick={handleLogout}
+                      className="text-slate-400 hover:text-red-500"
+                    >
                       <LogOut className="w-5 h-5" />
                     </button>
                   </div>
@@ -145,10 +170,22 @@ export function Layout() {
               ) : (
                 <div className="flex items-center gap-3">
                   <Link to="/auth">
-                    <Button variant="text" sx={{ color: '#475569', textTransform: 'none' }}>Đăng nhập</Button>
+                    <Button
+                      variant="text"
+                      sx={{ color: "#475569", textTransform: "none" }}
+                    >
+                      Đăng nhập
+                    </Button>
                   </Link>
                   <Link to="/auth?mode=register">
-                    <Button variant="contained" sx={{ bgcolor: '#4f46e5', '&:hover': { bgcolor: '#4338ca' }, textTransform: 'none' }}>
+                    <Button
+                      variant="contained"
+                      sx={{
+                        bgcolor: "#4f46e5",
+                        "&:hover": { bgcolor: "#4338ca" },
+                        textTransform: "none",
+                      }}
+                    >
                       Tham gia ngay
                     </Button>
                   </Link>
@@ -162,7 +199,11 @@ export function Layout() {
                 onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
                 className="inline-flex items-center justify-center p-2 rounded-md text-slate-400 hover:text-slate-500 hover:bg-slate-100"
               >
-                {isMobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+                {isMobileMenuOpen ? (
+                  <X className="w-6 h-6" />
+                ) : (
+                  <Menu className="w-6 h-6" />
+                )}
               </button>
             </div>
           </div>
@@ -197,10 +238,11 @@ export function Layout() {
                     <Link
                       to={item.href}
                       onClick={() => setIsMobileMenuOpen(false)}
-                      className={`flex items-center px-3 py-2 rounded-md text-base font-medium ${location.pathname === item.href
-                          ? 'bg-indigo-50 text-indigo-700 font-semibold'
-                          : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                        }`}
+                      className={`flex items-center px-3 py-2 rounded-md text-base font-medium ${
+                        location.pathname === item.href
+                          ? "bg-indigo-50 text-indigo-700 font-semibold"
+                          : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                      }`}
                     >
                       <item.icon className="mr-3 h-5 w-5" />
                       {item.name}
@@ -235,44 +277,84 @@ export function Layout() {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
             <div className="col-span-1 md:col-span-1">
               <div className="flex items-center gap-2 mb-4">
-                <ImageWithFallback src={logo} alt="ZenFitness Logo" className="h-20 w-auto object-contain brightness-0 invert" />
+                <ImageWithFallback
+                  src={logo}
+                  alt="ZenFitness Logo"
+                  className="h-20 w-auto object-contain brightness-0 invert"
+                />
               </div>
               <p className="max-w-xs text-sm leading-relaxed">
-                Nâng tầm hành trình thể hình của bạn với cơ sở vật chất hiện đại và đội ngũ huấn luyện viên đẳng cấp thế giới.
+                Nâng tầm hành trình thể hình của bạn với cơ sở vật chất hiện đại
+                và đội ngũ huấn luyện viên đẳng cấp thế giới.
               </p>
             </div>
 
             <div>
-              <h3 className="text-white font-semibold mb-4 uppercase">Dịch vụ</h3>
+              <h3 className="text-white font-semibold mb-4 uppercase">
+                Dịch vụ
+              </h3>
               <ul className="space-y-2 text-sm">
                 {disciplinesData.map((discipline) => (
                   <li key={discipline.id}>
-                    <Link to={`/disciplines/${discipline.id}`} className="hover:text-indigo-400">
+                    <Link
+                      to={`/disciplines/${discipline.id}`}
+                      className="hover:text-indigo-400"
+                    >
                       {discipline.name}
                     </Link>
                   </li>
                 ))}
-                <li><a href="#" className="hover:text-indigo-400">Stretching</a></li>
+                <li>
+                  <a href="#" className="hover:text-indigo-400">
+                    Stretching
+                  </a>
+                </li>
               </ul>
             </div>
 
             <div>
-              <h3 className="text-white font-semibold mb-4 uppercase">Công ty</h3>
+              <h3 className="text-white font-semibold mb-4 uppercase">
+                Công ty
+              </h3>
               <ul className="space-y-2 text-sm">
-                <li><a href="#" className="hover:text-indigo-400">Về chúng tôi</a></li>
-                <li><a href="#" className="hover:text-indigo-400">Chính sách bảo mật</a></li>
-                <li><a href="#" className="hover:text-indigo-400">Tuyển dụng</a></li>
-                <li><a href="#" className="hover:text-indigo-400">Liên hệ</a></li>
+                <li>
+                  <a href="#" className="hover:text-indigo-400">
+                    Về chúng tôi
+                  </a>
+                </li>
+                <li>
+                  <a href="#" className="hover:text-indigo-400">
+                    Chính sách bảo mật
+                  </a>
+                </li>
+                <li>
+                  <Link
+                    to="/recruitment"
+                    className="hover:text-indigo-400 transition-colors"
+                  >
+                    Tuyển dụng
+                  </Link>
+                </li>
+                <li>
+                  <a href="#" className="hover:text-indigo-400">
+                    Liên hệ
+                  </a>
+                </li>
               </ul>
             </div>
 
             <div>
-              <h3 className="text-white font-semibold mb-4 uppercase">Thông tin</h3>
+              <h3 className="text-white font-semibold mb-4 uppercase">
+                Thông tin
+              </h3>
               <ul className="space-y-2 text-sm">
                 {clubsData.slice(0, 5).map((club) => (
                   <li key={club.id}>
-                    <Link to={`/clubs/${club.id}`} className="hover:text-indigo-400">
-                      {club.name.replace('ZenFitness ', 'Cơ sở ')}
+                    <Link
+                      to={`/clubs/${club.id}`}
+                      className="hover:text-indigo-400"
+                    >
+                      {club.name.replace("ZenFitness ", "Cơ sở ")}
                     </Link>
                   </li>
                 ))}
