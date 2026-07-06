@@ -8,6 +8,7 @@ export function TrainerProfile() {
   const [selectedImages, setSelectedImages] = useState<string[]>([]);
   const [profile, setProfile] = useState({
     name: '',
+    disciplineId: '',
     specialties: [] as string[],
     description: '',
     avatar: '',
@@ -18,21 +19,28 @@ export function TrainerProfile() {
     pricePerSession: 500000
   });
 
-  const allSpecialties = ['Yoga', 'Cardio', 'Weight Training', 'Boxing', 'Pilates', 'CrossFit', 'Swimming', 'Martial Arts', 'Zumba', 'Dance'];
+  const [disciplines, setDisciplines] = useState<{ _id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!user?.id) return;
-    const fetchProfile = async () => {
+    const fetchData = async () => {
       try {
-        const res = await fetch(`${getApiUrl()}/api/staff/${user.id}`, {
-          headers: getAuthHeaders()
-        });
-        const data = await res.json();
+        const [staffRes, discRes] = await Promise.all([
+          fetch(`${getApiUrl()}/api/staff/${user.id}`, {
+            headers: getAuthHeaders()
+          }),
+          fetch(`${getApiUrl()}/api/disciplines?locationId=${user?.locationId || ''}`)
+        ]);
+        const data = await staffRes.json();
+        const discData = await discRes.json();
+        if (discData?.data && Array.isArray(discData.data)) setDisciplines(discData.data);
         if (data) {
+          const discId = data.disciplineId?._id || data.disciplineId || '';
           setProfile({
             name: data.fullName || '',
+            disciplineId: discId,
             specialties: data.specialties || [],
             description: data.description || '',
             avatar: data.avatar || '',
@@ -47,7 +55,7 @@ export function TrainerProfile() {
       } catch (e) { console.error(e); }
       setLoading(false);
     };
-    fetchProfile();
+    fetchData();
   }, [user]);
 
   const handleImageUpload = (field: 'avatar' | 'coverImage' | 'gallery') => (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -73,6 +81,10 @@ export function TrainerProfile() {
         ? prev.specialties.filter(s => s !== specialty)
         : [...prev.specialties, specialty]
     }));
+  };
+
+  const selectDiscipline = (id: string) => {
+    setProfile(prev => ({ ...prev, disciplineId: prev.disciplineId === id ? '' : id }));
   };
 
   const addCertification = () => {
@@ -102,6 +114,7 @@ export function TrainerProfile() {
         headers: { ...getAuthHeaders() as any, 'Content-Type': 'application/json' },
         body: JSON.stringify({
           fullName: profile.name,
+          disciplineId: profile.disciplineId || undefined,
           description: profile.description,
           specialties: profile.specialties,
           avatar: profile.avatar,
@@ -255,21 +268,49 @@ export function TrainerProfile() {
           </div>
         </div>
 
-        {/* Specialties */}
+        {/* Discipline */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
-          <h2 className="text-xl font-bold text-slate-900 mb-6">Các bộ môn chuyên môn</h2>
+          <h2 className="text-xl font-bold text-slate-900 mb-6">Bộ môn chính</h2>
+          <p className="text-sm text-slate-500 mb-4">Chọn bộ môn chuyên môn của bạn để hiển thị và lọc trên trang HLV</p>
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-            {allSpecialties.map((specialty) => (
-              <button key={specialty} onClick={() => toggleSpecialty(specialty)}
-                className={`px-4 py-3 rounded-lg font-medium transition-all ${profile.specialties.includes(specialty) ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>
-                {specialty}
+            {disciplines.map((d) => (
+              <button key={d._id} onClick={() => selectDiscipline(d._id)}
+                className={`px-4 py-3 rounded-lg font-medium transition-all ${profile.disciplineId === d._id ? 'bg-indigo-600 text-white shadow-md' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>
+                {d.name}
               </button>
             ))}
+            {disciplines.length === 0 && (
+              <p className="text-slate-400 col-span-full text-center py-6">Chưa có bộ môn nào</p>
+            )}
+          </div>
+          {profile.disciplineId && (
+            <div className="mt-4 p-4 bg-indigo-50 rounded-lg">
+              <p className="text-sm text-indigo-900">
+                <span className="font-semibold">Bộ môn chính:</span>{' '}
+                {disciplines.find(d => d._id === profile.disciplineId)?.name || ''}
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Specialties */}
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
+          <h2 className="text-xl font-bold text-slate-900 mb-6">Chuyên môn phụ</h2>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            {disciplines.map((d) => (
+              <button key={d._id} onClick={() => toggleSpecialty(d.name)}
+                className={`px-4 py-3 rounded-lg font-medium transition-all ${profile.specialties.includes(d.name) ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>
+                {d.name}
+              </button>
+            ))}
+            {disciplines.length === 0 && (
+              <p className="text-slate-400 col-span-full text-center py-6">Chưa có bộ môn nào</p>
+            )}
           </div>
           {profile.specialties.length > 0 && (
             <div className="mt-4 p-4 bg-indigo-50 rounded-lg">
               <p className="text-sm text-indigo-900">
-                <span className="font-semibold">Đã chọn {profile.specialties.length} bộ môn:</span>{' '}
+                <span className="font-semibold">Chuyên môn phụ ({profile.specialties.length}):</span>{' '}
                 {profile.specialties.join(', ')}
               </p>
             </div>

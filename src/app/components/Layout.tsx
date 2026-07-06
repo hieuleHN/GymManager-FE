@@ -13,10 +13,16 @@ import {
   ChevronDown,
   MapPin,
   Activity,
-  QrCode // Đảm bảo import icon QR Code
+  QrCode,
+  Calendar,
+  Check,
+  XCircle,
+  Loader2,
+  AlertCircle,
+  ChevronRight
 } from 'lucide-react';
-import { useState } from 'react';
-import { useAuth } from '../context/AuthContext';
+import { useState, useEffect, useRef } from 'react';
+import { useAuth, getApiUrl, getAuthHeaders } from '../context/AuthContext';
 import { Button } from '@mui/material';
 
 import logo from '../../imports/ChatGPT_Image_May_14__2026__09_48_52_PM.png';
@@ -31,6 +37,96 @@ export function Layout() {
   const navigate = useNavigate();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const notifRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!user) return;
+    fetchNotifications();
+    fetchUnreadCount();
+    const interval = setInterval(fetchUnreadCount, 30000);
+    return () => clearInterval(interval);
+  }, [user]);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
+        setShowNotifications(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const fetchNotifications = async () => {
+    if (!user) return;
+    try {
+      const role = user.role === 'member' ? 'member' : 'staff';
+      const res = await fetch(`${getApiUrl()}/api/notifications?recipientId=${user.id}&recipientRole=${role}&limit=10`, {
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setNotifications(data.data || []);
+      }
+    } catch {}
+  };
+
+  const fetchUnreadCount = async () => {
+    if (!user) return;
+    try {
+      const role = user.role === 'member' ? 'member' : 'staff';
+      const res = await fetch(`${getApiUrl()}/api/notifications/unread-count?recipientId=${user.id}&recipientRole=${role}`, {
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setUnreadCount(data.count || 0);
+      }
+    } catch {}
+  };
+
+  const handleNotificationClick = async (notif: any) => {
+    try {
+      await fetch(`${getApiUrl()}/api/notifications/${notif._id}/read`, {
+        method: 'PUT',
+        headers: getAuthHeaders()
+      });
+    } catch {}
+    setShowNotifications(false);
+    if (notif.type === 'booking_transferred') {
+      navigate('/dashboard/schedule');
+    } else if (notif.relatedBookingId?._id || notif.relatedBookingId) {
+      const bookingId = notif.relatedBookingId._id || notif.relatedBookingId;
+      navigate(`/dashboard/bookings/${bookingId}/status`);
+    }
+  };
+
+  const markAllAsRead = async () => {
+    if (!user) return;
+    try {
+      const role = user.role === 'member' ? 'member' : 'staff';
+      await fetch(`${getApiUrl()}/api/notifications/read-all`, {
+        method: 'PUT',
+        headers: { ...getAuthHeaders() as any, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recipientId: user.id, recipientRole: role })
+      });
+      setUnreadCount(0);
+      setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    } catch {}
+  };
+
+  const getNotifIcon = (type: string) => {
+    switch (type) {
+      case 'booking_confirmed': return <Check className="w-4 h-4 text-green-500" />;
+      case 'booking_rejected':
+      case 'booking_cancelled': return <XCircle className="w-4 h-4 text-red-500" />;
+      case 'booking_request': return <Calendar className="w-4 h-4 text-indigo-500" />;
+      default: return <AlertCircle className="w-4 h-4 text-slate-500" />;
+    }
+  };
 
   // Mảng chứa các menu điều hướng gốc
   const navigation = [
@@ -124,11 +220,55 @@ export function Layout() {
             {/* Cụm chức năng Avatar / Login bên tay phải */}
             <div className="hidden md:flex items-center gap-4">
               {user ? (
-                <div className="flex items-center gap-4">
-                  <button className="text-slate-500 hover:text-slate-700 relative">
+                <div className="flex items-center gap-4 relative" ref={notifRef}>
+                  <button onClick={() => { setShowNotifications(!showNotifications); if (!showNotifications) fetchNotifications(); }} className="text-slate-500 hover:text-slate-700 relative">
                     <Bell className="w-5 h-5" />
-                    <span className="absolute -top-1 -right-1 block h-2 w-2 rounded-full bg-red-500 ring-2 ring-white" />
+                    {unreadCount > 0 && (
+                      <span className="absolute -top-1.5 -right-1.5 block min-w-[18px] h-[18px] rounded-full bg-red-500 ring-2 ring-white text-white text-[10px] font-bold flex items-center justify-center px-1">
+                        {unreadCount > 99 ? '99+' : unreadCount}
+                      </span>
+                    )}
                   </button>
+
+                  {showNotifications && (
+                    <div className="absolute top-full right-0 mt-2 w-96 bg-white rounded-2xl shadow-xl border border-slate-200 z-50 max-h-[500px] flex flex-col">
+                      <div className="flex items-center justify-between p-4 border-b border-slate-100 shrink-0">
+                        <h3 className="font-bold text-slate-900">Thông báo</h3>
+                        {unreadCount > 0 && (
+                          <button onClick={markAllAsRead} className="text-xs text-indigo-600 hover:text-indigo-800 font-medium">
+                            Đánh dấu đã đọc
+                          </button>
+                        )}
+                      </div>
+                      <div className="overflow-y-auto flex-1">
+                        {notifications.length === 0 ? (
+                          <div className="p-8 text-center text-slate-500 text-sm">
+                            <Bell className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+                            Không có thông báo
+                          </div>
+                        ) : (
+                          notifications.map((notif) => (
+                            <button key={notif._id} onClick={() => handleNotificationClick(notif)}
+                              className={`w-full text-left p-4 flex gap-3 hover:bg-slate-50 transition-colors border-b border-slate-50 ${!notif.read ? 'bg-indigo-50/50' : ''}`}>
+                              <div className="mt-0.5 shrink-0">
+                                {getNotifIcon(notif.type)}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className={`text-sm ${!notif.read ? 'font-semibold text-slate-900' : 'text-slate-700'}`}>{notif.title}</p>
+                                <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">{notif.message}</p>
+                                <p className="text-[10px] text-slate-400 mt-1">
+                                  {new Date(notif.createdAt).toLocaleDateString('vi-VN', {
+                                    hour: '2-digit', minute: '2-digit'
+                                  })}
+                                </p>
+                              </div>
+                              <ChevronRight className="w-4 h-4 text-slate-300 shrink-0 mt-1" />
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  )}
                   <div className="flex items-center gap-3 pl-4 border-l border-slate-200">
                     <div className="text-right">
                       <p className="text-sm font-medium text-slate-900">{user.name}</p>

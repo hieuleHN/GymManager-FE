@@ -1,32 +1,30 @@
 import { DashboardLayout } from '../../components/DashboardLayout';
 import { useState, useEffect } from 'react';
-import { getApiUrl, getAuthHeaders } from '../../context/AuthContext';
-import { Loader2 } from 'lucide-react';
+import { useNavigate } from 'react-router';
+import { getApiUrl, getAuthHeaders, useAuth } from '../../context/AuthContext';
+import { Loader2, Calendar, CreditCard } from 'lucide-react';
 
 interface Transaction {
   _id: string;
-  package_id: {
-    _id: string;
-    name: string;
-    unitPrice: number;
-  };
-  locationId?: {
-    bankName?: string;
-    accountNumber?: string;
-    accountName?: string;
-    branch?: string;
-  };
+  type: 'package' | 'booking';
+  name: string;
   total_price: number;
   payment_method: string;
   payment_status: string;
   createdAt: string;
-  start_date: string;
-  end_date: string;
-  duration_months: number;
+  package_id?: { _id: string; name: string; unitPrice: number };
+  locationId?: { bankName?: string; accountNumber?: string; accountName?: string; branch?: string };
+  start_date?: string;
+  end_date?: string;
+  duration_months?: number;
   vnpay_bank_code?: string;
   vnpay_bank_tran_no?: string;
   vnpay_card_type?: string;
   vnpay_transaction_no?: string;
+  disciplineName?: string;
+  date?: string;
+  time?: string;
+  trainerName?: string;
 }
 
 const bankNameMap: Record<string, string> = {
@@ -70,30 +68,104 @@ const paymentMethodLabels: Record<string, string> = {
 
 const statusConfig: Record<string, { label: string; className: string }> = {
   'đã thanh toán': { label: 'Thành công', className: 'bg-green-100 text-green-700' },
+  'paid': { label: 'Thành công', className: 'bg-green-100 text-green-700' },
   'chờ thanh toán': { label: 'Chờ thanh toán', className: 'bg-amber-100 text-amber-700' },
+  'pending': { label: 'Chờ thanh toán', className: 'bg-amber-100 text-amber-700' },
   'đã hủy': { label: 'Đã hủy', className: 'bg-red-100 text-red-700' },
+  'cancelled': { label: 'Đã hủy', className: 'bg-red-100 text-red-700' },
 };
 
 export function TransactionHistory() {
+  const { user } = useAuth();
+  const navigate = useNavigate();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [rawData, setRawData] = useState<{ bookings: any[]; packages: any[] }>({ bookings: [], packages: [] });
   const [loading, setLoading] = useState(true);
 
+  const handleContinuePayment = (tx: Transaction) => {
+    if (tx.type === 'booking') {
+      const bookingData = rawData.bookings.find((b: any) => b._id === tx._id);
+      if (!bookingData) return;
+      navigate('/payment', {
+        state: {
+          type: 'trainer_booking',
+          booking: bookingData,
+          trainer: bookingData.trainerId,
+          totalPrice: bookingData.price || 0,
+          package: {
+            name: `PT 1 buổi với ${bookingData.trainerId?.fullName || 'HLV'}${bookingData.disciplineId?.name ? ` (${bookingData.disciplineId.name})` : ''}`,
+            price: bookingData.price || 0
+          }
+        }
+      });
+    } else {
+      const regData = rawData.packages.find((p: any) => p._id === tx._id);
+      if (!regData) return;
+      navigate('/payment', {
+        state: {
+          type: 'package',
+          registration: regData,
+          package: {
+            name: regData.package_id?.name || 'Gói tập',
+            price: regData.total_price || 0,
+            locationId: regData.locationId
+          },
+          totalPrice: regData.total_price || 0,
+          customer: user
+        }
+      });
+    }
+  };
+
   useEffect(() => {
-    fetch(`${getApiUrl()}/api/user-packages/transactions`, {
-      headers: getAuthHeaders(),
-    })
-      .then(res => res.json())
-      .then(data => {
-        if (Array.isArray(data)) setTransactions(data);
+    Promise.all([
+      fetch(`${getApiUrl()}/api/user-packages/transactions`, { headers: getAuthHeaders() }),
+      fetch(`${getApiUrl()}/api/bookings/my`, { headers: getAuthHeaders() })
+    ])
+      .then(([pkgRes, bookingRes]) => Promise.all([pkgRes.json(), bookingRes.json()]))
+      .then(([pkgData, bookingData]) => {
+        const list: Transaction[] = [];
+        setRawData({ packages: Array.isArray(pkgData) ? pkgData : [], bookings: Array.isArray(bookingData) ? bookingData : [] });
+
+        if (Array.isArray(pkgData)) {
+          pkgData.forEach((tx: any) => list.push({ ...tx, type: 'package' }));
+        }
+
+        if (Array.isArray(bookingData)) {
+          bookingData.forEach((b: any) => {
+            if (b.paymentStatus === 'pending' && b.status === 'pending') return;
+            list.push({
+              _id: b._id,
+              type: 'booking',
+              name: `Tập với HLV ${b.trainerId?.fullName || 'HLV'}${b.disciplineId?.name ? ` (${b.disciplineId.name})` : ''}`,
+              total_price: b.price || 0,
+              payment_method: b.paymentMethod || '',
+              payment_status: b.paymentStatus || 'pending',
+              createdAt: b.createdAt || b.created_at,
+              vnpay_bank_code: b.vnpay_bank_code,
+              vnpay_bank_tran_no: b.vnpay_bank_tran_no,
+              vnpay_card_type: b.vnpay_card_type,
+              vnpay_transaction_no: b.vnpay_transaction_no,
+              date: b.date,
+              time: b.time || b.startTime,
+              trainerName: b.trainerId?.fullName,
+              disciplineName: b.disciplineId?.name,
+            });
+          });
+        }
+
+        list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        setTransactions(list);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
 
   const formatPrice = (price: number) =>
-    price.toLocaleString('vi-VN') + 'đ';
+    (price || 0).toLocaleString('vi-VN') + 'đ';
 
   const formatDate = (dateStr: string) => {
+    if (!dateStr) return '---';
     const d = new Date(dateStr);
     return d.toLocaleDateString('vi-VN');
   };
@@ -102,7 +174,7 @@ export function TransactionHistory() {
     paymentMethodLabels[method] || method || '---';
 
   const getStatusInfo = (status: string) =>
-    statusConfig[status] || { label: status, className: 'bg-slate-100 text-slate-700' };
+    statusConfig[status?.toLowerCase()] || { label: status || '---', className: 'bg-slate-100 text-slate-700' };
 
   const getBankInfo = (tx: Transaction) => {
     if (tx.payment_method === 'vnpay' && tx.vnpay_bank_code) {
@@ -155,12 +227,13 @@ export function TransactionHistory() {
                   <th className="px-4 py-4 text-left text-sm font-semibold text-slate-900 whitespace-nowrap">Ngân hàng</th>
                   <th className="px-4 py-4 text-left text-sm font-semibold text-slate-900 whitespace-nowrap">Số tài khoản</th>
                   <th className="px-4 py-4 text-left text-sm font-semibold text-slate-900 whitespace-nowrap">Trạng thái</th>
+                  <th className="px-4 py-4 text-left text-sm font-semibold text-slate-900 whitespace-nowrap">Thao tác</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {transactions.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-4 py-12 text-center text-slate-400">
+                    <td colSpan={9} className="px-4 py-12 text-center text-slate-400">
                       Chưa có giao dịch nào
                     </td>
                   </tr>
@@ -168,17 +241,23 @@ export function TransactionHistory() {
                   transactions.map((tx) => {
                     const status = getStatusInfo(tx.payment_status);
                     return (
-                      <tr key={tx._id} className="hover:bg-slate-50 transition-colors">
+                      <tr key={`${tx.type}-${tx._id}`} className="hover:bg-slate-50 transition-colors">
                         <td className="px-4 py-4 text-sm text-slate-600 whitespace-nowrap">
                           {formatDate(tx.createdAt)}
                         </td>
                         <td className="px-4 py-4">
                           <p className="font-medium text-slate-900">
-                            {tx.package_id?.name || 'Đã xóa'}
+                            {tx.type === 'booking' ? tx.name : (tx.package_id?.name || 'Đã xóa')}
                           </p>
+                          {tx.type === 'booking' && tx.date && (
+                            <p className="text-xs text-slate-500 mt-0.5 flex items-center gap-1">
+                              <Calendar className="w-3 h-3" />
+                              {formatDate(tx.date)}{tx.time ? ` ${tx.time}` : ''}
+                            </p>
+                          )}
                         </td>
                         <td className="px-4 py-4 text-sm text-slate-600 whitespace-nowrap">
-                          Gói tập
+                          {tx.type === 'booking' ? 'Đặt lịch' : 'Gói tập'}
                         </td>
                         <td className="px-4 py-4">
                           <span className="font-semibold text-slate-900 whitespace-nowrap">
@@ -198,6 +277,15 @@ export function TransactionHistory() {
                           <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${status.className}`}>
                             {status.label}
                           </span>
+                        </td>
+                        <td className="px-4 py-4 whitespace-nowrap">
+                          {(tx.payment_status === 'pending' || tx.payment_status === 'chờ thanh toán') && (
+                            <button onClick={() => handleContinuePayment(tx)}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-xs font-semibold">
+                              <CreditCard className="w-3.5 h-3.5" />
+                              Tiếp tục thanh toán
+                            </button>
+                          )}
                         </td>
                       </tr>
                     );

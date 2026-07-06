@@ -1,8 +1,8 @@
 import { DashboardLayout } from '../../components/DashboardLayout';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Button } from '@mui/material';
 import { useNavigate } from 'react-router';
-import { ChevronLeft, ChevronRight, Save, ArrowLeft, Loader2, UserCheck } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Save, ArrowLeft } from 'lucide-react';
 import { useAuth, getApiUrl, getAuthHeaders } from '../../context/AuthContext';
 import { toast } from 'sonner';
 
@@ -13,9 +13,6 @@ export function BookSchedule() {
   const [currentMonth, setCurrentMonth] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
   const [selectedDates, setSelectedDates] = useState<Record<string, string>>({});
   const [activeDate, setActiveDate] = useState<number | null>(null);
-  const [isNewMember, setIsNewMember] = useState(false);
-  const [randomTrainer, setRandomTrainer] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
   const year = currentMonth.getFullYear();
@@ -27,33 +24,8 @@ export function BookSchedule() {
     '06:00', '06:30', '07:00', '07:30', '08:00', '08:30', '09:00', '09:30',
     '10:00', '10:30', '11:00', '11:30', '12:00', '12:30', '13:00', '13:30',
     '14:00', '14:30', '15:00', '15:30', '16:00', '16:30', '17:00', '17:30',
-    '18:00', '18:30', '19:00', '19:30', '20:00', '20:30', '21:00'
+    '18:00', '18:30', '19:00', '19:30', '20:00', '20:30'
   ];
-
-  useEffect(() => {
-    const checkNewMember = async () => {
-      try {
-        const res = await fetch(`${getApiUrl()}/api/bookings/my`, {
-          headers: getAuthHeaders()
-        });
-        const data = await res.json();
-        if (Array.isArray(data) && data.length === 0) {
-          setIsNewMember(true);
-          const trainersRes = await fetch(`${getApiUrl()}/api/staff/trainers`, {
-            headers: getAuthHeaders()
-          });
-          const trainersData = await trainersRes.json();
-          const trainers = Array.isArray(trainersData) ? trainersData : (trainersData?.data || []);
-          if (trainers.length > 0) {
-            const picked = trainers[Math.floor(Math.random() * trainers.length)];
-            setRandomTrainer(picked);
-          }
-        }
-      } catch {}
-      setLoading(false);
-    };
-    checkNewMember();
-  }, []);
 
   const handleDateClick = (day: number) => {
     if (day < 1 || day > daysInMonth) return;
@@ -84,27 +56,6 @@ export function BookSchedule() {
     }
 
     setSaving(true);
-
-    let assignedTrainer = randomTrainer;
-    if (!assignedTrainer) {
-      try {
-        const trainersRes = await fetch(`${getApiUrl()}/api/staff/trainers`, {
-          headers: getAuthHeaders()
-        });
-        const trainersData = await trainersRes.json();
-        const trainers = Array.isArray(trainersData) ? trainersData : (trainersData?.data || []);
-        if (trainers.length > 0) {
-          assignedTrainer = trainers[Math.floor(Math.random() * trainers.length)];
-        }
-      } catch {}
-    }
-
-    if (!assignedTrainer) {
-      toast.error('Không tìm thấy HLV nào để phân công');
-      setSaving(false);
-      return;
-    }
-
     let success = 0;
     let fail = 0;
 
@@ -116,7 +67,6 @@ export function BookSchedule() {
           body: JSON.stringify({
             date,
             time,
-            trainerId: assignedTrainer._id,
             locationId: user?.locationId || null
           })
         });
@@ -128,11 +78,7 @@ export function BookSchedule() {
     setSaving(false);
 
     if (success > 0) {
-      if (isNewMember && randomTrainer) {
-        toast.success(`Đã đặt ${success} buổi tập với HLV ${randomTrainer.fullName}!`);
-      } else {
-        toast.success(`Đã lưu ${success} lịch tập thành công!`);
-      }
+      toast.success(`Đã lưu ${success} lịch tập thành công!`);
       if (fail > 0) toast.warning(`${fail} lịch thất bại`);
       setTimeout(() => navigate('/dashboard/schedule'), 1500);
     } else {
@@ -141,16 +87,6 @@ export function BookSchedule() {
   };
 
   const monthStr = `Tháng ${month + 1}/${year}`;
-
-  if (loading) {
-    return (
-      <DashboardLayout>
-        <div className="flex items-center justify-center py-20 text-slate-500">
-          <Loader2 className="w-5 h-5 animate-spin mr-2" /> Đang tải...
-        </div>
-      </DashboardLayout>
-    );
-  }
 
   return (
     <DashboardLayout>
@@ -171,18 +107,6 @@ export function BookSchedule() {
             {saving ? 'Đang lưu...' : 'Lưu thay đổi'}
           </Button>
         </div>
-
-        {isNewMember && randomTrainer && (
-          <div className="mb-4 p-4 bg-indigo-50 border border-indigo-200 rounded-2xl flex items-center gap-3">
-            <UserCheck className="w-6 h-6 text-indigo-600" />
-            <div>
-              <p className="font-semibold text-indigo-900">Buổi tập đầu tiên miễn phí với HLV</p>
-              <p className="text-indigo-700">
-                HLV <strong>{randomTrainer.fullName}</strong> sẽ hướng dẫn bạn buổi tập này!
-              </p>
-            </div>
-          </div>
-        )}
 
         <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-slate-100 p-6 flex flex-col">
@@ -271,9 +195,6 @@ export function BookSchedule() {
           <div className="mt-6 bg-indigo-50 border border-indigo-200 rounded-2xl p-4">
             <div className="flex items-center justify-between mb-2">
               <h4 className="font-semibold text-indigo-900">Đã chọn {Object.keys(selectedDates).length} lịch tập:</h4>
-              {isNewMember && randomTrainer && (
-                <span className="text-sm text-indigo-700">HLV: {randomTrainer.fullName}</span>
-              )}
             </div>
             <div className="flex flex-wrap gap-2">
               {Object.entries(selectedDates).map(([dateStr, time]) => {

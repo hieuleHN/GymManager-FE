@@ -70,25 +70,14 @@ export function Payment() {
   const vnpaySuccess = params.get('vnpay_success') === 'true';
   const vnpayFailed = params.get('vnpay_success') === 'false';
   const transactionNo = params.get('transactionNo');
+  const vnpayBookingId = params.get('bookingId');
 
   if (vnpaySuccess && transactionNo) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center py-12 px-4">
-        <div className="max-w-md w-full bg-white p-8 rounded-2xl shadow-lg text-center">
-          <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-            <Check className="w-10 h-10 text-green-600" />
-          </div>
-          <h2 className="text-2xl font-bold text-slate-900 mb-4">Thanh toán thành công!</h2>
-          <p className="text-slate-600 mb-2">Giao dịch VNPAY đã hoàn tất.</p>
-          <p className="text-sm text-slate-500 mb-8">Mã giao dịch: {transactionNo}</p>
-          <Button fullWidth variant="contained" size="large"
-            onClick={() => navigate(isBookingPayment ? '/dashboard/schedule' : '/dashboard/my-packages')}
-            sx={{ height: 56, borderRadius: 3, textTransform: 'none', fontSize: '1rem', fontWeight: 700, bgcolor: '#4f46e5', '&:hover': { bgcolor: '#4338ca' } }}>
-            {isBookingPayment ? 'Về lịch tập' : 'Về gói tập của tôi'}
-          </Button>
-        </div>
-      </div>
-    );
+    const redirectUrl = vnpayBookingId
+      ? `/dashboard/bookings/${vnpayBookingId}/status?success=true`
+      : '/dashboard/my-packages';
+    navigate(redirectUrl, { replace: true });
+    return null;
   }
 
   if (vnpayFailed) {
@@ -245,69 +234,11 @@ export function Payment() {
   const pdfUrl = `${getApiUrl()}/api/user-packages/${regId}/contract-pdf?token=${pdfToken}`;
 
   if (paymentSuccess) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center py-12 px-4">
-        <div className="max-w-md w-full bg-white p-8 rounded-2xl shadow-lg text-center">
-          <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-            <Check className="w-10 h-10 text-green-600" />
-          </div>
-
-          <h2 className="text-2xl font-bold text-slate-900 mb-4">
-            Đã gửi yêu cầu thanh toán!
-          </h2>
-          <p className="text-slate-600 mb-2">
-            Admin sẽ xác nhận thanh toán trong thời gian sớm nhất.
-          </p>
-          <p className="text-sm text-slate-500 mb-8">
-
-            Cảm ơn bạn đã đăng ký gói tập tại ZenFitness.
-          </p>
-          {registration?.contract_pdf && (
-            <div className="space-y-3 mb-6">
-              <a href={pdfUrl} target="_blank" rel="noopener noreferrer" className="block">
-                <Button
-                  fullWidth
-                  variant="outlined"
-                  size="large"
-                  sx={{
-                    height: 48,
-                    borderRadius: 3,
-                    textTransform: 'none',
-                    fontSize: '1rem',
-                    fontWeight: 600,
-                    color: '#4f46e5',
-                    borderColor: '#4f46e5'
-                  }}
-                >
-                  Xem hợp đồng (PDF)
-                </Button>
-              </a>
-              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
-                <p className="font-semibold mb-1">Hợp đồng đang chờ xử lý</p>
-                <p>Hợp đồng của bạn đã được ghi nhận. Vui lòng chờ quản lý xác nhận để kích hoạt gói tập.</p>
-              </div>
-            </div>
-          )}
-          <Button
-            fullWidth
-            variant="contained"
-            size="large"
-            onClick={() => navigate(isBookingPayment ? "/dashboard/schedule" : "/dashboard/my-packages")}
-            sx={{
-              height: 56,
-              borderRadius: 3,
-              textTransform: "none",
-              fontSize: "1rem",
-              fontWeight: 700,
-              bgcolor: "#4f46e5",
-              "&:hover": { bgcolor: "#4338ca" },
-            }}
-          >
-            {isBookingPayment ? 'Về lịch tập' : 'Về gói tập của tôi'}
-          </Button>
-        </div>
-      </div>
-    );
+    const redirectUrl = isBookingPayment && bookingId
+      ? `/dashboard/bookings/${bookingId}/status?success=true`
+      : '/dashboard/my-packages';
+    navigate(redirectUrl, { replace: true });
+    return null;
   }
 
   if (vnpayData) {
