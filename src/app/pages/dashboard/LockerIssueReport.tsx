@@ -21,6 +21,8 @@ const emptyForm = { lockerNumber: '', issueType: 'broken' as const, description:
 export function LockerIssueReport() {
   const headers = getAuthHeaders();
   const [issues, setIssues] = useState<LockerIssue[]>([]);
+  const [statusFilter, setStatusFilter] = useState<string | null>(null);
+  const [stats, setStats] = useState({ total: 0, pending: 0, resolved: 0 });
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [formData, setFormData] = useState(emptyForm);
@@ -35,12 +37,21 @@ export function LockerIssueReport() {
   const fetchIssues = async (p = page) => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/lockers?page=${p}&limit=15`, { headers });
+      let url = `/api/lockers?page=${p}&limit=15`;
+    if (statusFilter) url += `&status=${statusFilter}`;
+    const res = await fetch(url, { headers });
+      // const res = await fetch(`/api/lockers?page=${p}&limit=15`, { headers });
       if (!res.ok) throw new Error('Failed');
       const data = await res.json();
-      setIssues(data.data || []);
+      const allIssues = data.data || [];
+      setIssues(allIssues);
       setTotalPages(data.totalPages || 1);
       setTotal(data.total || 0);
+      setStats({
+        total: data.total || 0,
+        pending: allIssues.filter((i: LockerIssue) => i.status === 'pending').length,
+        resolved: allIssues.filter((i: LockerIssue) => i.status === 'resolved').length,
+      });
     } catch {
       toast.error('Không thể tải danh sách báo cáo của bạn');
     } finally {
@@ -48,7 +59,7 @@ export function LockerIssueReport() {
     }
   };
 
-  useEffect(() => { fetchIssues(1); }, []);
+  useEffect(() => { setPage(1); fetchIssues(1); }, [statusFilter]);
 
   const getIssueTypeIcon = (type: LockerIssue['issueType']) => {
     switch (type) {
@@ -158,6 +169,35 @@ export function LockerIssueReport() {
           <button onClick={() => { setFormData(emptyForm); setErrors({}); setShowModal(true); }}
             className="flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-semibold">
             <Plus className="w-5 h-5" /> Báo cáo vấn đề mới
+          </button>
+        </div>
+
+        <div className="grid md:grid-cols-3 gap-4">
+          <button onClick={() => setStatusFilter(null)}
+            className={`bg-white rounded-xl p-6 border-2 transition-all text-left ${statusFilter === null ? 'border-indigo-500 shadow-md' : 'border-slate-200 hover:border-slate-300'}`}>
+            <div className="flex items-center gap-3 mb-2">
+              <Lock className="w-6 h-6 text-indigo-600" />
+              <h3 className="font-semibold text-slate-900">Tổng số báo cáo</h3>
+            </div>
+            <p className="text-3xl font-bold text-slate-900">{stats.total}</p>
+          </button>
+
+          <button onClick={() => setStatusFilter('pending')}
+            className={`bg-white rounded-xl p-6 border-2 transition-all text-left ${statusFilter === 'pending' ? 'border-yellow-500 shadow-md' : 'border-slate-200 hover:border-slate-300'}`}>
+            <div className="flex items-center gap-3 mb-2">
+              <Clock className="w-6 h-6 text-yellow-600" />
+              <h3 className="font-semibold text-slate-900">Chờ xử lý</h3>
+            </div>
+            <p className="text-3xl font-bold text-yellow-600">{stats.pending}</p>
+          </button>
+
+          <button onClick={() => setStatusFilter('resolved')}
+            className={`bg-white rounded-xl p-6 border-2 transition-all text-left ${statusFilter === 'resolved' ? 'border-green-500 shadow-md' : 'border-slate-200 hover:border-slate-300'}`}>
+            <div className="flex items-center gap-3 mb-2">
+              <CheckCircle className="w-6 h-6 text-green-600" />
+              <h3 className="font-semibold text-slate-900">Đã giải quyết</h3>
+            </div>
+            <p className="text-3xl font-bold text-green-600">{stats.resolved}</p>
           </button>
         </div>
 
