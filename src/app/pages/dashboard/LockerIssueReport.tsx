@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Lock, AlertTriangle, Key, Trash2, CheckCircle, XCircle, Loader2, Plus, Clock } from 'lucide-react';
+import { Lock, AlertTriangle, Key, Trash2, CheckCircle, XCircle, Loader2, Plus, Clock, HelpCircle } from 'lucide-react';
 import { AdminLayout } from '../../components/AdminLayout';
 import { Pagination } from '../../components/Pagination';
 import { getAuthHeaders } from '../../context/AuthContext';
@@ -8,7 +8,7 @@ import { toast } from 'sonner';
 interface LockerIssue {
   _id: string;
   lockerNumber: string;
-  issueType: 'broken' | 'dirty' | 'lost-key';
+  issueType: 'broken' | 'dirty' | 'lost-key' | 'other';
   description: string;
   reporterName: string;
   createdAt: string;
@@ -55,6 +55,7 @@ export function LockerIssueReport() {
       case 'broken': return <AlertTriangle className="w-5 h-5" />;
       case 'dirty': return <Trash2 className="w-5 h-5" />;
       case 'lost-key': return <Key className="w-5 h-5" />;
+      case 'other': return <HelpCircle className="w-5 h-5" />;
     }
   };
 
@@ -63,6 +64,8 @@ export function LockerIssueReport() {
       case 'broken': return 'Hỏng hóc';
       case 'dirty': return 'Bẩn';
       case 'lost-key': return 'Mất chìa khóa';
+      case 'other': return 'Khác';
+
     }
   };
 
@@ -71,6 +74,7 @@ export function LockerIssueReport() {
       case 'broken': return 'bg-red-100 text-red-700';
       case 'dirty': return 'bg-orange-100 text-orange-700';
       case 'lost-key': return 'bg-yellow-100 text-yellow-700';
+      case 'other': return 'bg-gray-100 text-gray-700';
     }
   };
 
@@ -218,6 +222,7 @@ export function LockerIssueReport() {
                       <option value="broken">Hỏng hóc</option>
                       <option value="dirty">Bẩn</option>
                       <option value="lost-key">Mất chìa khóa</option>
+                      <option value="other">Khác</option>
                     </select>
                     {errors.issueType && <p className="text-red-500 text-sm mt-1">{errors.issueType}</p>}
                   </div>
