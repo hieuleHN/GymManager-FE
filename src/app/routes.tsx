@@ -1,79 +1,80 @@
-import MemberQR from "./pages/MemberQR"; // Màn hình QR hội viên
-import { AttendanceScanner } from "./pages/admin/AttendanceScanner";
-import { createBrowserRouter, Navigate, useLocation } from "react-router";
-import { Layout } from "./components/Layout";
-import { Home } from "./pages/Home";
-import { Learn } from "./pages/Learn";
-import { PTList } from "./pages/PTList";
-import { Packages } from "./pages/Packages";
-import { PackageDetail } from "./pages/PackageDetail";
-import { Dashboard } from "./pages/Dashboard";
-import { Auth } from "./pages/Auth";
-import { useAuth } from "./context/AuthContext";
-import { ClubDetail } from "./pages/ClubDetail";
-import { DisciplineDetail } from "./pages/DisciplineDetail";
-import { PackageCheckout } from "./pages/PackageCheckout";
-import { Contract } from "./pages/Contract";
-import { Payment } from "./pages/Payment";
-import { MyPackages } from "./pages/dashboard/MyPackages";
-import { TransactionHistory } from "./pages/dashboard/TransactionHistory";
-import { Schedule } from "./pages/dashboard/Schedule";
-import { BookSchedule } from "./pages/dashboard/BookSchedule";
-import { Trainers } from "./pages/dashboard/Trainers";
-import { BookTrainer } from "./pages/dashboard/BookTrainer";
-import { ConfirmTrainerBooking } from "./pages/dashboard/ConfirmTrainerBooking";
-import { TrainerDetail } from "./pages/dashboard/TrainerDetail";
-import { Progress } from "./pages/dashboard/Progress";
-import { Services as MemberServices } from "./pages/dashboard/Services";
-import { Settings } from "./pages/dashboard/Settings";
-import { AdminDashboard } from "./pages/admin/Dashboard";
-import { CustomerList } from "./pages/admin/CustomerList";
-import { CustomerRegister } from "./pages/admin/CustomerRegister";
-import { ExpiredCustomers } from "./pages/admin/ExpiredCustomers";
-import { EditCustomer } from "./pages/admin/EditCustomer";
-import { EquipmentList } from "./pages/admin/EquipmentList";
-import { AddEquipment } from "./pages/admin/AddEquipment";
-import { EditEquipment } from "./pages/admin/EditEquipment";
-import { Services } from "./pages/admin/Services";
-import { ServiceHistory } from "./pages/admin/ServiceHistory";
-import { AttendanceHistory } from "./pages/admin/AttendanceHistory";
-import { StaffList } from "./pages/admin/StaffList";
-import { StaffSalary } from "./pages/admin/StaffSalary";
-import { StaffSalaryHistory } from "./pages/admin/StaffSalaryHistory";
-import { AddStaff } from "./pages/admin/AddStaff";
-import { StaffPermissions } from "./pages/admin/StaffPermissions";
-import { JobList } from "./pages/admin/JobList";
-import { AddJob } from "./pages/admin/AddJob";
-import { EditJob } from "./pages/admin/EditJob";
-import { Statistics } from "./pages/admin/Statistics";
-import { PackageList } from "./pages/admin/PackageList";
-import { AddPackage } from "./pages/admin/AddPackage";
-import { EditPackage } from "./pages/admin/EditPackage";
-import { ContractList } from "./pages/admin/ContractList";
-import { EditContract } from "./pages/admin/EditContract";
-import { EditProduct } from "./pages/admin/EditProduct";
-import { ProductList } from "./pages/admin/ProductList";
-import { AddProduct } from "./pages/admin/AddProduct";
-import { ProductReturns } from "./pages/admin/ProductReturns";
-import { ClubManagement } from "./pages/admin/ClubManagement";
-import { DisciplineManagement } from "./pages/admin/DisciplineManagement";
-import { PolicyManagement } from "./pages/admin/PolicyManagement";
-import { HomepageManagement } from "./pages/admin/HomepageManagement";
-import { PaymentManagement } from "./pages/admin/PaymentManagement";
-import { RecruitmentManagement } from "./pages/admin/RecruitmentManagement";
-import { ExpenseManagement } from "./pages/admin/ExpenseManagement";
-import { TrainerProfile } from "./pages/admin/TrainerProfile";
-import { TrainingSchedule } from "./pages/admin/TrainingSchedule";
-import { LockerManagement } from "./pages/admin/LockerManagement";
-import { ScheduleConfirmations } from "./pages/admin/ScheduleConfirmations";
-import { Community } from "./pages/dashboard/Community";
-import { Messages } from "./pages/dashboard/Messages";
-import { Tasks } from "./pages/admin/Tasks";
-import { Invoices } from "./pages/admin/Invoices";
-import { BookingManagement } from "./pages/admin/BookingManagement";
-import { PostManagement } from "./pages/admin/PostManagement";
-import { AdminCommunity } from "./pages/admin/AdminCommunity";
-import { AdminMessages } from "./pages/admin/AdminMessages";
+import MemberQR from './pages/MemberQR'; // Nhúng màn hình QR vào route
+import { AttendanceScanner } from './pages/admin/AttendanceScanner';
+import { createBrowserRouter, Navigate, useLocation } from 'react-router';
+import { Layout } from './components/Layout';
+import { Home } from './pages/Home';
+import { Learn } from './pages/Learn';
+import { PTList } from './pages/PTList';
+import { Packages } from './pages/Packages';
+import { PackageDetail } from './pages/PackageDetail';
+import { Dashboard } from './pages/Dashboard';
+import { Auth } from './pages/Auth';
+import { useAuth } from './context/AuthContext';
+import { ClubDetail } from './pages/ClubDetail';
+import { DisciplineDetail } from './pages/DisciplineDetail';
+import { PackageCheckout } from './pages/PackageCheckout';
+import { Contract } from './pages/Contract';
+import { Payment } from './pages/Payment';
+import { MyPackages } from './pages/dashboard/MyPackages';
+import { TransactionHistory } from './pages/dashboard/TransactionHistory';
+import { Schedule } from './pages/dashboard/Schedule';
+import { BookSchedule } from './pages/dashboard/BookSchedule';
+import { Trainers } from './pages/dashboard/Trainers';
+import { BookTrainer } from './pages/dashboard/BookTrainer';
+import { BookingStatus } from './pages/dashboard/BookingStatus';
+import { ConfirmTrainerBooking } from './pages/dashboard/ConfirmTrainerBooking';
+import { TrainerDetail } from './pages/dashboard/TrainerDetail';
+import { Progress } from './pages/dashboard/Progress';
+import { Services as MemberServices } from './pages/dashboard/Services';
+import { Settings } from './pages/dashboard/Settings';
+import { AdminDashboard } from './pages/admin/Dashboard';
+import { CustomerList } from './pages/admin/CustomerList';
+import { CustomerRegister } from './pages/admin/CustomerRegister';
+import { ExpiredCustomers } from './pages/admin/ExpiredCustomers';
+import { EditCustomer } from './pages/admin/EditCustomer';
+import { EquipmentList } from './pages/admin/EquipmentList';
+import { AddEquipment } from './pages/admin/AddEquipment';
+import { EditEquipment } from './pages/admin/EditEquipment';
+import { Services } from './pages/admin/Services';
+import { ServiceHistory } from './pages/admin/ServiceHistory';
+import { AttendanceHistory } from './pages/admin/AttendanceHistory';
+import { StaffList } from './pages/admin/StaffList';
+import { StaffSalary } from './pages/admin/StaffSalary';
+import { StaffSalaryHistory } from './pages/admin/StaffSalaryHistory';
+import { AddStaff } from './pages/admin/AddStaff';
+import { StaffPermissions } from './pages/admin/StaffPermissions';
+import { JobList } from './pages/admin/JobList';
+import { AddJob } from './pages/admin/AddJob';
+import { EditJob } from './pages/admin/EditJob';
+import { Statistics } from './pages/admin/Statistics';
+import { PackageList } from './pages/admin/PackageList';
+import { AddPackage } from './pages/admin/AddPackage';
+import { EditPackage } from './pages/admin/EditPackage';
+import { ContractList } from './pages/admin/ContractList';
+import { EditContract } from './pages/admin/EditContract';
+import { EditProduct } from './pages/admin/EditProduct';
+import { ProductList } from './pages/admin/ProductList';
+import { AddProduct } from './pages/admin/AddProduct';
+import { ProductReturns } from './pages/admin/ProductReturns';
+import { ClubManagement } from './pages/admin/ClubManagement';
+import { DisciplineManagement } from './pages/admin/DisciplineManagement';
+import { PolicyManagement } from './pages/admin/PolicyManagement';
+import { HomepageManagement } from './pages/admin/HomepageManagement';
+import { PaymentManagement } from './pages/admin/PaymentManagement';
+import { RecruitmentManagement } from './pages/admin/RecruitmentManagement';
+import { ExpenseManagement } from './pages/admin/ExpenseManagement';
+import { TrainerProfile } from './pages/admin/TrainerProfile';
+import { TrainingSchedule } from './pages/admin/TrainingSchedule';
+import { LockerManagement } from './pages/admin/LockerManagement';
+import { ScheduleConfirmations } from './pages/admin/ScheduleConfirmations';
+import { Community } from './pages/dashboard/Community';
+import { Messages } from './pages/dashboard/Messages';
+import { Tasks } from './pages/admin/Tasks';
+import { Invoices } from './pages/admin/Invoices';
+import { BookingManagement } from './pages/admin/BookingManagement';
+import { PostManagement } from './pages/admin/PostManagement';
+import { AdminCommunity } from './pages/admin/AdminCommunity';
+import { AdminMessages } from './pages/admin/AdminMessages';
 
 // Import trang ứng tuyển mới thiết lập
 import { Recruitment } from "./pages/Recruitment";
@@ -293,6 +294,12 @@ export const router = createBrowserRouter([
         <Community />
       </ProtectedRoute>
     ),
+    path: '/dashboard/bookings/:bookingId/status',
+    element: <ProtectedRoute role="member"><BookingStatus /></ProtectedRoute>
+  },
+  {
+    path: '/dashboard/progress',
+    element: <ProtectedRoute role="member"><Progress /></ProtectedRoute>
   },
   {
     path: "/dashboard/messages",
