@@ -1,9 +1,10 @@
-import { DashboardLayout } from '../../components/DashboardLayout';
+﻿import { DashboardLayout } from '../../components/DashboardLayout';
 import { useState } from 'react';
 import { Star, MessageSquare, Calendar } from 'lucide-react';
 import { Button, Chip } from '@mui/material';
 import { Link } from 'react-router';
 import { motion } from 'motion/react';
+import { useChatContext } from '../../context/ChatContext';
 
 const trainers = [
   {
@@ -83,11 +84,12 @@ const disciplines = [
 
 export function Trainers() {
   const [selectedDiscipline, setSelectedDiscipline] = useState('all');
-  const [chatOpen, setChatOpen] = useState<string | null>(null);
+  const { openChatWith } = useChatContext();
 
-  const filteredTrainers = selectedDiscipline === 'all'
-    ? trainers
-    : trainers.filter(t => t.discipline === selectedDiscipline);
+  const filteredTrainers =
+    selectedDiscipline === 'all'
+      ? trainers
+      : trainers.filter((t) => t.discipline === selectedDiscipline);
 
   return (
     <DashboardLayout>
@@ -97,7 +99,6 @@ export function Trainers() {
           <p className="text-slate-600">Chọn huấn luyện viên phù hợp với mục tiêu của bạn</p>
         </div>
 
-        {/* Discipline Tabs */}
         <div className="flex gap-3">
           {disciplines.map((disc) => (
             <button
@@ -114,7 +115,6 @@ export function Trainers() {
           ))}
         </div>
 
-        {/* Trainers Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredTrainers.map((trainer) => (
             <motion.div
@@ -138,12 +138,10 @@ export function Trainers() {
               <div className="p-6">
                 <h3 className="text-xl font-bold text-slate-900 mb-1">{trainer.name}</h3>
                 <p className="text-indigo-600 text-sm font-medium mb-3">{trainer.specialty}</p>
-                <p className="text-slate-500 text-sm mb-4 line-clamp-2">
-                  {trainer.bio}
-                </p>
+                <p className="text-slate-500 text-sm mb-4 line-clamp-2">{trainer.bio}</p>
 
                 <div className="flex flex-wrap gap-2 mb-6">
-                  {trainer.tags.map(tag => (
+                  {trainer.tags.map((tag) => (
                     <Chip
                       key={tag}
                       label={tag}
@@ -167,7 +165,11 @@ export function Trainers() {
                   <Button
                     fullWidth
                     variant="outlined"
-                    onClick={() => setChatOpen(trainer.id)}
+                    onClick={() => openChatWith(trainer.id, {
+                      fullName: trainer.name,
+                      avatar: trainer.image,
+                      role: trainer.specialty
+                    })}
                     sx={{ color: '#64748b', borderColor: '#e2e8f0', textTransform: 'none' }}
                     startIcon={<MessageSquare size={18} />}
                   >
@@ -178,51 +180,6 @@ export function Trainers() {
             </motion.div>
           ))}
         </div>
-
-        {/* Chat Box */}
-        {chatOpen && (
-          <div className="fixed bottom-6 right-6 w-96 h-[500px] bg-white rounded-2xl shadow-2xl border border-slate-200 z-50 flex flex-col">
-            <div className="bg-indigo-600 text-white p-4 rounded-t-2xl flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <img
-                  src={trainers.find(t => t.id === chatOpen)?.image}
-                  alt=""
-                  className="w-10 h-10 rounded-full border-2 border-white"
-                />
-                <div>
-                  <h4 className="font-bold">{trainers.find(t => t.id === chatOpen)?.name}</h4>
-                  <p className="text-xs text-indigo-100">Đang hoạt động</p>
-                </div>
-              </div>
-              <button onClick={() => setChatOpen(null)} className="text-white hover:bg-indigo-700 p-2 rounded-lg">
-                ✕
-              </button>
-            </div>
-
-            <div className="flex-1 p-4 overflow-y-auto bg-slate-50">
-              <div className="space-y-3">
-                <div className="flex gap-2">
-                  <div className="bg-white p-3 rounded-2xl rounded-tl-none shadow-sm max-w-[80%]">
-                    <p className="text-sm text-slate-900">Xin chào! Tôi có thể giúp gì cho bạn?</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="p-4 border-t border-slate-200">
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  placeholder="Nhập tin nhắn..."
-                  className="flex-1 px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
-                />
-                <button className="px-4 py-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors">
-                  Gửi
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     </DashboardLayout>
   );
