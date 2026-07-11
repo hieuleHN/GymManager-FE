@@ -180,7 +180,7 @@ export function Trainers() {
             </motion.div>
           ))}
         </div>
-      </div>
+u      </div>
     </DashboardLayout>
   );
 }
