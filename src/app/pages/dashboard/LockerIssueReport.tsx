@@ -21,6 +21,8 @@ const emptyForm = { lockerNumber: '', issueType: 'broken' as const, description:
 export function LockerIssueReport() {
   const headers = getAuthHeaders();
   const [issues, setIssues] = useState<LockerIssue[]>([]);
+  const [editingIssue, setEditingIssue] = useState<LockerIssue | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [stats, setStats] = useState({ total: 0, pending: 0, resolved: 0 });
   const [loading, setLoading] = useState(true);
@@ -32,8 +34,6 @@ export function LockerIssueReport() {
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
 
-  // Không truyền reporterId lên đây: BE tự lọc "chỉ báo cáo của tôi" dựa vào token
-  // (xem lockerController.list) nên FE không thể/không cần tự lọc hay giả mạo.
   const fetchIssues = async (p = page) => {
     setLoading(true);
     try {
@@ -134,10 +134,8 @@ export function LockerIssueReport() {
   const handleReport = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validateAll()) return;
-
     setSubmitting(true);
     try {
-      // Không gửi reporterId/reporterName - BE tự lấy từ req.user (token) khi tạo báo cáo.
       const res = await fetch('/api/lockers', {
         method: 'POST',
         headers,
@@ -153,6 +151,51 @@ export function LockerIssueReport() {
       toast.error('Gửi báo cáo thất bại');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingIssue) return;
+    setSubmitting(true);
+    try {
+      const res = await fetch(`/api/lockers/${editingIssue._id}`, {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify({
+          lockerNumber: editingIssue.lockerNumber,
+          issueType: editingIssue.issueType,
+          description: editingIssue.description,
+        }),
+      });
+      if (!res.ok) throw new Error('Failed');
+      toast.success('Đã cập nhật báo cáo!');
+      setEditingIssue(null);
+      fetchIssues(page);
+    } catch {
+      toast.error('Cập nhật thất bại');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    const confirmed = window.confirm('Bạn có chắc chắn muốn xóa báo cáo này không?');
+    if (!confirmed) return;
+
+    setDeletingId(id);
+    try {
+      const res = await fetch(`/api/lockers/${id}`, {
+        method: 'DELETE',
+        headers,
+      });
+      if (!res.ok) throw new Error('Failed');
+      toast.success('Đã xóa báo cáo!');
+      fetchIssues(page);
+    } catch {
+      toast.error('Xóa thất bại');
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -224,6 +267,23 @@ export function LockerIssueReport() {
                       {issue.status === 'rejected' && issue.rejectionReason && (
                         <p className="text-sm text-red-600 mb-2">Lý do từ chối: {issue.rejectionReason}</p>
                       )}
+                      {issue.status === 'pending' && (
+                        <div className="flex gap-2 mt-2">
+                          <button
+                            onClick={() => setEditingIssue({ ...issue })}
+                            className="px-3 py-1 text-sm text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                          >
+                            Sửa
+                          </button>
+                          <button
+                            onClick={() => handleDelete(issue._id)}
+                            disabled={deletingId === issue._id}
+                            className="px-3 py-1 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                          >
+                            {deletingId === issue._id ? 'Đang xóa...' : 'Xóa'}
+                          </button>
+                        </div>
+                      )}
                       <span className="text-sm text-slate-500">{new Date(issue.createdAt).toLocaleString('vi-VN')}</span>
                     </div>
                   </div>
@@ -235,6 +295,58 @@ export function LockerIssueReport() {
           {!loading && <Pagination page={page} totalPages={totalPages} total={total} limit={15} onPageChange={(p) => { setPage(p); fetchIssues(p); }} />}
         </div>
       </div>
+
+      {editingIssue && (
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4"
+          onClick={() => setEditingIssue(null)}>
+          <div className="bg-white rounded-2xl max-w-2xl w-full" onClick={e => e.stopPropagation()}>
+            <div className="p-6 border-b border-slate-200">
+              <h3 className="text-2xl font-bold text-slate-900">Sửa báo cáo</h3>
+            </div>
+            <form onSubmit={handleEdit}>
+              <div className="p-6 space-y-4">
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">Số tủ</label>
+                    <input type="text" required value={editingIssue.lockerNumber}
+                      onChange={(e) => setEditingIssue({ ...editingIssue, lockerNumber: e.target.value })}
+                      className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">Loại vấn đề</label>
+                    <select required value={editingIssue.issueType}
+                      onChange={(e) => setEditingIssue({ ...editingIssue, issueType: e.target.value as LockerIssue['issueType'] })}
+                      className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500">
+                      <option value="broken">Hỏng hóc</option>
+                      <option value="dirty">Bẩn</option>
+                      <option value="lost-key">Mất chìa khóa</option>
+                      <option value="other">Khác</option>
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Mô tả chi tiết</label>
+                  <textarea required value={editingIssue.description}
+                    onChange={(e) => setEditingIssue({ ...editingIssue, description: e.target.value })}
+                    className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 resize-none"
+                    rows={4} />
+                </div>
+              </div>
+              <div className="p-6 border-t border-slate-200 flex gap-3">
+                <button type="submit" disabled={submitting}
+                  className="flex-1 px-4 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-semibold disabled:opacity-50 flex items-center justify-center gap-2">
+                  {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
+                  {submitting ? 'Đang lưu...' : 'Lưu thay đổi'}
+                </button>
+                <button type="button" onClick={() => setEditingIssue(null)}
+                  className="flex-1 px-4 py-3 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 transition-colors font-semibold">
+                  Hủy
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {showModal && (
         <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4" onClick={() => setShowModal(false)}>
