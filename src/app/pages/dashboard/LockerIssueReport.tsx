@@ -38,9 +38,8 @@ export function LockerIssueReport() {
     setLoading(true);
     try {
       let url = `/api/lockers?page=${p}&limit=15`;
-    if (statusFilter) url += `&status=${statusFilter}`;
-    const res = await fetch(url, { headers });
-      // const res = await fetch(`/api/lockers?page=${p}&limit=15`, { headers });
+      if (statusFilter) url += `&status=${statusFilter}`;
+      const res = await fetch(url, { headers });
       if (!res.ok) throw new Error('Failed');
       const data = await res.json();
       const allIssues = data.data || [];
@@ -76,7 +75,6 @@ export function LockerIssueReport() {
       case 'dirty': return 'Bẩn';
       case 'lost-key': return 'Mất chìa khóa';
       case 'other': return 'Khác';
-
     }
   };
 

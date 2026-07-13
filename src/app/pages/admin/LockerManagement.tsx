@@ -35,6 +35,8 @@ export function LockerManagement() {
   const [rejectionReason, setRejectionReason] = useState('');
   const [rejecting, setRejecting] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
+  const [resolvingId, setResolvingId] = useState<string | null>(null);
+  const [stats, setStats] = useState({ pending: 0, resolved: 0 });
 
   const fetchIssues = async (p = page) => {
     setLoading(true);
@@ -46,9 +48,14 @@ export function LockerManagement() {
       const res = await fetch(url, { headers });
       if (!res.ok) throw new Error('Failed');
       const data = await res.json();
-      setIssues(data.data || []);
+      const allIssues = data.data || [];
+      setIssues(allIssues);
       setTotalPages(data.totalPages || 1);
       setTotal(data.total || 0);
+      setStats({
+        pending: allIssues.filter((i: LockerIssue) => i.status === 'pending').length,
+        resolved: allIssues.filter((i: LockerIssue) => i.status === 'resolved').length,
+      });
     } catch {
       toast.error('Không thể tải danh sách vấn đề');
     } finally {
@@ -63,7 +70,7 @@ export function LockerManagement() {
       case 'broken': return <AlertTriangle className="w-5 h-5" />;
       case 'dirty': return <Trash2 className="w-5 h-5" />;
       case 'lost-key': return <Key className="w-5 h-5" />;
-      // case 'khac': return <HelpCircle className="w-5 h-5" />;
+      case 'other': return <HelpCircle className="w-5 h-5" />;
     }
   };
 
@@ -146,6 +153,7 @@ export function LockerManagement() {
   };
 
   const handleResolve = async (id: string) => {
+    setResolvingId(id);
     try {
       const res = await fetch(`/api/lockers/${id}/resolve`, { method: 'PATCH', headers });
       if (!res.ok) throw new Error('Failed');
@@ -153,6 +161,8 @@ export function LockerManagement() {
       fetchIssues(page);
     } catch {
       toast.error('Cập nhật thất bại');
+    } finally {
+      setResolvingId(null);
     }
   };
 
@@ -201,12 +211,12 @@ export function LockerManagement() {
           <button onClick={() => setStatusFilter('pending')}
             className={`bg-white rounded-xl p-6 border-2 transition-all text-left ${statusFilter === 'pending' ? 'border-yellow-500 shadow-md' : 'border-slate-200 hover:border-slate-300'}`}>
             <div className="flex items-center gap-3 mb-2"><AlertTriangle className="w-6 h-6 text-yellow-600" /><h3 className="font-semibold text-slate-900">Chờ xử lý</h3></div>
-            <p className="text-3xl font-bold text-yellow-600">{issues.filter(i => i.status === 'pending').length}</p>
+            <p className="text-3xl font-bold text-yellow-600">{stats.pending}</p>
           </button>
           <button onClick={() => setStatusFilter('resolved')}
             className={`bg-white rounded-xl p-6 border-2 transition-all text-left ${statusFilter === 'resolved' ? 'border-green-500 shadow-md' : 'border-slate-200 hover:border-slate-300'}`}>
             <div className="flex items-center gap-3 mb-2"><CheckCircle className="w-6 h-6 text-green-600" /><h3 className="font-semibold text-slate-900">Đã giải quyết</h3></div>
-            <p className="text-3xl font-bold text-green-600">{issues.filter(i => i.status === 'resolved').length}</p>
+            <p className="text-3xl font-bold text-green-600">{stats.resolved}</p>
           </button>
         </div>
 
@@ -242,9 +252,9 @@ export function LockerManagement() {
                     <div className="flex gap-2">
                       {issue.status !== 'resolved' && issue.status !== 'rejected' && (
                         <>
-                          <button onClick={() => handleResolve(issue._id)}
-                            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-semibold flex items-center gap-1">
-                            <CheckCircle className="w-4 h-4" /> Hoàn thành
+                          <button onClick={() => handleResolve(issue._id)} disabled={resolvingId === issue._id}
+                            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-semibold flex items-center gap-1 disabled:opacity-50">
+                            {resolvingId === issue._id ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />} {resolvingId === issue._id ? 'Đang xử lý...' : 'Hoàn thành'}
                           </button>
                           <button onClick={() => { setRejectingId(issue._id); setRejectionReason(''); }}
                             className="px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors text-sm font-semibold flex items-center gap-1">
