@@ -11,6 +11,7 @@ interface LockerIssue {
   lockerNumber: string;
   issueType: 'broken' | 'dirty' | 'lost-key' | 'other';
   description: string;
+  image?: string | null;
   reporterName: string;
   createdAt: string;
   status: 'pending' | 'in-progress' | 'resolved' | 'rejected';
@@ -240,6 +241,10 @@ export function LockerManagement() {
                         <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(issue.status)}`}>{getStatusText(issue.status)}</span>
                       </div>
                       <p className="text-slate-700 mb-3">{issue.description}</p>
+                      {issue.image && (
+                        <img src={`/uploads/lockers/${issue.image}`} alt="Ảnh báo cáo"
+                          className="w-40 h-40 object-cover rounded-lg border border-slate-200 mb-3" />
+                      )}
                       {issue.status === 'rejected' && issue.rejectionReason && (
                         <p className="text-sm text-red-600 mb-2">Lý do từ chối: {issue.rejectionReason}</p>
                       )}

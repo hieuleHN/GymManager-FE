@@ -10,6 +10,7 @@ interface LockerIssue {
   lockerNumber: string;
   issueType: 'broken' | 'dirty' | 'lost-key' | 'other';
   description: string;
+  image?: string | null;
   reporterName: string;
   createdAt: string;
   status: 'pending' | 'in-progress' | 'resolved' | 'rejected';
@@ -20,6 +21,8 @@ const emptyForm = { lockerNumber: '', issueType: 'broken' as const, description:
 
 export function LockerIssueReport() {
   const headers = getAuthHeaders();
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [editImageFile, setEditImageFile] = useState<File | null>(null);
   const [issues, setIssues] = useState<LockerIssue[]>([]);
   const [editingIssue, setEditingIssue] = useState<LockerIssue | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -34,6 +37,22 @@ export function LockerIssueReport() {
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
 
+  const fetchStats = async () => {
+    try {
+      const res = await fetch('/api/lockers?page=1&limit=9999', { headers });
+      if (!res.ok) throw new Error('Failed');
+      const data = await res.json();
+      const allIssues = data.data || [];
+      setStats({
+        total: allIssues.length,
+        pending: allIssues.filter((i: LockerIssue) => i.status === 'pending').length,
+        resolved: allIssues.filter((i: LockerIssue) => i.status === 'resolved').length,
+      });
+    } catch {
+      // ignore
+    }
+  };
+
   const fetchIssues = async (p = page) => {
     setLoading(true);
     try {
@@ -42,15 +61,9 @@ export function LockerIssueReport() {
       const res = await fetch(url, { headers });
       if (!res.ok) throw new Error('Failed');
       const data = await res.json();
-      const allIssues = data.data || [];
-      setIssues(allIssues);
+      setIssues(data.data || []);
       setTotalPages(data.totalPages || 1);
       setTotal(data.total || 0);
-      setStats({
-        total: data.total || 0,
-        pending: allIssues.filter((i: LockerIssue) => i.status === 'pending').length,
-        resolved: allIssues.filter((i: LockerIssue) => i.status === 'resolved').length,
-      });
     } catch {
       toast.error('Không thể tải danh sách báo cáo của bạn');
     } finally {
@@ -59,6 +72,7 @@ export function LockerIssueReport() {
   };
 
   useEffect(() => { setPage(1); fetchIssues(1); }, [statusFilter]);
+  useEffect(() => { fetchStats(); }, []);
 
   const getIssueTypeIcon = (type: LockerIssue['issueType']) => {
     switch (type) {
@@ -136,16 +150,24 @@ export function LockerIssueReport() {
     if (!validateAll()) return;
     setSubmitting(true);
     try {
+      const fd = new FormData();
+      fd.append('lockerNumber', formData.lockerNumber);
+      fd.append('issueType', formData.issueType);
+      fd.append('description', formData.description);
+      if (imageFile) fd.append('image', imageFile);
+
       const res = await fetch('/api/lockers', {
         method: 'POST',
-        headers,
-        body: JSON.stringify(formData),
+        headers: { Authorization: headers.Authorization || '' },
+        body: fd,
       });
       if (!res.ok) throw new Error('Failed');
       toast.success('Đã gửi báo cáo, chờ admin xem xét!');
       setShowModal(false);
       setFormData(emptyForm);
+      setImageFile(null);
       fetchIssues(1);
+      fetchStats();
       setPage(1);
     } catch {
       toast.error('Gửi báo cáo thất bại');
@@ -153,24 +175,26 @@ export function LockerIssueReport() {
       setSubmitting(false);
     }
   };
-
   const handleEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingIssue) return;
     setSubmitting(true);
     try {
+      const fd = new FormData();
+      fd.append('lockerNumber', editingIssue.lockerNumber);
+      fd.append('issueType', editingIssue.issueType);
+      fd.append('description', editingIssue.description);
+      if (editImageFile) fd.append('image', editImageFile);
+
       const res = await fetch(`/api/lockers/${editingIssue._id}`, {
         method: 'PUT',
-        headers,
-        body: JSON.stringify({
-          lockerNumber: editingIssue.lockerNumber,
-          issueType: editingIssue.issueType,
-          description: editingIssue.description,
-        }),
+        headers: { Authorization: headers.Authorization || '' },
+        body: fd,
       });
       if (!res.ok) throw new Error('Failed');
       toast.success('Đã cập nhật báo cáo!');
       setEditingIssue(null);
+      setEditImageFile(null);
       fetchIssues(page);
     } catch {
       toast.error('Cập nhật thất bại');
@@ -192,6 +216,7 @@ export function LockerIssueReport() {
       if (!res.ok) throw new Error('Failed');
       toast.success('Đã xóa báo cáo!');
       fetchIssues(page);
+      fetchStats();
     } catch {
       toast.error('Xóa thất bại');
     } finally {
@@ -264,13 +289,17 @@ export function LockerIssueReport() {
                         </span>
                       </div>
                       <p className="text-slate-700 mb-2">{issue.description}</p>
+                      {issue.image && (
+                        <img src={`/uploads/lockers/${issue.image}`} alt="Ảnh báo cáo"
+                          className="w-40 h-40 object-cover rounded-lg border border-slate-200 mb-2" />
+                      )}
                       {issue.status === 'rejected' && issue.rejectionReason && (
                         <p className="text-sm text-red-600 mb-2">Lý do từ chối: {issue.rejectionReason}</p>
                       )}
                       {issue.status === 'pending' && (
                         <div className="flex gap-2 mt-2">
                           <button
-                            onClick={() => setEditingIssue({ ...issue })}
+                            onClick={() => { setEditingIssue({ ...issue }); setEditImageFile(null); }}
                             className="px-3 py-1 text-sm text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
                           >
                             Sửa
@@ -331,6 +360,19 @@ export function LockerIssueReport() {
                     className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 resize-none"
                     rows={4} />
                 </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Ảnh hiện tại</label>
+                  {editingIssue.image ? (
+                    <img src={`/uploads/lockers/${editingIssue.image}`}
+                      alt="Ảnh hiện tại" className="w-40 h-40 object-cover rounded-lg border border-slate-200 mb-2" />
+                  ) : (
+                    <p className="text-sm text-slate-500 mb-2">Chưa có ảnh</p>
+                  )}
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Thay đổi ảnh</label>
+                  <input type="file" accept="image/*"
+                    onChange={(e) => setEditImageFile(e.target.files?.[0] || null)}
+                    className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500" />
+                </div>
               </div>
               <div className="p-6 border-t border-slate-200 flex gap-3">
                 <button type="submit" disabled={submitting}
@@ -383,6 +425,17 @@ export function LockerIssueReport() {
                     onBlur={() => handleBlur('description')}
                     className={`w-full px-4 py-3 border ${errors.description ? 'border-red-400' : 'border-slate-300'} rounded-lg focus:ring-2 focus:ring-indigo-500 resize-none`} rows={4} placeholder="Mô tả chi tiết vấn đề..." />
                   {errors.description && <p className="text-red-500 text-sm mt-1">{errors.description}</p>}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    Ảnh thực tế (nếu có)
+                  </label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => setImageFile(e.target.files?.[0] || null)}
+                    className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                  />
                 </div>
               </div>
               <div className="p-6 border-t border-slate-200 flex gap-3">
