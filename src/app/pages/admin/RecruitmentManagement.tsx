@@ -30,7 +30,7 @@ interface CV {
 export function RecruitmentManagement() {
   const [isEditingEmail, setIsEditingEmail] = useState(false);
   const [recruitmentEmail, setRecruitmentEmail] = useState(
-    "recruitment@zenfitness.com",
+    "huutoan950@gmail.com",
   );
   const [selectedCV, setSelectedCV] = useState<CV | null>(null);
 
