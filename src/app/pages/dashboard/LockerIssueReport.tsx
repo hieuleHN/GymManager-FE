@@ -15,6 +15,7 @@ interface LockerIssue {
   createdAt: string;
   status: 'pending' | 'in-progress' | 'resolved' | 'rejected';
   rejectionReason?: string | null;
+  priority: 'high' | 'medium' | 'low';
 }
 
 const emptyForm = { lockerNumber: '', issueType: 'broken' as const, description: '' };
@@ -143,6 +144,22 @@ export function LockerIssueReport() {
       case 'in-progress': return 'Đang xử lý';
       case 'resolved': return 'Đã giải quyết';
       case 'rejected': return 'Đã bị từ chối';
+    }
+  };
+
+  const getPriorityColor = (priority: LockerIssue['priority']) => {
+    switch (priority) {
+      case 'high': return 'bg-red-100 text-red-700 border border-red-200';
+      case 'medium': return 'bg-yellow-100 text-yellow-700 border border-yellow-200';
+      case 'low': return 'bg-slate-100 text-slate-600 border border-slate-200';
+    }
+  };
+
+  const getPriorityText = (priority: LockerIssue['priority']) => {
+    switch (priority) {
+      case 'high': return 'Ưu tiên cao';
+      case 'medium': return 'Ưu tiên TB';
+      case 'low': return 'Thấp';
     }
   };
 
@@ -340,6 +357,7 @@ export function LockerIssueReport() {
                         <span className={`px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-1 ${getStatusColor(issue.status)}`}>
                           {getStatusIcon(issue.status)} {getStatusText(issue.status)}
                         </span>
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${getPriorityColor(issue.priority)}`}>{getPriorityText(issue.priority)}</span>
                       </div>
                       <p className="text-slate-700 mb-2">{issue.description}</p>
                       {issue.image && (
