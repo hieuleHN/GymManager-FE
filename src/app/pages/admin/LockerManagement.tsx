@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Lock, AlertTriangle, Key, Trash2, CheckCircle, XCircle, Loader2, Plus, HelpCircle } from 'lucide-react';
+import { Lock, AlertTriangle, Key, Trash2, CheckCircle, XCircle, Loader2, Plus, HelpCircle, Calendar } from 'lucide-react';
 import { AdminLayout } from '../../components/AdminLayout';
 import { Pagination } from '../../components/Pagination';
 import { getAuthHeaders } from '../../context/AuthContext';
@@ -36,16 +36,41 @@ export function LockerManagement() {
   const [rejectionReason, setRejectionReason] = useState('');
   const [rejecting, setRejecting] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
+  const [dateError, setDateError] = useState('');
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [stats, setStats] = useState({ pending: 0, resolved: 0 });
 
+  const today = new Date().toISOString().split('T')[0];
+
+  const validateDates = (from: string, to: string) => {
+    if (from && to && from > to) {
+      setDateError('Ngày bắt đầu không được sau ngày kết thúc');
+      return false;
+    }
+    setDateError('');
+    return true;
+  };
+
+  const handleFromDateChange = (value: string) => {
+    setFromDate(value);
+    validateDates(value, toDate);
+  };
+
+  const handleToDateChange = (value: string) => {
+    setToDate(value);
+    validateDates(fromDate, value);
+  };
+
   const fetchIssues = async (p = page) => {
+    if (dateError) return;
     setLoading(true);
     try {
       const base = selectedClub && selectedClub !== 'all'
         ? `/api/lockers?locationId=${selectedClub}`
         : '/api/lockers';
-      const url = `${base}${base.includes('?') ? '&' : '?'}page=${p}&limit=15`;
+      const url = `${base}${base.includes('?') ? '&' : '?'}page=${p}&limit=15${fromDate ? `&fromDate=${fromDate}` : ''}${toDate ? `&toDate=${toDate}` : ''}`;
       const res = await fetch(url, { headers });
       if (!res.ok) throw new Error('Failed');
       const data = await res.json();
@@ -64,7 +89,7 @@ export function LockerManagement() {
     }
   };
 
-  useEffect(() => { setPage(1); fetchIssues(1); }, [selectedClub]);
+  useEffect(() => { setPage(1); fetchIssues(1); }, [selectedClub, fromDate, toDate]);
 
   const getIssueTypeIcon = (type: LockerIssue['issueType']) => {
     switch (type) {
@@ -219,6 +244,32 @@ export function LockerManagement() {
             <div className="flex items-center gap-3 mb-2"><CheckCircle className="w-6 h-6 text-green-600" /><h3 className="font-semibold text-slate-900">Đã giải quyết</h3></div>
             <p className="text-3xl font-bold text-green-600">{stats.resolved}</p>
           </button>
+        </div>
+
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
+          <div className="flex items-center gap-4 flex-wrap">
+            <div className="flex items-center gap-2 text-slate-700 font-semibold">
+              <Calendar className="w-4 h-4" />
+              <span>Lọc theo ngày:</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-slate-600">Từ</label>
+              <input type="date" value={fromDate} max={today} onChange={(e) => handleFromDateChange(e.target.value)}
+                className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500" />
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-slate-600">Đến</label>
+              <input type="date" value={toDate} max={today} onChange={(e) => handleToDateChange(e.target.value)}
+                className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500" />
+            </div>
+            {(fromDate || toDate) && (
+              <button onClick={() => { setFromDate(''); setToDate(''); setDateError(''); }}
+                className="px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors font-medium">
+                Xóa bộ lọc ngày
+              </button>
+            )}
+          </div>
+          {dateError && <p className="text-red-500 text-sm mt-2">{dateError}</p>}
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200">

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Lock, AlertTriangle, Key, Trash2, CheckCircle, XCircle, Loader2, Plus, Clock, HelpCircle } from 'lucide-react';
+import { Lock, AlertTriangle, Key, Trash2, CheckCircle, XCircle, Loader2, Plus, Clock, HelpCircle, Calendar } from 'lucide-react';
 import { AdminLayout } from '../../components/AdminLayout';
 import { Pagination } from '../../components/Pagination';
 import { getAuthHeaders } from '../../context/AuthContext';
@@ -27,6 +27,9 @@ export function LockerIssueReport() {
   const [editingIssue, setEditingIssue] = useState<LockerIssue | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
+  const [dateError, setDateError] = useState('');
   const [stats, setStats] = useState({ total: 0, pending: 0, resolved: 0 });
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -36,6 +39,27 @@ export function LockerIssueReport() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
+
+  const today = new Date().toISOString().split('T')[0];
+
+  const validateDates = (from: string, to: string) => {
+    if (from && to && from > to) {
+      setDateError('Ngày bắt đầu không được sau ngày kết thúc');
+      return false;
+    }
+    setDateError('');
+    return true;
+  };
+
+  const handleFromDateChange = (value: string) => {
+    setFromDate(value);
+    validateDates(value, toDate);
+  };
+
+  const handleToDateChange = (value: string) => {
+    setToDate(value);
+    validateDates(fromDate, value);
+  };
 
   const fetchStats = async () => {
     try {
@@ -54,10 +78,13 @@ export function LockerIssueReport() {
   };
 
   const fetchIssues = async (p = page) => {
+    if (dateError) return;
     setLoading(true);
     try {
       let url = `/api/lockers?page=${p}&limit=15`;
       if (statusFilter) url += `&status=${statusFilter}`;
+      if (fromDate) url += `&fromDate=${fromDate}`;
+      if (toDate) url += `&toDate=${toDate}`;
       const res = await fetch(url, { headers });
       if (!res.ok) throw new Error('Failed');
       const data = await res.json();
@@ -71,7 +98,7 @@ export function LockerIssueReport() {
     }
   };
 
-  useEffect(() => { setPage(1); fetchIssues(1); }, [statusFilter]);
+  useEffect(() => { setPage(1); fetchIssues(1); }, [statusFilter, fromDate, toDate]);
   useEffect(() => { fetchStats(); }, []);
 
   const getIssueTypeIcon = (type: LockerIssue['issueType']) => {
@@ -265,6 +292,32 @@ export function LockerIssueReport() {
             </div>
             <p className="text-3xl font-bold text-green-600">{stats.resolved}</p>
           </button>
+        </div>
+
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
+          <div className="flex items-center gap-4 flex-wrap">
+            <div className="flex items-center gap-2 text-slate-700 font-semibold">
+              <Calendar className="w-4 h-4" />
+              <span>Lọc theo ngày:</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-slate-600">Từ</label>
+              <input type="date" value={fromDate} max={today} onChange={(e) => handleFromDateChange(e.target.value)}
+                className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500" />
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-slate-600">Đến</label>
+              <input type="date" value={toDate} max={today} onChange={(e) => handleToDateChange(e.target.value)}
+                className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500" />
+            </div>
+            {(fromDate || toDate) && (
+              <button onClick={() => { setFromDate(''); setToDate(''); setDateError(''); }}
+                className="px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors font-medium">
+                Xóa bộ lọc ngày
+              </button>
+            )}
+          </div>
+          {dateError && <p className="text-red-500 text-sm mt-2">{dateError}</p>}
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200">
