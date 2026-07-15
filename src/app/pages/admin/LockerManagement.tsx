@@ -40,6 +40,7 @@ export function LockerManagement() {
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [dateError, setDateError] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [stats, setStats] = useState({ pending: 0, resolved: 0 });
 
@@ -266,6 +267,19 @@ export function LockerManagement() {
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
           <div className="flex items-center gap-4 flex-wrap">
             <div className="flex items-center gap-2 text-slate-700 font-semibold">
+              <Lock className="w-4 h-4" />
+              <span>Tìm tủ:</span>
+            </div>
+            <input type="text" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Nhập số tủ..."
+              className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 w-40" />
+            {searchTerm && (
+              <button onClick={() => setSearchTerm('')}
+                className="px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors font-medium">
+                Xóa
+              </button>
+            )}
+            <div className="flex items-center gap-2 text-slate-700 font-semibold ml-2">
               <Calendar className="w-4 h-4" />
               <span>Lọc theo ngày:</span>
             </div>
@@ -298,7 +312,7 @@ export function LockerManagement() {
             <div className="p-8 text-center text-slate-500 flex items-center justify-center gap-3"><Loader2 className="w-5 h-5 animate-spin" /> Đang tải...</div>
           ) : (
             <div className="divide-y divide-slate-200">
-              {issues.filter(i => !statusFilter || i.status === statusFilter).map((issue) => (
+              {issues.filter(i => !statusFilter || i.status === statusFilter).filter(i => !searchTerm || i.lockerNumber.toLowerCase().includes(searchTerm.toLowerCase())).map((issue) => (
                 <div key={issue._id} className="p-6 hover:bg-slate-50 transition-colors">
                   <div className="flex items-start gap-4">
                     <div className={`p-3 rounded-lg ${getIssueTypeColor(issue.issueType)}`}>{getIssueTypeIcon(issue.issueType)}</div>
@@ -340,9 +354,9 @@ export function LockerManagement() {
                   </div>
                 </div>
               ))}
-              {issues.filter(i => !statusFilter || i.status === statusFilter).length === 0 && (
+              {issues.filter(i => !statusFilter || i.status === statusFilter).filter(i => !searchTerm || i.lockerNumber.toLowerCase().includes(searchTerm.toLowerCase())).length === 0 && (
                 <div className="p-8 text-center text-slate-500">
-                  {statusFilter ? 'Không có vấn đề nào phù hợp' : 'Chưa có vấn đề nào được báo cáo'}
+                  {searchTerm ? 'Không tìm thấy tủ phù hợp' : statusFilter ? 'Không có vấn đề nào phù hợp' : 'Chưa có vấn đề nào được báo cáo'}
                 </div>
               )}
             </div>
