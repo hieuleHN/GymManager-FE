@@ -1,6 +1,6 @@
 import { DashboardLayout } from '../../components/DashboardLayout';
 import { Button } from '@mui/material';
-import { Heart, MessageCircle, Share2, Image as ImageIcon, Send, MoreHorizontal, Flag, X } from 'lucide-react';
+import { Heart, MessageCircle, Share2, Image as ImageIcon, Send, MoreHorizontal, Flag, X, Edit3 } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { useAuth, getApiUrl, getAuthHeaders } from '../../context/AuthContext';
 import { useNavigate } from 'react-router';
@@ -46,6 +46,12 @@ export function Community() {
   const [reportTitle, setReportTitle] = useState('');
   const [reportReason, setReportReason] = useState('');
   const [submittingReport, setSubmittingReport] = useState(false);
+  const [editingPost, setEditingPost] = useState<string | null>(null);
+  const [editContent, setEditContent] = useState('');
+  const [editExistingImages, setEditExistingImages] = useState<string[]>([]);
+  const [editNewImages, setEditNewImages] = useState<File[]>([]);
+  const [editImagePreviews, setEditImagePreviews] = useState<string[]>([]);
+  const [savingEdit, setSavingEdit] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   const fetchPosts = async () => {
@@ -245,6 +251,68 @@ export function Community() {
     }
   };
 
+  const openEdit = (post: Post) => {
+    setOpenMenu(null);
+    setEditingPost(post._id);
+    setEditContent(post.content);
+    setEditExistingImages(post.images || []);
+    setEditNewImages([]);
+    setEditImagePreviews([]);
+  };
+
+  const handleEditImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    setEditNewImages(prev => [...prev, ...files]);
+    files.forEach(file => {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        if (ev.target?.result) setEditImagePreviews(prev => [...prev, ev.target.result as string]);
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const removeEditExistingImage = (index: number) => {
+    setEditExistingImages(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const removeEditNewImage = (index: number) => {
+    setEditNewImages(prev => prev.filter((_, i) => i !== index));
+    setEditImagePreviews(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleEditSave = async () => {
+    if (!editContent.trim() || savingEdit) return;
+    setSavingEdit(true);
+    try {
+      const form = new FormData();
+      form.append('content', editContent);
+      form.append('existingImages', JSON.stringify(editExistingImages));
+      editNewImages.forEach(img => form.append('images', img));
+
+      const res = await fetch(`${getApiUrl()}/api/community/posts/${editingPost}`, {
+        method: 'PUT',
+        headers: { 'Authorization': `Bearer ${user?.token}` },
+        body: form
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setEditingPost(null);
+        setEditContent('');
+        setEditExistingImages([]);
+        setEditNewImages([]);
+        setEditImagePreviews([]);
+        fetchPosts();
+      } else {
+        alert(data.error || 'Lỗi cập nhật bài viết!');
+      }
+    } catch (err) {
+      alert('Lỗi kết nối!');
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
     const now = new Date();
@@ -366,6 +434,15 @@ export function Community() {
                     </button>
                     {openMenu === post._id && (
                       <div ref={menuRef} className="absolute right-0 mt-1 w-48 bg-white rounded-xl shadow-lg border border-slate-200 z-50 py-1">
+                        {author._id === user?.id && (
+                          <button
+                            onClick={() => openEdit(post)}
+                            className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                          >
+                            <Edit3 className="w-4 h-4 text-indigo-500" />
+                            Chỉnh sửa bài viết
+                          </button>
+                        )}
                         <button
                           onClick={() => openReport(post._id)}
                           className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
@@ -536,6 +613,96 @@ export function Community() {
               >
                 {submittingReport ? 'Đang gửi...' : 'Gửi báo cáo'}
               </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editingPost && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setEditingPost(null)}>
+          <div className="bg-white rounded-2xl shadow-xl max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold text-slate-900">Chỉnh sửa bài viết</h3>
+              <button onClick={() => setEditingPost(null)} className="p-1 rounded-lg hover:bg-slate-100">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Nội dung</label>
+                <textarea
+                  value={editContent}
+                  onChange={(e) => setEditContent(e.target.value)}
+                  rows={4}
+                  className="w-full p-3 border border-slate-200 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              {editExistingImages.length > 0 && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Ảnh hiện tại</label>
+                  <div className="flex gap-2 flex-wrap">
+                    {editExistingImages.map((img, idx) => (
+                      <div key={idx} className="relative">
+                        <img src={`${getApiUrl()}/uploads/community/${img}`} alt=""
+                          className="w-24 h-24 object-cover rounded-lg border border-slate-200" />
+                        <button onClick={() => removeEditExistingImage(idx)}
+                          className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center text-xs">
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {editImagePreviews.length > 0 && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Ảnh mới</label>
+                  <div className="flex gap-2 flex-wrap">
+                    {editImagePreviews.map((preview, idx) => (
+                      <div key={idx} className="relative">
+                        <img src={preview} alt="" className="w-24 h-24 object-cover rounded-lg border border-slate-200" />
+                        <button onClick={() => removeEditNewImage(idx)}
+                          className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center text-xs">
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center gap-3">
+                <label className="flex items-center gap-2 px-4 py-2 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600 transition-colors cursor-pointer text-sm">
+                  <ImageIcon className="w-4 h-4" />
+                  Thêm ảnh
+                  <input type="file" accept="image/*" multiple className="hidden" onChange={handleEditImageSelect} />
+                </label>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  onClick={() => setEditingPost(null)}
+                  className="px-6 py-2 border border-slate-200 rounded-xl text-slate-700 hover:bg-slate-50 transition-colors text-sm font-medium"
+                >
+                  Hủy
+                </button>
+                <Button
+                  variant="contained"
+                  onClick={handleEditSave}
+                  disabled={!editContent.trim() || savingEdit}
+                  sx={{
+                    bgcolor: '#4f46e5',
+                    '&:hover': { bgcolor: '#4338ca' },
+                    textTransform: 'none',
+                    borderRadius: 2,
+                    px: 4
+                  }}
+                >
+                  {savingEdit ? 'Đang lưu...' : 'Lưu thay đổi'}
+                </Button>
+              </div>
             </div>
           </div>
         </div>
