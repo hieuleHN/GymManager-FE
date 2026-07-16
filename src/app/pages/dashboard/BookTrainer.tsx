@@ -56,6 +56,8 @@ export function BookTrainer() {
   const [showContact, setShowContact] = useState(false);
   const [bookedTimes, setBookedTimes] = useState<Set<string>>(new Set());
   const [selectedDisciplineId, setSelectedDisciplineId] = useState<string | null>(null);
+  const [trainerShifts, setTrainerShifts] = useState<Record<string, string[]>>({});
+  const [loadingShifts, setLoadingShifts] = useState(false);
   const activeDateRef = useRef(activeDate);
   useEffect(() => { activeDateRef.current = activeDate; }, [activeDate]);
 
@@ -78,6 +80,37 @@ export function BookTrainer() {
       setLoading(false);
     }
   };
+
+  const fetchTrainerShiftsForMonth = async (year: number, month: number) => {
+    setLoadingShifts(true);
+    try {
+      const start = formatDateKey(new Date(year, month, 1));
+      const end = formatDateKey(new Date(year, month + 1, 0));
+      const res = await fetch(`${getApiUrl()}/api/staff-shifts/by-range?startDate=${start}&endDate=${end}`, {
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const shifts: Record<string, string[]> = {};
+        (data.data || []).forEach((a: any) => {
+          if (a.staffId?._id === trainerId) {
+            const d = a.date ? a.date.split('T')[0] : '';
+            if (!shifts[d]) shifts[d] = [];
+            if (!shifts[d].includes(a.shift)) shifts[d].push(a.shift);
+          }
+        });
+        setTrainerShifts(shifts);
+      }
+    } catch {} finally {
+      setLoadingShifts(false);
+    }
+  };
+
+  useEffect(() => {
+    if (trainerId) {
+      fetchTrainerShiftsForMonth(currentMonth.getFullYear(), currentMonth.getMonth());
+    }
+  }, [currentMonth, trainerId]);
 
   useEffect(() => {
     if (!activeDate || !trainerId) {
@@ -108,12 +141,22 @@ export function BookTrainer() {
     }
   };
 
+  const getDateShifts = (dateStr: string): string[] => trainerShifts[dateStr] || [];
+
+  const hasAnyShift = (dateStr: string): boolean => getDateShifts(dateStr).length > 0;
+
   const isSlotDisabled = (slot: { start: string; end: string }): boolean => {
     if (!activeDate) return true;
     if (selections[activeDate]?.start === slot.start) return false;
     for (const t of bookedTimes) {
       if (t >= slot.start && t < slot.end) return true;
     }
+    const shifts = getDateShifts(activeDate);
+    if (shifts.length === 0) return true;
+    const slotIndex = timeSlots.findIndex(s => s.start === slot.start);
+    const isMorning = slotIndex >= 0 && slotIndex < 5;
+    if (isMorning && !shifts.includes('morning-noon')) return true;
+    if (!isMorning && !shifts.includes('afternoon-evening')) return true;
     return false;
   };
 
@@ -363,13 +406,18 @@ export function BookTrainer() {
                 const isBooked = isValid && !!selections[dateKey];
                 const isActive = isValid && activeDate === dateKey;
                 const isPast = isValid && dateObj! < new Date(new Date().setHours(0, 0, 0, 0));
+                const isDisabled = !isValid || isPast || (!loadingShifts && isValid && !hasAnyShift(dateKey));
 
                 return (
                   <button key={i} onClick={() => isValid && handleDateClick(day)}
-                    disabled={!isValid || isPast}
+                    disabled={isDisabled}
                     className={`aspect-square rounded-xl border-2 font-semibold transition-all ${
-                      !isValid || isPast
+                      isPast
                         ? 'bg-slate-50 border-slate-100 cursor-not-allowed text-slate-300'
+                        : !isValid
+                        ? 'border-transparent cursor-default'
+                        : !loadingShifts && !hasAnyShift(dateKey)
+                        ? 'bg-orange-50 border-orange-200 cursor-not-allowed text-orange-300'
                         : isBooked
                         ? 'border-indigo-600 bg-indigo-600 text-white shadow-md'
                         : isActive
@@ -397,6 +445,12 @@ export function BookTrainer() {
                 <span className="w-3 h-3 rounded border-2 border-green-400 bg-green-50" />
                 Hôm nay
               </span>
+              {!loadingShifts && (
+                <span className="flex items-center gap-1">
+                  <span className="w-3 h-3 rounded border-2 border-orange-200 bg-orange-50" />
+                  HLV không có ca
+                </span>
+              )}
             </div>
           </div>
 
@@ -431,7 +485,16 @@ export function BookTrainer() {
                           }`}>
                           {slot.start} - {slot.end}
                           {disabled && (
-                            <span className="block text-[10px] text-slate-400 mt-0.5">HLV đã có lịch</span>
+                            <span className="block text-[10px] text-slate-400 mt-0.5">
+                              {(() => {
+                                const shifts = getDateShifts(activeDate);
+                                const slotIndex = timeSlots.findIndex(s => s.start === slot.start);
+                                const isMorning = slotIndex >= 0 && slotIndex < 5;
+                                if (shifts.length > 0 && isMorning && !shifts.includes('morning-noon')) return 'HLV không làm ca sáng';
+                                if (shifts.length > 0 && !isMorning && !shifts.includes('afternoon-evening')) return 'HLV không làm ca chiều';
+                                return 'HLV đã có lịch';
+                              })()}
+                            </span>
                           )}
                         </button>
                       );

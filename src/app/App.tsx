@@ -3,14 +3,17 @@ import { router } from './routes';
 import { AuthProvider } from './context/AuthContext';
 import { ClubProvider } from './context/ClubContext';
 import { Toaster } from 'sonner';
+import { ErrorBoundary } from '../lib/ErrorBoundary';
 
 export default function App() {
   return (
-    <AuthProvider>
-      <ClubProvider>
-        <RouterProvider router={router} />
-      </ClubProvider>
-      <Toaster position="top-center" expand={true} richColors />
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <ClubProvider>
+          <RouterProvider router={router} />
+        </ClubProvider>
+        <Toaster position="top-center" expand={true} richColors />
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }

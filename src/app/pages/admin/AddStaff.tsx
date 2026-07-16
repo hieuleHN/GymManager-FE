@@ -1,10 +1,11 @@
 import { AdminLayout } from '../../components/AdminLayout';
 import { Button } from '@mui/material';
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router';
+import { useNavigate, useParams } from 'react-router';
 import { getAuthHeaders, getApiUrl } from '../../context/AuthContext';
 import { useClub } from '../../context/ClubContext';
 import { useForm } from 'react-hook-form';
+import { toast } from 'sonner';
 
 interface Job {
   _id: string;
@@ -26,12 +27,16 @@ interface StaffFormData {
 
 export function AddStaff() {
   const navigate = useNavigate();
+  const { id } = useParams<{ id: string }>();
+  const isEdit = !!id;
   const { selectedClub } = useClub();
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [pageLoading, setPageLoading] = useState(isEdit);
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [currentAccount, setCurrentAccount] = useState('');
 
-  const { register, handleSubmit, setValue, formState: { errors }, watch } = useForm<StaffFormData>({
+  const { register, handleSubmit, setValue, reset, formState: { errors }, watch } = useForm<StaffFormData>({
     defaultValues: {
       account: '',
       fullName: '',
@@ -52,11 +57,38 @@ export function AddStaff() {
         const list = data.data || [];
         if (Array.isArray(list)) {
           setJobs(list);
-          if (list.length > 0) setValue('job', list[0]._id);
+          if (!isEdit && list.length > 0) setValue('job', list[0]._id);
         }
       })
       .catch(() => {});
-  }, [setValue]);
+  }, [setValue, isEdit]);
+
+  useEffect(() => {
+    if (!isEdit || !id) return;
+    setPageLoading(true);
+    fetch(`${getApiUrl()}/api/staff/${id}`, { headers: getAuthHeaders() })
+      .then(r => r.json())
+      .then(data => {
+        const staff = data.data || data;
+        setCurrentAccount(staff.account || '');
+        reset({
+          account: staff.account || '',
+          fullName: staff.fullName || '',
+          email: staff.email || '',
+          password: '',
+          phone: staff.phone || '',
+          gender: staff.gender || 'Nam',
+          job: staff.job?._id || staff.job || '',
+          startDate: staff.startDate ? new Date(staff.startDate).toISOString().split('T')[0] : '',
+          address: staff.address || ''
+        });
+      })
+      .catch(() => {
+        toast.error('Không thể tải thông tin nhân viên');
+        navigate('/admin/staff');
+      })
+      .finally(() => setPageLoading(false));
+  }, [id, isEdit, reset, navigate]);
 
   const watchJob = watch('job');
   const selectedJob = jobs.find(j => j._id === watchJob);
@@ -64,6 +96,42 @@ export function AddStaff() {
 
   const onSubmit = async (data: StaffFormData) => {
     setError('');
+
+    if (isEdit) {
+      setLoading(true);
+      try {
+        const body: any = {
+          fullName: data.fullName,
+          email: data.email,
+          phone: data.phone,
+          gender: data.gender,
+          job: data.job,
+          startDate: data.startDate,
+          address: data.address,
+          baseSalary: displaySalary
+        };
+        if (data.password) body.password = data.password;
+
+        const res = await fetch(`${getApiUrl()}/api/staff/${id}`, {
+          method: 'PUT',
+          headers: getAuthHeaders(),
+          body: JSON.stringify(body)
+        });
+        const result = await res.json();
+        if (res.ok) {
+          toast.success('Cập nhật nhân viên thành công!');
+          navigate('/admin/staff');
+        } else {
+          toast.error(result.error || result.message || 'Cập nhật thất bại');
+        }
+      } catch {
+        toast.error('Cập nhật thất bại');
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
     const club = selectedClub;
     if (!club || club === 'all') {
       setError('Bạn chưa chọn câu lạc bộ');
@@ -78,7 +146,7 @@ export function AddStaff() {
       });
       const responseData = await res.json();
       if (!res.ok) throw new Error(responseData.error || 'Lỗi thêm nhân viên!');
-      alert('Thêm nhân viên thành công!');
+      toast.success('Thêm nhân viên thành công!');
       navigate('/admin/staff');
     } catch (err: any) {
       setError(err.message);
@@ -87,12 +155,22 @@ export function AddStaff() {
     }
   };
 
+  if (pageLoading) {
+    return (
+      <AdminLayout>
+        <div className="max-w-4xl mx-auto flex items-center justify-center h-64">
+          <p className="text-slate-500">Đang tải...</p>
+        </div>
+      </AdminLayout>
+    );
+  }
+
   return (
     <AdminLayout>
       <div className="max-w-4xl mx-auto space-y-6">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900 mb-2">Thêm nhân viên</h1>
-          <p className="text-slate-600">Thêm nhân viên mới vào hệ thống</p>
+          <h1 className="text-3xl font-bold text-slate-900 mb-2">{isEdit ? 'Sửa thông tin nhân viên' : 'Thêm nhân viên'}</h1>
+          <p className="text-slate-600">{isEdit ? 'Cập nhật thông tin nhân viên' : 'Thêm nhân viên mới vào hệ thống'}</p>
         </div>
 
         <form onSubmit={handleSubmit(onSubmit)}>
@@ -101,10 +179,14 @@ export function AddStaff() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Tài khoản <span className="text-red-500">*</span>
+                  Tài khoản {!isEdit && <span className="text-red-500">*</span>}
                 </label>
-                <input type="text" {...register('account', { required: 'Vui lòng nhập tài khoản' })}
-                  className={`w-full p-3 border ${errors.account ? 'border-red-400' : 'border-slate-200'} rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500`} />
+                {isEdit ? (
+                  <div className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-600">{currentAccount}</div>
+                ) : (
+                  <input type="text" {...register('account', { required: 'Vui lòng nhập tài khoản' })}
+                    className={`w-full p-3 border ${errors.account ? 'border-red-400' : 'border-slate-200'} rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500`} />
+                )}
                 {errors.account && <span className="text-red-500 text-sm mt-1">{errors.account.message}</span>}
               </div>
               <div>
@@ -125,9 +207,13 @@ export function AddStaff() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Mật khẩu <span className="text-red-500">*</span>
+                  {isEdit ? 'Mật khẩu mới' : 'Mật khẩu'} {!isEdit && <span className="text-red-500">*</span>}
                 </label>
-                <input type="password" {...register('password', { required: 'Vui lòng nhập mật khẩu', minLength: { value: 6, message: 'Mật khẩu phải có ít nhất 6 ký tự' } })}
+                <input type="password" {...register('password', {
+                  ...(!isEdit ? { required: 'Vui lòng nhập mật khẩu' } : {}),
+                  minLength: { value: 6, message: 'Mật khẩu phải có ít nhất 6 ký tự' }
+                })}
+                  placeholder={isEdit ? 'Để trống nếu không đổi mật khẩu' : ''}
                   className={`w-full p-3 border ${errors.password ? 'border-red-400' : 'border-slate-200'} rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500`} />
                 {errors.password && <span className="text-red-500 text-sm mt-1">{errors.password.message}</span>}
               </div>
@@ -195,7 +281,7 @@ export function AddStaff() {
               </Button>
               <Button type="submit" variant="contained" disabled={loading}
                 sx={{ bgcolor: '#4f46e5', '&:hover': { bgcolor: '#4338ca' }, textTransform: 'none', borderRadius: 2, px: 4 }}>
-                {loading ? 'Đang xử lý...' : 'Thêm nhân viên'}
+                {loading ? 'Đang xử lý...' : isEdit ? 'Cập nhật' : 'Thêm nhân viên'}
               </Button>
             </div>
           </div>
