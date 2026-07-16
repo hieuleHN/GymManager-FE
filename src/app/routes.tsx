@@ -1,5 +1,3 @@
-import MemberQR from './pages/MemberQR'; // Nhúng màn hình QR vào route
-import { AttendanceScanner } from './pages/admin/AttendanceScanner';
 import { createBrowserRouter, Navigate, useLocation } from 'react-router';
 import { Layout } from './components/Layout';
 import { Home } from './pages/Home';
@@ -22,9 +20,7 @@ import { BookSchedule } from './pages/dashboard/BookSchedule';
 import { Trainers } from './pages/dashboard/Trainers';
 import { BookTrainer } from './pages/dashboard/BookTrainer';
 import { ConfirmTrainerBooking } from './pages/dashboard/ConfirmTrainerBooking';
-import { TrainerDetail } from './pages/dashboard/TrainerDetail';
 import { Progress } from './pages/dashboard/Progress';
-import { BookingStatus } from './pages/dashboard/BookingStatus';
 import { Services as MemberServices } from './pages/dashboard/Services';
 import { Settings } from './pages/dashboard/Settings';
 import { AdminDashboard } from './pages/admin/Dashboard';
@@ -37,6 +33,7 @@ import { AddEquipment } from './pages/admin/AddEquipment';
 import { EditEquipment } from './pages/admin/EditEquipment';
 import { Services } from './pages/admin/Services';
 import { ServiceHistory } from './pages/admin/ServiceHistory';
+import { Attendance } from './pages/admin/Attendance';
 import { AttendanceHistory } from './pages/admin/AttendanceHistory';
 import { StaffList } from './pages/admin/StaffList';
 import { StaffSalary } from './pages/admin/StaffSalary';
@@ -70,11 +67,6 @@ import { ScheduleConfirmations } from './pages/admin/ScheduleConfirmations';
 import { Community } from './pages/dashboard/Community';
 import { Messages } from './pages/dashboard/Messages';
 import { Tasks } from './pages/admin/Tasks';
-import { Invoices } from './pages/admin/Invoices';
-import { BookingManagement } from './pages/admin/BookingManagement';
-import { PostManagement } from './pages/admin/PostManagement';
-import { AdminCommunity } from './pages/admin/AdminCommunity';
-import { AdminMessages } from './pages/admin/AdminMessages';
 
 // IMPORT TRANG THỐNG KÊ BIỂU ĐỒ ADMIN
 import { AdminStats } from './pages/dashboard/AdminStats';
@@ -125,12 +117,7 @@ const routeFeatures: Record<string, string> = {
   '/admin/training-schedule': 'training',
   '/admin/lockers': 'equipment',
   '/admin/schedule-confirmations': 'schedule',
-  '/admin/tasks': 'tasks',
-  '/admin/bookings': 'schedule',
-  '/admin/invoices': 'payment',
-  '/admin/posts': 'services',
-  '/admin/community': 'services',
-  '/admin/messages': 'services'
+  '/admin/tasks': 'tasks'
 };
 
 function ProtectedRoute({ children, role }: { children: React.ReactNode, role?: 'member' | 'staff' }) {
@@ -169,7 +156,6 @@ export const router = createBrowserRouter([
   {
     path: '/',
     Component: Layout,
-    errorElement: <RouteErrorBoundary />,
     children: [
       { index: true, Component: Home },
       { path: 'learn', Component: Learn },
@@ -213,10 +199,6 @@ export const router = createBrowserRouter([
     element: <ProtectedRoute role="member"><Trainers /></ProtectedRoute>
   },
   {
-    path: '/dashboard/trainers/:trainerId',
-    element: <ProtectedRoute role="member"><TrainerDetail /></ProtectedRoute>
-  },
-  {
     path: '/dashboard/trainers/:trainerId/book',
     element: <ProtectedRoute role="member"><BookTrainer /></ProtectedRoute>
   },
@@ -243,10 +225,6 @@ export const router = createBrowserRouter([
   {
     path: '/dashboard/services',
     element: <ProtectedRoute role="member"><MemberServices /></ProtectedRoute>
-  },
-  {
-    path: '/admin/attendance',
-    element: <ProtectedRoute role="staff"><AttendanceScanner /></ProtectedRoute>
   },
   {
     path: '/dashboard/settings',
@@ -315,6 +293,10 @@ export const router = createBrowserRouter([
   {
     path: '/admin/services/history',
     element: <ProtectedRoute role="staff"><ServiceHistory /></ProtectedRoute>
+  },
+  {
+    path: '/admin/attendance',
+    element: <ProtectedRoute role="staff"><Attendance /></ProtectedRoute>
   },
   {
     path: '/admin/attendance/history',
@@ -418,25 +400,5 @@ export const router = createBrowserRouter([
   {
     path: '/admin/tasks',
     element: <ProtectedRoute role="staff"><Tasks /></ProtectedRoute>
-  },
-  {
-    path: '/admin/bookings',
-    element: <ProtectedRoute role="staff"><BookingManagement /></ProtectedRoute>
-  },
-  {
-    path: '/admin/invoices',
-    element: <ProtectedRoute role="staff"><Invoices /></ProtectedRoute>
-  },
-  {
-    path: '/admin/posts',
-    element: <ProtectedRoute role="staff"><PostManagement /></ProtectedRoute>
-  },
-  {
-    path: '/admin/community',
-    element: <ProtectedRoute role="staff"><AdminCommunity /></ProtectedRoute>
-  },
-  {
-    path: '/admin/messages',
-    element: <ProtectedRoute role="staff"><AdminMessages /></ProtectedRoute>
   },
 ]);

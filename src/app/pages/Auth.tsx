@@ -5,19 +5,6 @@ import { Button } from '@mui/material';
 import { useAuth, getApiUrl } from '../context/AuthContext';
 import logo from '../../imports/ChatGPT_Image_May_14__2026__09_48_52_PM.png';
 import { ImageWithFallback } from '../components/figma/ImageWithFallback';
-import { useForm } from 'react-hook-form';
-
-interface RegisterFormData {
-  account: string;
-  password: string;
-  confirmPassword: string;
-  locationId: string;
-}
-
-interface LoginFormData {
-  account: string;
-  password: string;
-}
 
 export function Auth() {
   const [searchParams] = useSearchParams();
@@ -30,18 +17,10 @@ export function Auth() {
   const [loading, setLoading] = useState(false);
   const [locations, setLocations] = useState<any[]>([]);
 
-  const {
-    register: regRegister,
-    handleSubmit: regHandleSubmit,
-    formState: { errors: regErrors },
-    watch: regWatch,
-  } = useForm<RegisterFormData>();
-
-  const {
-    register: loginRegister,
-    handleSubmit: loginHandleSubmit,
-    formState: { errors: loginErrors },
-  } = useForm<LoginFormData>();
+  const [loginForm, setLoginForm] = useState({ account: '', password: '' });
+  const [registerForm, setRegisterForm] = useState({
+    account: '', password: '', confirmPassword: '', locationId: ''
+  });
 
   useEffect(() => {
     if (isRegister) {
@@ -52,11 +31,16 @@ export function Auth() {
     }
   }, [isRegister]);
 
-  const onLogin = async (data: LoginFormData) => {
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
     setError('');
+    if (!loginForm.account || !loginForm.password) {
+      setError('Vui lòng nhập tài khoản và mật khẩu!');
+      return;
+    }
     setLoading(true);
     try {
-      await login(loginMode === 'staff' ? 'staff' : 'member', data.account, data.password);
+      await login(loginMode === 'staff' ? 'staff' : 'member', loginForm.account, loginForm.password);
       if (loginMode === 'staff') {
         navigate('/admin/dashboard');
       } else {
@@ -69,22 +53,35 @@ export function Auth() {
     }
   };
 
-  const onRegister = async (data: RegisterFormData) => {
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
     setError('');
+    if (registerForm.password !== registerForm.confirmPassword) {
+      setError('Mật khẩu xác nhận không khớp!');
+      return;
+    }
+    if (registerForm.password.length < 6) {
+      setError('Mật khẩu phải có ít nhất 6 ký tự!');
+      return;
+    }
+    if (!registerForm.locationId) {
+      setError('Vui lòng chọn câu lạc bộ!');
+      return;
+    }
     setLoading(true);
     try {
       const res = await fetch(`${getApiUrl()}/api/customers/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          account: data.account,
-          password: data.password,
-          locationId: data.locationId
+          account: registerForm.account,
+          password: registerForm.password,
+          locationId: registerForm.locationId
         })
       });
-      const resData = await res.json();
+      const data = await res.json();
       if (!res.ok) {
-        throw new Error(resData.error || 'Đăng ký thất bại!');
+        throw new Error(data.error || 'Đăng ký thất bại!');
       }
       navigate('/auth');
     } catch (err: any) {
@@ -106,40 +103,36 @@ export function Auth() {
             <p className="text-slate-500 mt-2">Tạo tài khoản hội viên mới</p>
           </div>
 
-          <form onSubmit={regHandleSubmit(onRegister)} className="bg-white p-8 rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-100 space-y-5">
+          <form onSubmit={handleRegister} className="bg-white p-8 rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-100 space-y-5">
             {error && <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm">{error}</div>}
 
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Tài khoản <span className="text-red-500">*</span></label>
-              <input type="text" {...regRegister('account', { required: 'Vui lòng nhập tài khoản!' })}
+              <input type="text" required value={registerForm.account} onChange={(e) => setRegisterForm({ ...registerForm, account: e.target.value })}
                 className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Nhập tài khoản" />
-              {regErrors.account && <span className="text-red-500 text-sm mt-1">{regErrors.account.message}</span>}
             </div>
 
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Mật khẩu <span className="text-red-500">*</span></label>
-              <input type={showPassword ? 'text' : 'password'} {...regRegister('password', { required: 'Vui lòng nhập mật khẩu!', minLength: { value: 6, message: 'Mật khẩu phải có ít nhất 6 ký tự!' } })}
+              <input type={showPassword ? 'text' : 'password'} required value={registerForm.password} onChange={(e) => setRegisterForm({ ...registerForm, password: e.target.value })}
                 className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Ít nhất 6 ký tự" />
-              {regErrors.password && <span className="text-red-500 text-sm mt-1">{regErrors.password.message}</span>}
             </div>
 
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Xác nhận mật khẩu <span className="text-red-500">*</span></label>
-              <input type={showPassword ? 'text' : 'password'} {...regRegister('confirmPassword', { required: 'Vui lòng xác nhận mật khẩu!', validate: (value) => value === regWatch('password') || 'Mật khẩu xác nhận không khớp!' })}
+              <input type={showPassword ? 'text' : 'password'} required value={registerForm.confirmPassword} onChange={(e) => setRegisterForm({ ...registerForm, confirmPassword: e.target.value })}
                 className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Nhập lại mật khẩu" />
-              {regErrors.confirmPassword && <span className="text-red-500 text-sm mt-1">{regErrors.confirmPassword.message}</span>}
             </div>
 
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Câu lạc bộ <span className="text-red-500">*</span></label>
-              <select {...regRegister('locationId', { required: 'Vui lòng chọn câu lạc bộ!' })}
+              <select required value={registerForm.locationId} onChange={(e) => setRegisterForm({ ...registerForm, locationId: e.target.value })}
                 className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500">
                 <option value="">-- Chọn câu lạc bộ --</option>
                 {locations.map((loc: any) => (
                   <option key={loc._id} value={loc._id}>{loc.address || loc.title || loc.name}</option>
                 ))}
               </select>
-              {regErrors.locationId && <span className="text-red-500 text-sm mt-1">{regErrors.locationId.message}</span>}
             </div>
 
             <div className="flex items-center gap-2 text-sm">
@@ -208,19 +201,17 @@ export function Auth() {
           </h2>
         </div>
 
-        <form onSubmit={loginHandleSubmit(onLogin)} className="bg-white p-8 rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-100 space-y-5">
+        <form onSubmit={handleLogin} className="bg-white p-8 rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-100 space-y-5">
           {error && <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm">{error}</div>}
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Tài khoản</label>
-            <input type="text" {...loginRegister('account', { required: 'Vui lòng nhập tài khoản!' })}
+            <input type="text" required value={loginForm.account} onChange={(e) => setLoginForm({ ...loginForm, account: e.target.value })}
               className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Nhập tài khoản" />
-            {loginErrors.account && <span className="text-red-500 text-sm mt-1">{loginErrors.account.message}</span>}
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Mật khẩu</label>
-            <input type={showPassword ? 'text' : 'password'} {...loginRegister('password', { required: 'Vui lòng nhập mật khẩu!' })}
+            <input type={showPassword ? 'text' : 'password'} required value={loginForm.password} onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })}
               className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="••••••••" />
-            {loginErrors.password && <span className="text-red-500 text-sm mt-1">{loginErrors.password.message}</span>}
           </div>
 
           <div className="flex items-center gap-2 text-sm">

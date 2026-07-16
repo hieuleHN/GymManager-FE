@@ -1,7 +1,6 @@
 import { AdminLayout } from '../../components/AdminLayout';
 import { Button } from '@mui/material';
 import { useState, useEffect } from 'react';
-import { useForm } from 'react-hook-form';
 import { useClub } from '../../context/ClubContext';
 import { getAuthHeaders } from '../../context/AuthContext';
 import { toast } from 'sonner';
@@ -22,20 +21,7 @@ interface ClubData {
   branch?: string;
 }
 
-interface FormValues {
-  title: string;
-  description: string;
-  address: string;
-  phone: string;
-  openTime: string;
-  closeTime: string;
-  bankName: string;
-  accountNumber: string;
-  accountName: string;
-  branch: string;
-}
-
-const emptyForm: FormValues = {
+const emptyForm = {
   title: '',
   description: '',
   address: '',
@@ -52,18 +38,17 @@ export function ClubManagement() {
   const { selectedClub, clubs } = useClub();
   const headers = getAuthHeaders();
 
-  const { register, handleSubmit, reset, formState: { errors } } = useForm<FormValues>({
-    defaultValues: emptyForm,
-  });
+  const [formData, setFormData] = useState(emptyForm);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [fetchedOnce, setFetchedOnce] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
   const selectedClubData = clubs.find(c => c._id === selectedClub);
 
   useEffect(() => {
     if (!selectedClub || selectedClub === 'all') {
-      reset(emptyForm);
+      setFormData(emptyForm);
       setFetchedOnce(false);
       return;
     }
@@ -73,7 +58,7 @@ export function ClubManagement() {
         const res = await fetch(`/api/locations/${selectedClub}`, { headers: headers as any });
         if (!res.ok) throw new Error('Failed to fetch');
         const data: ClubData = await res.json();
-        reset({
+        setFormData({
           title: data.title || '',
           description: data.description || '',
           address: data.address || '',
@@ -95,18 +80,43 @@ export function ClubManagement() {
     fetchClub();
   }, [selectedClub]);
 
-  const onSubmit = async (data: FormValues) => {
+  const handleChange = (field: string, value: string) => {
+    setFormData({ ...formData, [field]: value });
+    if (errors[field]) {
+      setErrors((prev) => {
+        const next = { ...prev };
+        delete next[field];
+        return next;
+      });
+    }
+  };
+
+  const handleBlur = (field: string) => {
+    if (!formData[field as keyof typeof formData].trim()) {
+      setErrors((prev) => ({ ...prev, [field]: 'Trường này không được để trống' }));
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
     if (!selectedClub || selectedClub === 'all') {
       toast.error('Vui lòng chọn một cơ sở phòng tập để cập nhật!');
       return;
     }
+
+    const newErrors: Record<string, string> = {};
+    if (!formData.title.trim()) newErrors.title = 'Vui lòng nhập tiêu đề';
+    if (!formData.address.trim()) newErrors.address = 'Vui lòng nhập địa chỉ';
+    if (!formData.phone.trim()) newErrors.phone = 'Vui lòng nhập số điện thoại';
+    setErrors(newErrors);
+    if (Object.keys(newErrors).length > 0) return;
 
     setSaving(true);
     try {
       const res = await fetch(`/api/locations/${selectedClub}`, {
         method: 'PUT',
         headers: { ...headers, 'Content-Type': 'application/json' } as any,
-        body: JSON.stringify(data),
+        body: JSON.stringify(formData),
       });
       if (!res.ok) throw new Error('Update failed');
       toast.success('Cập nhật thông tin cơ sở thành công!');
@@ -144,7 +154,7 @@ export function ClubManagement() {
             <p>Không tìm thấy dữ liệu cơ sở</p>
           </div>
         ) : (
-          <form onSubmit={handleSubmit(onSubmit)}>
+          <form onSubmit={handleSubmit}>
             <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-8 space-y-6">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
@@ -152,10 +162,13 @@ export function ClubManagement() {
                 </label>
                 <input
                   type="text"
-                  {...register('title', { required: 'Vui lòng nhập tiêu đề' })}
+                  required
+                  value={formData.title}
+                  onChange={(e) => handleChange('title', e.target.value)}
+                  onBlur={() => handleBlur('title')}
                   className={`w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 ${errors.title ? 'border-red-500' : 'border-slate-200'}`}
                 />
-                {errors.title && <span className="text-red-500 text-sm mt-1">{errors.title.message}</span>}
+                {errors.title && <p className="text-red-500 text-sm mt-1">{errors.title}</p>}
               </div>
 
               <div>
@@ -163,11 +176,12 @@ export function ClubManagement() {
                   Mô tả <span className="text-red-500">*</span>
                 </label>
                 <textarea
-                  {...register('description', { required: 'Vui lòng nhập mô tả' })}
+                  required
+                  value={formData.description}
+                  onChange={(e) => handleChange('description', e.target.value)}
                   rows={4}
-                  className={`w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 ${errors.description ? 'border-red-500' : 'border-slate-200'}`}
+                  className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
-                {errors.description && <span className="text-red-500 text-sm mt-1">{errors.description.message}</span>}
               </div>
 
               <div>
@@ -176,10 +190,13 @@ export function ClubManagement() {
                 </label>
                 <input
                   type="text"
-                  {...register('address', { required: 'Vui lòng nhập địa chỉ' })}
+                  required
+                  value={formData.address}
+                  onChange={(e) => handleChange('address', e.target.value)}
+                  onBlur={() => handleBlur('address')}
                   className={`w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 ${errors.address ? 'border-red-500' : 'border-slate-200'}`}
                 />
-                {errors.address && <span className="text-red-500 text-sm mt-1">{errors.address.message}</span>}
+                {errors.address && <p className="text-red-500 text-sm mt-1">{errors.address}</p>}
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -189,10 +206,11 @@ export function ClubManagement() {
                   </label>
                   <input
                     type="time"
-                    {...register('openTime', { required: 'Vui lòng nhập giờ mở cửa' })}
-                    className={`w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 ${errors.openTime ? 'border-red-500' : 'border-slate-200'}`}
+                    required
+                    value={formData.openTime}
+                    onChange={(e) => handleChange('openTime', e.target.value)}
+                    className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   />
-                  {errors.openTime && <span className="text-red-500 text-sm mt-1">{errors.openTime.message}</span>}
                 </div>
 
                 <div>
@@ -201,10 +219,11 @@ export function ClubManagement() {
                   </label>
                   <input
                     type="time"
-                    {...register('closeTime', { required: 'Vui lòng nhập giờ đóng cửa' })}
-                    className={`w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 ${errors.closeTime ? 'border-red-500' : 'border-slate-200'}`}
+                    required
+                    value={formData.closeTime}
+                    onChange={(e) => handleChange('closeTime', e.target.value)}
+                    className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   />
-                  {errors.closeTime && <span className="text-red-500 text-sm mt-1">{errors.closeTime.message}</span>}
                 </div>
               </div>
 
@@ -214,10 +233,13 @@ export function ClubManagement() {
                 </label>
                 <input
                   type="tel"
-                  {...register('phone', { required: 'Vui lòng nhập số điện thoại' })}
+                  required
+                  value={formData.phone}
+                  onChange={(e) => handleChange('phone', e.target.value)}
+                  onBlur={() => handleBlur('phone')}
                   className={`w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 ${errors.phone ? 'border-red-500' : 'border-slate-200'}`}
                 />
-                {errors.phone && <span className="text-red-500 text-sm mt-1">{errors.phone.message}</span>}
+                {errors.phone && <p className="text-red-500 text-sm mt-1">{errors.phone}</p>}
               </div>
 
               <div className="border-t border-slate-200 pt-6 mt-6">
@@ -227,7 +249,8 @@ export function ClubManagement() {
                     <label className="block text-sm font-medium text-slate-700 mb-2">Mã Ngân hàng (VD: MB, VCB, TCB)</label>
                     <input
                       type="text"
-                      {...register('bankName')}
+                      value={formData.bankName}
+                      onChange={(e) => handleChange('bankName', e.target.value)}
                       className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
                       placeholder="Nhập tên viết tắt ngân hàng..."
                     />
@@ -236,7 +259,8 @@ export function ClubManagement() {
                     <label className="block text-sm font-medium text-slate-700 mb-2">Số tài khoản</label>
                     <input
                       type="text"
-                      {...register('accountNumber')}
+                      value={formData.accountNumber}
+                      onChange={(e) => handleChange('accountNumber', e.target.value)}
                       className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
                       placeholder="Nhập số tài khoản..."
                     />
@@ -245,7 +269,8 @@ export function ClubManagement() {
                     <label className="block text-sm font-medium text-slate-700 mb-2">Tên chủ tài khoản</label>
                     <input
                       type="text"
-                      {...register('accountName')}
+                      value={formData.accountName}
+                      onChange={(e) => handleChange('accountName', e.target.value)}
                       className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
                       placeholder="Nhập tên in hoa không dấu..."
                     />
@@ -254,7 +279,8 @@ export function ClubManagement() {
                     <label className="block text-sm font-medium text-slate-700 mb-2">Chi nhánh (Không bắt buộc)</label>
                     <input
                       type="text"
-                      {...register('branch')}
+                      value={formData.branch}
+                      onChange={(e) => handleChange('branch', e.target.value)}
                       className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
                       placeholder="Chi nhánh ngân hàng..."
                     />
