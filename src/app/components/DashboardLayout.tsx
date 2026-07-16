@@ -172,7 +172,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     { name: 'Tổng quan', href: '/dashboard', icon: LayoutDashboard },
     { name: 'Gói tập của tôi', href: '/dashboard/my-packages', icon: CreditCard },
     { name: 'Lịch sử giao dịch', href: '/dashboard/history', icon: History },
-    { name: 'Lịch tập', href: '/dashboard/schedule', icon: Calendar },
+    { name: 'Lịch tập', href: '/dashboard/schedule/book', icon: Calendar },
     { name: 'Đặt lịch / Liên hệ HLV', href: '/dashboard/trainers', icon: UserCircle },
     { name: 'Cộng đồng', href: '/dashboard/community', icon: Users },
     { name: 'Tin nhắn', href: '/dashboard/messages', icon: MessageCircle },

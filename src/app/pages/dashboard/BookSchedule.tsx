@@ -1,215 +1,362 @@
 import { DashboardLayout } from '../../components/DashboardLayout';
-import { useState } from 'react';
-import { Button } from '@mui/material';
-import { useNavigate } from 'react-router';
-import { ChevronLeft, ChevronRight, Save, ArrowLeft } from 'lucide-react';
-import { useAuth, getApiUrl, getAuthHeaders } from '../../context/AuthContext';
-import { toast } from 'sonner';
+import { useState, useEffect, useMemo } from 'react';
+import { Button, Chip } from '@mui/material';
+import { Link, useNavigate } from 'react-router';
+import { ChevronLeft, ChevronRight, Plus, Calendar, Clock, MapPin } from 'lucide-react';
+import { useAuth, getAuthHeaders } from '../../context/AuthContext';
+
+interface Booking {
+  _id: string;
+  trainerId: { _id: string; fullName: string };
+  date: string;
+  time: string;
+  status: 'pending' | 'confirmed' | 'rejected' | 'cancelled';
+  locationId?: { _id: string; title: string };
+  note?: string;
+}
 
 export function BookSchedule() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const today = new Date();
-  const [currentMonth, setCurrentMonth] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
-  const [selectedDates, setSelectedDates] = useState<Record<string, string>>({});
-  const [activeDate, setActiveDate] = useState<number | null>(null);
-  const [saving, setSaving] = useState(false);
+  const [viewMode, setViewMode] = useState<'week' | 'month'>('week');
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [currentWeekStart, setCurrentWeekStart] = useState(() => {
+    const now = new Date();
+    const day = now.getDay();
+    const diff = now.getDate() - day + (day === 0 ? -6 : 1);
+    return new Date(now.getFullYear(), now.getMonth(), diff);
+  });
+  const [currentMonth, setCurrentMonth] = useState(new Date());
 
-  const year = currentMonth.getFullYear();
-  const month = currentMonth.getMonth();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const firstDayOfMonth = new Date(year, month, 1).getDay();
+  useEffect(() => {
+    fetchBookings();
+  }, []);
 
-  const timeSlots = [
+  const fetchBookings = async () => {
+    try {
+      const headers = getAuthHeaders();
+      const res = await fetch('/api/bookings/my', { headers });
+      if (res.ok) {
+        const data = await res.json();
+        setBookings(data || []);
+      }
+    } catch (err) {
+      console.error('Error fetching bookings:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const weekDays = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
+  const hours = [
     '06:00', '06:30', '07:00', '07:30', '08:00', '08:30', '09:00', '09:30',
     '10:00', '10:30', '11:00', '11:30', '12:00', '12:30', '13:00', '13:30',
     '14:00', '14:30', '15:00', '15:30', '16:00', '16:30', '17:00', '17:30',
-    '18:00', '18:30', '19:00', '19:30', '20:00', '20:30'
+    '18:00', '18:30', '19:00', '19:30', '20:00'
   ];
 
-  const handleDateClick = (day: number) => {
-    if (day < 1 || day > daysInMonth) return;
-    const date = new Date(year, month, day);
-    if (date <= today) return;
-    setActiveDate(day);
-  };
-
-  const handleTimeSelect = (time: string) => {
-    if (activeDate === null) return;
-    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(activeDate).padStart(2, '0')}`;
-    setSelectedDates(prev => ({ ...prev, [dateStr]: time }));
-    toast.success(`Đã chọn ${time} ngày ${activeDate}/${month + 1}/${year}`);
-    setActiveDate(null);
-  };
-
-  const removeSlot = (dateStr: string) => {
-    const next = { ...selectedDates };
-    delete next[dateStr];
-    setSelectedDates(next);
-  };
-
-  const handleSave = async () => {
-    const count = Object.keys(selectedDates).length;
-    if (count === 0) {
-      toast.error('Vui lòng chọn ít nhất một ngày tập');
-      return;
+  const getWeekDays = useMemo(() => {
+    const days = [];
+    for (let i = 0; i < 7; i++) {
+      const date = new Date(currentWeekStart);
+      date.setDate(date.getDate() + i);
+      days.push(date);
     }
+    return days;
+  }, [currentWeekStart]);
 
-    setSaving(true);
-    let success = 0;
-    let fail = 0;
+  const getMonthDays = useMemo(() => {
+    const year = currentMonth.getFullYear();
+    const month = currentMonth.getMonth();
+    const firstDay = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const startOffset = firstDay === 0 ? 6 : firstDay - 1;
+    return { daysInMonth, startOffset, year, month };
+  }, [currentMonth]);
 
-    for (const [date, time] of Object.entries(selectedDates)) {
-      try {
-        const res = await fetch(`${getApiUrl()}/api/bookings`, {
-          method: 'POST',
-          headers: { ...getAuthHeaders() as any, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            date,
-            time,
-            locationId: user?.locationId || null
-          })
-        });
-        if (res.ok) success++;
-        else fail++;
-      } catch { fail++; }
-    }
+  const getBookingsForDate = (date: Date) => {
+    const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    return bookings.filter(b => {
+      const bDate = new Date(b.date).toISOString().split('T')[0];
+      return bDate === dateStr && b.status !== 'rejected' && b.status !== 'cancelled';
+    });
+  };
 
-    setSaving(false);
+  const getBookingsForHour = (date: Date, hour: string) => {
+    const dayBookings = getBookingsForDate(date);
+    return dayBookings.filter(b => b.time === hour);
+  };
 
-    if (success > 0) {
-      toast.success(`Đã lưu ${success} lịch tập thành công!`);
-      if (fail > 0) toast.warning(`${fail} lịch thất bại`);
-      setTimeout(() => navigate('/dashboard/schedule'), 1500);
-    } else {
-      toast.error('Đặt lịch thất bại. Vui lòng thử lại.');
+  const handlePrevWeek = () => {
+    const prev = new Date(currentWeekStart);
+    prev.setDate(prev.getDate() - 7);
+    setCurrentWeekStart(prev);
+  };
+
+  const handleNextWeek = () => {
+    const next = new Date(currentWeekStart);
+    next.setDate(next.getDate() + 7);
+    setCurrentWeekStart(next);
+  };
+
+  const handlePrevMonth = () => {
+    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1));
+  };
+
+  const handleNextMonth = () => {
+    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1));
+  };
+
+  const getStatusConfig = (status: string) => {
+    switch (status) {
+      case 'pending':
+        return { color: 'warning' as const, text: 'Chờ xác nhận', bg: 'bg-amber-100 text-amber-700 border-amber-300' };
+      case 'confirmed':
+        return { color: 'success' as const, text: 'Đã xác nhận', bg: 'bg-green-100 text-green-700 border-green-300' };
+      default:
+        return { color: 'default' as const, text: status, bg: 'bg-slate-100 text-slate-700 border-slate-300' };
     }
   };
 
-  const monthStr = `Tháng ${month + 1}/${year}`;
+  const isToday = (date: Date) => {
+    const today = new Date();
+    return date.getDate() === today.getDate() &&
+      date.getMonth() === today.getMonth() &&
+      date.getFullYear() === today.getFullYear();
+  };
+
+  const isSameDate = (a: Date, b: Date) => {
+    return a.getDate() === b.getDate() &&
+      a.getMonth() === b.getMonth() &&
+      a.getFullYear() === b.getFullYear();
+  };
+
+  const weekRangeText = useMemo(() => {
+    const end = new Date(currentWeekStart);
+    end.setDate(end.getDate() + 6);
+    const startStr = `${currentWeekStart.getDate()}/${currentWeekStart.getMonth() + 1}/${currentWeekStart.getFullYear()}`;
+    const endStr = `${end.getDate()}/${end.getMonth() + 1}/${end.getFullYear()}`;
+    return `Tuần ${startStr} - ${endStr}`;
+  }, [currentWeekStart]);
+
+  if (loading) {
+    return (
+      <DashboardLayout>
+        <div className="h-[calc(100vh-8rem)] flex items-center justify-center">
+          <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout>
       <div className="h-[calc(100vh-8rem)] flex flex-col">
         <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-4">
-            <button onClick={() => navigate('/dashboard/schedule')}
-              className="p-2 hover:bg-slate-100 rounded-lg transition-colors">
-              <ArrowLeft className="w-5 h-5 text-slate-600" />
-            </button>
-            <div>
-              <h1 className="text-3xl font-bold text-slate-900 mb-1">Đặt lịch tập mới</h1>
-              <p className="text-slate-600">Chọn ngày và giờ tập luyện</p>
-            </div>
+          <div>
+            <h1 className="text-3xl font-bold text-slate-900 mb-1">Lịch tập</h1>
+            <p className="text-slate-600">Xem và quản lý lịch tập luyện</p>
           </div>
-          <Button variant="contained" startIcon={<Save className="w-5 h-5" />} onClick={handleSave} disabled={saving}
-            sx={{ height: 48, borderRadius: 3, textTransform: 'none', fontSize: '1rem', fontWeight: 700, bgcolor: '#10b981', '&:hover': { bgcolor: '#059669' } }}>
-            {saving ? 'Đang lưu...' : 'Lưu thay đổi'}
-          </Button>
+          <Link to="/dashboard/schedule/book">
+            <Button
+              variant="contained"
+              startIcon={<Plus className="w-5 h-5" />}
+              sx={{
+                height: 48,
+                borderRadius: 3,
+                textTransform: 'none',
+                fontSize: '1rem',
+                fontWeight: 700,
+                bgcolor: '#4f46e5',
+                '&:hover': { bgcolor: '#4338ca' }
+              }}
+            >
+              Đặt lịch mới
+            </Button>
+          </Link>
         </div>
 
-        <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-slate-100 p-6 flex flex-col">
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-4">
-                <button onClick={() => setCurrentMonth(new Date(year, month - 1, 1))}
-                  className="p-2 hover:bg-slate-100 rounded-lg transition-colors">
-                  <ChevronLeft className="w-5 h-5 text-slate-600" />
-                </button>
-                <h2 className="text-xl font-bold text-slate-900">{monthStr}</h2>
-                <button onClick={() => setCurrentMonth(new Date(year, month + 1, 1))}
-                  className="p-2 hover:bg-slate-100 rounded-lg transition-colors">
-                  <ChevronRight className="w-5 h-5 text-slate-600" />
-                </button>
-              </div>
+        {/* Calendar Card */}
+        <div className="flex-1 bg-white rounded-2xl shadow-sm border border-slate-100 p-6 flex flex-col">
+          {/* View Toggle & Navigation */}
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-4">
+              <button
+                onClick={viewMode === 'week' ? handlePrevWeek : handlePrevMonth}
+                className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                <ChevronLeft className="w-5 h-5 text-slate-600" />
+              </button>
+              <h2 className="text-xl font-bold text-slate-900">
+                {viewMode === 'week' ? weekRangeText : `Tháng ${currentMonth.getMonth() + 1}/${currentMonth.getFullYear()}`}
+              </h2>
+              <button
+                onClick={viewMode === 'week' ? handleNextWeek : handleNextMonth}
+                className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                <ChevronRight className="w-5 h-5 text-slate-600" />
+              </button>
             </div>
 
-            <div className="flex-1 flex flex-col">
-              <div className="grid grid-cols-7 gap-2 mb-2">
-                {['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'].map((day, idx) => (
-                  <div key={idx} className="text-center text-sm font-semibold text-slate-600 py-2">{day}</div>
-                ))}
-              </div>
-
-              <div className="flex-1">
-                <div className="grid grid-cols-7 grid-rows-5 gap-2 h-full">
-                  {Array.from({ length: 42 }, (_, i) => {
-                    const day = i - firstDayOfMonth + 1;
-                    const isValid = day >= 1 && day <= daysInMonth;
-                    const dateStr = isValid ? `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}` : '';
-                    const hasTime = dateStr ? selectedDates[dateStr] : undefined;
-                    const isActive = activeDate === day;
-                    const isPast = isValid ? new Date(year, month, day) <= today : false;
-
-                    return (
-                      <div key={i} onClick={() => !isPast && handleDateClick(day)}
-                        className={`rounded-xl border-2 p-2 transition-all ${!isValid ? 'bg-slate-50 border-slate-100 cursor-default'
-                          : isPast ? 'bg-slate-50 border-slate-200 cursor-not-allowed opacity-60'
-                          : isActive ? 'border-indigo-600 bg-indigo-100 shadow-md cursor-pointer'
-                          : hasTime ? 'border-green-400 bg-green-50 hover:bg-green-100 cursor-pointer'
-                          : 'border-slate-200 hover:border-indigo-300 hover:bg-slate-50 cursor-pointer'}`}>
-                        {isValid && (
-                          <div className="h-full flex flex-col">
-                            <div className={`font-bold text-sm mb-1 ${isActive ? 'text-indigo-700' : hasTime ? 'text-green-700' : isPast ? 'text-slate-400' : 'text-slate-900'}`}>
-                              {day}
-                            </div>
-                            {hasTime && (
-                              <div className="text-xs bg-green-600 text-white px-1.5 py-0.5 rounded font-semibold">{hasTime}</div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setViewMode('week')}
+                className={`px-6 py-2 rounded-lg font-semibold transition-all ${
+                  viewMode === 'week'
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                Tuần
+              </button>
+              <button
+                onClick={() => setViewMode('month')}
+                className={`px-6 py-2 rounded-lg font-semibold transition-all ${
+                  viewMode === 'month'
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                Tháng
+              </button>
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
-            <h3 className="font-bold text-slate-900 mb-4">
-              {activeDate ? `Chọn giờ cho ngày ${activeDate}/${month + 1}` : 'Chọn ngày trước'}
-            </h3>
+          {/* Calendar Content */}
+          <div className="flex-1 overflow-hidden">
+            {viewMode === 'week' ? (
+              <div className="h-[calc(100vh-16rem)] flex flex-col">
+                {/* Week Header */}
+                <div className="grid grid-cols-8 gap-2 mb-2">
+                  <div className="text-sm text-slate-600 font-medium"></div>
+                  {getWeekDays.map((date, idx) => (
+                    <div key={idx} className="text-center">
+                      <div className="text-sm text-slate-600 mb-1">{weekDays[idx]}</div>
+                      <div className={`font-bold ${isToday(date) ? 'text-indigo-600' : 'text-slate-900'}`}>
+                        {date.getDate()}/{date.getMonth() + 1}
+                      </div>
+                    </div>
+                  ))}
+                </div>
 
-            {activeDate ? (
-              <div className="space-y-2 max-h-[500px] overflow-y-auto pr-2">
-                {timeSlots.map((time) => (
-                  <button key={time} onClick={() => handleTimeSelect(time)}
-                    className="w-full px-4 py-3 rounded-lg border-2 border-slate-200 hover:border-indigo-500 hover:bg-indigo-50 transition-all text-slate-900 font-semibold">
-                    {time}
-                  </button>
-                ))}
+                {/* Week Grid */}
+                <div className="flex-1 border border-slate-200 rounded-xl overflow-y-auto">
+                  <div className="grid grid-rows-29 gap-px bg-slate-200 min-h-[1450px]">
+                    {hours.map((hour, hourIdx) => (
+                      <div key={hour} className="grid grid-cols-8 gap-px">
+                        <div className="bg-white p-2 text-sm text-slate-600 font-medium flex items-center justify-center">
+                          {hour}
+                        </div>
+                        {getWeekDays.map((date, dayIdx) => {
+                          const hourBookings = getBookingsForHour(date, hour);
+                          return (
+                            <div key={dayIdx} className="bg-white p-1 relative min-h-[50px]">
+                              {hourBookings.map((booking) => {
+                                const statusConfig = getStatusConfig(booking.status);
+                                return (
+                                  <div
+                                    key={booking._id}
+                                    onClick={() => navigate(`/dashboard/trainers/${booking.trainerId._id}/confirm`, { state: { bookingId: booking._id } })}
+                                    className={`absolute inset-1 rounded-lg border-2 p-1.5 cursor-pointer hover:opacity-80 transition-opacity ${statusConfig.bg}`}
+                                  >
+                                    <p className="font-bold text-xs leading-tight">{booking.trainerId?.fullName || 'HLV'}</p>
+                                    <p className="text-xs opacity-75">{booking.time}</p>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
             ) : (
-              <div className="text-center py-12">
-                <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <ChevronLeft className="w-8 h-8 text-slate-400" />
+              <div className="h-full flex flex-col">
+                {/* Month Header */}
+                <div className="grid grid-cols-7 gap-2 mb-2">
+                  {['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'].map((day, idx) => (
+                    <div key={idx} className="text-center text-sm font-semibold text-slate-600 py-2">
+                      {day}
+                    </div>
+                  ))}
                 </div>
-                <p className="text-slate-500">Vui lòng chọn một ngày trên lịch để chọn giờ tập</p>
+
+                {/* Month Grid */}
+                <div className="flex-1">
+                  <div className="grid grid-cols-7 grid-rows-5 gap-2 h-full">
+                    {Array.from({ length: 35 }, (_, i) => {
+                      const dayNum = i - getMonthDays.startOffset + 1;
+                      const isValid = dayNum >= 1 && dayNum <= getMonthDays.daysInMonth;
+                      const cellDate = new Date(getMonthDays.year, getMonthDays.month, dayNum);
+                      const dayBookings = isValid ? getBookingsForDate(cellDate) : [];
+                      const todayFlag = isValid && isToday(cellDate);
+
+                      return (
+                        <div
+                          key={i}
+                          className={`rounded-xl border-2 p-2 transition-all ${
+                            !isValid
+                              ? 'bg-slate-50 border-slate-100'
+                              : dayBookings.length > 0
+                              ? 'border-indigo-300 bg-indigo-50 cursor-pointer hover:bg-indigo-100'
+                              : todayFlag
+                              ? 'border-green-300 bg-green-50'
+                              : 'border-slate-200 hover:border-slate-300 cursor-pointer bg-white'
+                          }`}
+                        >
+                          {isValid && (
+              <div className="h-[calc(100vh-16rem)] flex flex-col overflow-hidden">
+                              <div className={`font-bold text-sm mb-1 ${todayFlag ? 'text-green-600' : 'text-slate-900'}`}>
+                                {dayNum}
+                              </div>
+                              {dayBookings.slice(0, 2).map((booking) => {
+                                const statusConfig = getStatusConfig(booking.status);
+                                return (
+                                  <div
+                                    key={booking._id}
+                                    onClick={() => navigate(`/dashboard/trainers/${booking.trainerId._id}/confirm`, { state: { bookingId: booking._id } })}
+                                    className={`text-xs px-1.5 py-0.5 rounded mb-1 cursor-pointer hover:opacity-80 ${statusConfig.bg}`}
+                                  >
+                                    <div className="font-semibold truncate">{booking.time}</div>
+                                    <div className="truncate">{booking.trainerId?.fullName || 'HLV'}</div>
+                                  </div>
+                                );
+                              })}
+                              {dayBookings.length > 2 && (
+                                <div className="text-xs text-indigo-600 font-medium">+{dayBookings.length - 2} nữa</div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
             )}
           </div>
-        </div>
 
-        {Object.keys(selectedDates).length > 0 && (
-          <div className="mt-6 bg-indigo-50 border border-indigo-200 rounded-2xl p-4">
-            <div className="flex items-center justify-between mb-2">
-              <h4 className="font-semibold text-indigo-900">Đã chọn {Object.keys(selectedDates).length} lịch tập:</h4>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {Object.entries(selectedDates).map(([dateStr, time]) => {
-                const d = new Date(dateStr);
-                return (
-                  <div key={dateStr} className="bg-white px-3 py-1.5 rounded-lg border border-indigo-200 text-sm flex items-center gap-2">
-                    <span className="font-semibold text-slate-900">{d.getDate()}/{d.getMonth() + 1}:</span>
-                    <span className="text-indigo-700">{time}</span>
-                    <button onClick={() => removeSlot(dateStr)} className="text-red-500 hover:text-red-700 ml-1">&times;</button>
-                  </div>
-                );
-              })}
+          {/* Legend */}
+          <div className="mt-4 pt-4 border-t border-slate-200">
+            <div className="flex flex-wrap gap-4 text-sm">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded bg-amber-400"></div>
+                <span className="text-slate-600">Chờ xác nhận</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded bg-green-500"></div>
+                <span className="text-slate-600">Đã xác nhận</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded bg-green-400"></div>
+                <span className="text-slate-600">Hôm nay</span>
+              </div>
             </div>
           </div>
-        )}
+        </div>
       </div>
     </DashboardLayout>
   );

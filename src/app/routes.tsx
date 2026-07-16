@@ -1,6 +1,7 @@
 import MemberQR from './pages/MemberQR'; // Nhúng màn hình QR vào route
 import { AttendanceScanner } from './pages/admin/AttendanceScanner';
 import { createBrowserRouter, Navigate, useLocation } from 'react-router';
+import { RouteErrorBoundary } from '../lib/ErrorBoundary';
 import { Layout } from './components/Layout';
 import { Home } from './pages/Home';
 import { Learn } from './pages/Learn';
@@ -21,10 +22,10 @@ import { Schedule } from './pages/dashboard/Schedule';
 import { BookSchedule } from './pages/dashboard/BookSchedule';
 import { Trainers } from './pages/dashboard/Trainers';
 import { BookTrainer } from './pages/dashboard/BookTrainer';
-import { BookingStatus } from './pages/dashboard/BookingStatus';
 import { ConfirmTrainerBooking } from './pages/dashboard/ConfirmTrainerBooking';
 import { TrainerDetail } from './pages/dashboard/TrainerDetail';
 import { Progress } from './pages/dashboard/Progress';
+import { BookingStatus } from './pages/dashboard/BookingStatus';
 import { Services as MemberServices } from './pages/dashboard/Services';
 import { Settings } from './pages/dashboard/Settings';
 import { AdminDashboard } from './pages/admin/Dashboard';
@@ -76,99 +77,81 @@ import { PostManagement } from './pages/admin/PostManagement';
 import { AdminCommunity } from './pages/admin/AdminCommunity';
 import { AdminMessages } from './pages/admin/AdminMessages';
 
-// Import trang ứng tuyển mới thiết lập
-import { Recruitment } from "./pages/Recruitment";
-
-// Phân quyền tính năng cho nhân viên
 const routeFeatures: Record<string, string> = {
-  "/admin/dashboard": "statistics",
-  "/admin/customers": "customers",
-  "/admin/customers/:id/edit": "customers",
-  "/admin/customers/register": "customers",
-  "/admin/customers/expired": "customers",
-  "/admin/equipment": "equipment",
-  "/admin/equipment/add": "equipment",
-  "/admin/equipment/:id/edit": "equipment",
-  "/admin/packages": "packages",
-  "/admin/packages/add": "packages",
-  "/admin/packages/:id/edit": "packages",
-  "/admin/contracts": "packages",
-  "/admin/contracts/:id/edit": "packages",
-  "/admin/services": "services",
-  "/admin/services/history": "services",
-  "/admin/attendance": "attendance",
-  "/admin/attendance/history": "attendance",
-  "/admin/products": "products",
-  "/admin/products/add": "products",
-  "/admin/products/returns": "products",
-  "/admin/products/:id/edit": "products",
-  "/admin/staff": "staff",
-  "/admin/staff/salary": "salary",
-  "/admin/staff/salary-history": "salary",
-  "/admin/staff/add": "staff",
-  "/admin/staff/permissions": "permissions",
-  "/admin/jobs": "tasks",
-  "/admin/jobs/add": "tasks",
-  "/admin/jobs/:id/edit": "tasks",
-  "/admin/statistics": "statistics",
-  "/admin/clubs": "clubs",
-  "/admin/disciplines": "clubs",
-  "/admin/policies": "services",
-  "/admin/homepage": "services",
-  "/admin/payment": "payment",
-  "/admin/recruitment": "staff",
-  "/admin/expenses": "statistics",
-  "/admin/trainer-profile": "training",
-  "/admin/training-schedule": "training",
-  "/admin/lockers": "equipment",
-  "/admin/schedule-confirmations": "schedule",
-  "/admin/tasks": "tasks",
-  "/admin/bookings": "schedule",
-  "/admin/invoices": "payment",
-  "/admin/posts": "services",
-  "/admin/community": "services",
-  "/admin/messages": "services",
+  '/admin/dashboard': 'statistics',
+  '/admin/customers': 'customers',
+  '/admin/customers/:id/edit': 'customers',
+  '/admin/customers/register': 'customers',
+  '/admin/customers/expired': 'customers',
+  '/admin/equipment': 'equipment',
+  '/admin/equipment/add': 'equipment',
+  '/admin/equipment/:id/edit': 'equipment',
+  '/admin/packages': 'packages',
+  '/admin/packages/add': 'packages',
+  '/admin/packages/:id/edit': 'packages',
+  '/admin/contracts': 'packages',
+  '/admin/contracts/:id/edit': 'packages',
+  '/admin/services': 'services',
+  '/admin/services/history': 'services',
+  '/admin/attendance': 'attendance',
+  '/admin/attendance/history': 'attendance',
+  '/admin/products': 'products',
+  '/admin/products/add': 'products',
+  '/admin/products/returns': 'products',
+  '/admin/products/:id/edit': 'products',
+  '/admin/staff': 'staff',
+  '/admin/staff/salary': 'salary',
+  '/admin/staff/salary-history': 'salary',
+  '/admin/staff/add': 'staff',
+  '/admin/staff/permissions': 'permissions',
+  '/admin/jobs': 'tasks',
+  '/admin/jobs/add': 'tasks',
+  '/admin/jobs/:id/edit': 'tasks',
+  '/admin/statistics': 'statistics',
+  '/admin/clubs': 'clubs',
+  '/admin/disciplines': 'clubs',
+  '/admin/policies': 'services',
+  '/admin/homepage': 'services',
+  '/admin/payment': 'payment',
+  '/admin/recruitment': 'staff',
+  '/admin/expenses': 'statistics',
+  '/admin/trainer-profile': 'training',
+  '/admin/training-schedule': 'training',
+  '/admin/lockers': 'equipment',
+  '/admin/schedule-confirmations': 'schedule',
+  '/admin/tasks': 'tasks',
+  '/admin/bookings': 'schedule',
+  '/admin/invoices': 'payment',
+  '/admin/posts': 'services',
+  '/admin/community': 'services',
+  '/admin/messages': 'services'
 };
 
-// Component bọc bảo vệ Route kiểm tra quyền đăng nhập
-function ProtectedRoute({
-  children,
-  role,
-}: {
-  children: React.ReactNode;
-  role?: "member" | "staff";
-}) {
+function ProtectedRoute({ children, role }: { children: React.ReactNode, role?: 'member' | 'staff' }) {
   const { user, loading, hasPermission } = useAuth();
   const location = useLocation();
 
-  if (loading)
-    return (
-      <div className="min-h-screen flex items-center justify-center text-slate-500">
-        Đang tải...
-      </div>
-    );
+  if (loading) return <div className="min-h-screen flex items-center justify-center text-slate-500">Đang tải...</div>;
   if (!user) return <Navigate to="/auth" replace />;
 
-  const isStaff =
-    user.isStaff === true || user.role === "admin" || user.role === "staff";
+  const isStaff = user.isStaff === true || user.role === 'admin' || user.role === 'staff';
 
-  if (role === "staff" && !isStaff) return <Navigate to="/" replace />;
-  if (role === "member" && isStaff)
-    return <Navigate to="/admin/dashboard" replace />;
+  if (role === 'staff' && !isStaff) return <Navigate to="/" replace />;
+  if (role === 'member' && isStaff) return <Navigate to="/admin/dashboard" replace />;
 
-  if (role === "staff" && isStaff) {
+  // Check feature permission for staff routes
+  if (role === 'staff' && isStaff) {
     const path = location.pathname;
-    const feature =
-      routeFeatures[path] ||
-      Object.entries(routeFeatures).find(([key]) => {
-        if (key.includes(":id")) {
-          const pattern = key.replace(/:id/g, "[^/]+");
-          return new RegExp(`^${pattern}$`).test(path);
-        }
-        return false;
-      })?.[1];
+    // Find matching feature for this route
+    const feature = routeFeatures[path] || Object.entries(routeFeatures).find(([key]) => {
+      if (key.includes(':id')) {
+        const pattern = key.replace(/:id/g, '[^/]+');
+        return new RegExp(`^${pattern}$`).test(path);
+      }
+      return false;
+    })?.[1];
 
-    if (feature && !hasPermission(feature) && path !== "/admin/dashboard") {
+    if (feature && !hasPermission(feature) && path !== '/admin/dashboard') {
       return <Navigate to="/admin/dashboard" replace />;
     }
   }
@@ -176,527 +159,281 @@ function ProtectedRoute({
   return <>{children}</>;
 }
 
-// Cấu hình Router toàn hệ thống
 export const router = createBrowserRouter([
   {
-    path: "/",
-    Component: Layout, // Giao diện chung kèm Navbar/Footer bên ngoài
+    path: '/',
+    Component: Layout,
+    errorElement: <RouteErrorBoundary />,
     children: [
       { index: true, Component: Home },
-      { path: "learn", Component: Learn },
-      { path: "trainers", Component: PTList },
-      { path: "packages", Component: Packages },
-      { path: "packages/:packageId", Component: PackageDetail },
-      { path: "packages/:packageId/checkout", Component: PackageCheckout },
-      { path: "contract", Component: Contract },
-      { path: "payment", Component: Payment },
-      { path: "clubs/:id", Component: ClubDetail },
-      { path: "disciplines/:id", Component: DisciplineDetail },
-      { path: "auth", Component: Auth },
+      { path: 'learn', Component: Learn },
+      { path: 'trainers', Component: PTList },
+      { path: 'packages', Component: Packages },
+      { path: 'packages/:packageId', Component: PackageDetail },
+      { path: 'packages/:packageId/checkout', Component: PackageCheckout },
+      { path: 'contract', Component: Contract },
+      { path: 'payment', Component: Payment },
+      { path: 'clubs/:id', Component: ClubDetail },
+      { path: 'disciplines/:id', Component: DisciplineDetail },
+      { path: 'auth', Component: Auth },
 
-      // Route mới: Trang điền đơn tuyển dụng cho khách hàng
-      { path: "recruitment", Component: Recruitment },
-
+      // ĐÃ TỐI ƯU TẠI ĐÂY: Đưa trang QR vào làm con của Layout 
+      // để khi mở trang này, thanh menu Navbar màu trắng ở trên vẫn giữ cố định!
       {
-        path: "dashboard/qr",
-        element: (
-          <ProtectedRoute role="member">
-            <MemberQR />
-          </ProtectedRoute>
-        ),
-      },
+        path: 'dashboard/qr',
+        element: <ProtectedRoute role="member"><MemberQR /></ProtectedRoute>
+      }
     ],
   },
   {
-    path: "/dashboard",
-    element: (
-      <ProtectedRoute role="member">
-        <Dashboard />
-      </ProtectedRoute>
-    ),
+    path: '/dashboard',
+    element: <ProtectedRoute role="member"><Dashboard /></ProtectedRoute>
   },
   {
-    path: "/dashboard/my-packages",
-    element: (
-      <ProtectedRoute role="member">
-        <MyPackages />
-      </ProtectedRoute>
-    ),
+    path: '/dashboard/my-packages',
+    element: <ProtectedRoute role="member"><MyPackages /></ProtectedRoute>
   },
   {
-    path: "/dashboard/history",
-    element: (
-      <ProtectedRoute role="member">
-        <TransactionHistory />
-      </ProtectedRoute>
-    ),
+    path: '/dashboard/history',
+    element: <ProtectedRoute role="member"><TransactionHistory /></ProtectedRoute>
   },
   {
-    path: "/dashboard/schedule",
-    element: (
-      <ProtectedRoute role="member">
-        <Schedule />
-      </ProtectedRoute>
-    ),
+    path: '/dashboard/schedule',
+    element: <ProtectedRoute role="member"><Schedule /></ProtectedRoute>
   },
   {
-    path: "/dashboard/schedule/book",
-    element: (
-      <ProtectedRoute role="member">
-        <BookSchedule />
-      </ProtectedRoute>
-    ),
+    path: '/dashboard/schedule/book',
+    element: <ProtectedRoute role="member"><BookSchedule /></ProtectedRoute>
   },
   {
-    path: "/dashboard/trainers",
-    element: (
-      <ProtectedRoute role="member">
-        <Trainers />
-      </ProtectedRoute>
-    ),
+    path: '/dashboard/trainers',
+    element: <ProtectedRoute role="member"><Trainers /></ProtectedRoute>
   },
   {
-    path: "/dashboard/trainers/:trainerId",
-    element: (
-      <ProtectedRoute role="member">
-        <TrainerDetail />
-      </ProtectedRoute>
-    ),
+    path: '/dashboard/trainers/:trainerId',
+    element: <ProtectedRoute role="member"><TrainerDetail /></ProtectedRoute>
   },
   {
-    path: "/dashboard/trainers/:trainerId/book",
-    element: (
-      <ProtectedRoute role="member">
-        <BookTrainer />
-      </ProtectedRoute>
-    ),
+    path: '/dashboard/trainers/:trainerId/book',
+    element: <ProtectedRoute role="member"><BookTrainer /></ProtectedRoute>
   },
   {
-    path: "/dashboard/trainers/:trainerId/confirm",
-    element: (
-      <ProtectedRoute role="member">
-        <ConfirmTrainerBooking />
-      </ProtectedRoute>
-    ),
+    path: '/dashboard/trainers/:trainerId/confirm',
+    element: <ProtectedRoute role="member"><ConfirmTrainerBooking /></ProtectedRoute>
   },
   {
-    path: "/dashboard/progress",
-    element: (
-      <ProtectedRoute role="member">
-        <Progress />
-      </ProtectedRoute>
-    ),
+    path: '/dashboard/progress',
+    element: <ProtectedRoute role="member"><Progress /></ProtectedRoute>
   },
   {
-    path: "/dashboard/community",
-    element: (
-      <ProtectedRoute role="member">
-        <Community />
-      </ProtectedRoute>
-    ),
+    path: '/dashboard/community',
+    element: <ProtectedRoute role="member"><Community /></ProtectedRoute>
   },
   {
     path: '/dashboard/bookings/:bookingId/status',
     element: <ProtectedRoute role="member"><BookingStatus /></ProtectedRoute>
   },
   {
-    path: "/dashboard/messages",
-    element: (
-      <ProtectedRoute role="member">
-        <Messages />
-      </ProtectedRoute>
-    ),
+    path: '/dashboard/community',
+    element: <ProtectedRoute role="member"><Community /></ProtectedRoute>
   },
   {
-    path: "/dashboard/services",
-    element: (
-      <ProtectedRoute role="member">
-        <MemberServices />
-      </ProtectedRoute>
-    ),
+    path: '/dashboard/messages',
+    element: <ProtectedRoute role="member"><Messages /></ProtectedRoute>
   },
   {
-    path: "/admin/attendance",
-    element: (
-      <ProtectedRoute role="staff">
-        <AttendanceScanner />
-      </ProtectedRoute>
-    ),
+    path: '/dashboard/services',
+    element: <ProtectedRoute role="member"><MemberServices /></ProtectedRoute>
   },
   {
-    path: "/dashboard/settings",
-    element: (
-      <ProtectedRoute role="member">
-        <Settings />
-      </ProtectedRoute>
-    ),
+    path: '/admin/attendance',
+    element: <ProtectedRoute role="staff"><AttendanceScanner /></ProtectedRoute>
   },
   {
-    path: "/admin/dashboard",
-    element: (
-      <ProtectedRoute role="staff">
-        <AdminDashboard />
-      </ProtectedRoute>
-    ),
+    path: '/dashboard/settings',
+    element: <ProtectedRoute role="member"><Settings /></ProtectedRoute>
   },
   {
-    path: "/admin/customers",
-    element: (
-      <ProtectedRoute role="staff">
-        <CustomerList />
-      </ProtectedRoute>
-    ),
+    path: '/admin/dashboard',
+    element: <ProtectedRoute role="staff"><AdminDashboard /></ProtectedRoute>
   },
   {
-    path: "/admin/customers/:id/edit",
-    element: (
-      <ProtectedRoute role="staff">
-        <EditCustomer />
-      </ProtectedRoute>
-    ),
+    path: '/admin/customers',
+    element: <ProtectedRoute role="staff"><CustomerList /></ProtectedRoute>
   },
   {
-    path: "/admin/customers/register",
-    element: (
-      <ProtectedRoute role="staff">
-        <CustomerRegister />
-      </ProtectedRoute>
-    ),
+    path: '/admin/customers/:id/edit',
+    element: <ProtectedRoute role="staff"><EditCustomer /></ProtectedRoute>
   },
   {
-    path: "/admin/customers/expired",
-    element: (
-      <ProtectedRoute role="staff">
-        <ExpiredCustomers />
-      </ProtectedRoute>
-    ),
+    path: '/admin/customers/register',
+    element: <ProtectedRoute role="staff"><CustomerRegister /></ProtectedRoute>
   },
   {
-    path: "/admin/equipment",
-    element: (
-      <ProtectedRoute role="staff">
-        <EquipmentList />
-      </ProtectedRoute>
-    ),
+    path: '/admin/customers/expired',
+    element: <ProtectedRoute role="staff"><ExpiredCustomers /></ProtectedRoute>
   },
   {
-    path: "/admin/equipment/add",
-    element: (
-      <ProtectedRoute role="staff">
-        <AddEquipment />
-      </ProtectedRoute>
-    ),
+    path: '/admin/equipment',
+    element: <ProtectedRoute role="staff"><EquipmentList /></ProtectedRoute>
   },
   {
-    path: "/admin/equipment/:id/edit",
-    element: (
-      <ProtectedRoute role="staff">
-        <EditEquipment />
-      </ProtectedRoute>
-    ),
+    path: '/admin/equipment/add',
+    element: <ProtectedRoute role="staff"><AddEquipment /></ProtectedRoute>
   },
   {
-    path: "/admin/packages",
-    element: (
-      <ProtectedRoute role="staff">
-        <PackageList />
-      </ProtectedRoute>
-    ),
+    path: '/admin/equipment/:id/edit',
+    element: <ProtectedRoute role="staff"><EditEquipment /></ProtectedRoute>
   },
   {
-    path: "/admin/packages/add",
-    element: (
-      <ProtectedRoute role="staff">
-        <AddPackage />
-      </ProtectedRoute>
-    ),
+    path: '/admin/packages',
+    element: <ProtectedRoute role="staff"><PackageList /></ProtectedRoute>
   },
   {
-    path: "/admin/packages/:id/edit",
-    element: (
-      <ProtectedRoute role="staff">
-        <EditPackage />
-      </ProtectedRoute>
-    ),
+    path: '/admin/packages/add',
+    element: <ProtectedRoute role="staff"><AddPackage /></ProtectedRoute>
   },
   {
-    path: "/admin/contracts",
-    element: (
-      <ProtectedRoute role="staff">
-        <ContractList />
-      </ProtectedRoute>
-    ),
+    path: '/admin/packages/:id/edit',
+    element: <ProtectedRoute role="staff"><EditPackage /></ProtectedRoute>
   },
   {
-    path: "/admin/contracts/:id/edit",
-    element: (
-      <ProtectedRoute role="staff">
-        <EditContract />
-      </ProtectedRoute>
-    ),
+    path: '/admin/contracts',
+    element: <ProtectedRoute role="staff"><ContractList /></ProtectedRoute>
   },
   {
-    path: "/admin/services",
-    element: (
-      <ProtectedRoute role="staff">
-        <Services />
-      </ProtectedRoute>
-    ),
+    path: '/admin/contracts/:id/edit',
+    element: <ProtectedRoute role="staff"><EditContract /></ProtectedRoute>
   },
   {
-    path: "/admin/services/history",
-    element: (
-      <ProtectedRoute role="staff">
-        <ServiceHistory />
-      </ProtectedRoute>
-    ),
+    path: '/admin/services',
+    element: <ProtectedRoute role="staff"><Services /></ProtectedRoute>
   },
   {
-    path: "/admin/attendance/history",
-    element: (
-      <ProtectedRoute role="staff">
-        <AttendanceHistory />
-      </ProtectedRoute>
-    ),
+    path: '/admin/services/history',
+    element: <ProtectedRoute role="staff"><ServiceHistory /></ProtectedRoute>
   },
   {
-    path: "/admin/products",
-    element: (
-      <ProtectedRoute role="staff">
-        <ProductList />
-      </ProtectedRoute>
-    ),
+    path: '/admin/attendance/history',
+    element: <ProtectedRoute role="staff"><AttendanceHistory /></ProtectedRoute>
   },
   {
-    path: "/admin/products/add",
-    element: (
-      <ProtectedRoute role="staff">
-        <AddProduct />
-      </ProtectedRoute>
-    ),
+    path: '/admin/products',
+    element: <ProtectedRoute role="staff"><ProductList /></ProtectedRoute>
   },
   {
-    path: "/admin/products/:id/edit",
-    element: (
-      <ProtectedRoute role="staff">
-        <EditProduct />
-      </ProtectedRoute>
-    ),
+    path: '/admin/products/add',
+    element: <ProtectedRoute role="staff"><AddProduct /></ProtectedRoute>
   },
   {
-    path: "/admin/products/returns",
-    element: (
-      <ProtectedRoute role="staff">
-        <ProductReturns />
-      </ProtectedRoute>
-    ),
+    path: '/admin/products/:id/edit',
+    element: <ProtectedRoute role="staff"><EditProduct /></ProtectedRoute>
   },
   {
-    path: "/admin/staff",
-    element: (
-      <ProtectedRoute role="staff">
-        <StaffList />
-      </ProtectedRoute>
-    ),
+    path: '/admin/products/returns',
+    element: <ProtectedRoute role="staff"><ProductReturns /></ProtectedRoute>
   },
   {
-    path: "/admin/staff/salary",
-    element: (
-      <ProtectedRoute role="staff">
-        <StaffSalary />
-      </ProtectedRoute>
-    ),
+    path: '/admin/staff',
+    element: <ProtectedRoute role="staff"><StaffList /></ProtectedRoute>
   },
   {
-    path: "/admin/staff/salary-history",
-    element: (
-      <ProtectedRoute role="staff">
-        <StaffSalaryHistory />
-      </ProtectedRoute>
-    ),
+    path: '/admin/staff/salary',
+    element: <ProtectedRoute role="staff"><StaffSalary /></ProtectedRoute>
   },
   {
-    path: "/admin/staff/add",
-    element: (
-      <ProtectedRoute role="staff">
-        <AddStaff />
-      </ProtectedRoute>
-    ),
+    path: '/admin/staff/salary-history',
+    element: <ProtectedRoute role="staff"><StaffSalaryHistory /></ProtectedRoute>
   },
   {
-    path: "/admin/staff/permissions",
-    element: (
-      <ProtectedRoute role="staff">
-        <StaffPermissions />
-      </ProtectedRoute>
-    ),
+    path: '/admin/staff/add',
+    element: <ProtectedRoute role="staff"><AddStaff /></ProtectedRoute>
   },
   {
-    path: "/admin/jobs",
-    element: (
-      <ProtectedRoute role="staff">
-        <JobList />
-      </ProtectedRoute>
-    ),
+    path: '/admin/staff/permissions',
+    element: <ProtectedRoute role="staff"><StaffPermissions /></ProtectedRoute>
   },
   {
-    path: "/admin/jobs/add",
-    element: (
-      <ProtectedRoute role="staff">
-        <AddJob />
-      </ProtectedRoute>
-    ),
+    path: '/admin/jobs',
+    element: <ProtectedRoute role="staff"><JobList /></ProtectedRoute>
   },
   {
-    path: "/admin/jobs/:id/edit",
-    element: (
-      <ProtectedRoute role="staff">
-        <EditJob />
-      </ProtectedRoute>
-    ),
+    path: '/admin/jobs/add',
+    element: <ProtectedRoute role="staff"><AddJob /></ProtectedRoute>
+  }, {
+    path: '/admin/jobs/:id/edit',
+    element: <ProtectedRoute role="staff"><EditJob /></ProtectedRoute>
   },
   {
-    path: "/admin/statistics",
-    element: (
-      <ProtectedRoute role="staff">
-        <Statistics />
-      </ProtectedRoute>
-    ),
+    path: '/admin/statistics',
+    element: <ProtectedRoute role="staff"><Statistics /></ProtectedRoute>
   },
   {
-    path: "/admin/clubs",
-    element: (
-      <ProtectedRoute role="staff">
-        <ClubManagement />
-      </ProtectedRoute>
-    ),
+    path: '/admin/clubs',
+    element: <ProtectedRoute role="staff"><ClubManagement /></ProtectedRoute>
   },
   {
-    path: "/admin/disciplines",
-    element: (
-      <ProtectedRoute role="staff">
-        <DisciplineManagement />
-      </ProtectedRoute>
-    ),
+    path: '/admin/disciplines',
+    element: <ProtectedRoute role="staff"><DisciplineManagement /></ProtectedRoute>
   },
   {
-    path: "/admin/policies",
-    element: (
-      <ProtectedRoute role="staff">
-        <PolicyManagement />
-      </ProtectedRoute>
-    ),
+    path: '/admin/policies',
+    element: <ProtectedRoute role="staff"><PolicyManagement /></ProtectedRoute>
   },
   {
-    path: "/admin/homepage",
-    element: (
-      <ProtectedRoute role="staff">
-        <HomepageManagement />
-      </ProtectedRoute>
-    ),
+    path: '/admin/homepage',
+    element: <ProtectedRoute role="staff"><HomepageManagement /></ProtectedRoute>
   },
   {
-    path: "/admin/payment",
-    element: (
-      <ProtectedRoute role="staff">
-        <PaymentManagement />
-      </ProtectedRoute>
-    ),
+    path: '/admin/payment',
+    element: <ProtectedRoute role="staff"><PaymentManagement /></ProtectedRoute>
   },
   {
-    path: "/admin/recruitment",
-    element: (
-      <ProtectedRoute role="staff">
-        <RecruitmentManagement />
-      </ProtectedRoute>
-    ),
+    path: '/admin/recruitment',
+    element: <ProtectedRoute role="staff"><RecruitmentManagement /></ProtectedRoute>
   },
   {
-    path: "/admin/expenses",
-    element: (
-      <ProtectedRoute role="staff">
-        <ExpenseManagement />
-      </ProtectedRoute>
-    ),
+    path: '/admin/expenses',
+    element: <ProtectedRoute role="staff"><ExpenseManagement /></ProtectedRoute>
   },
   {
-    path: "/admin/trainer-profile",
-    element: (
-      <ProtectedRoute role="staff">
-        <TrainerProfile />
-      </ProtectedRoute>
-    ),
+    path: '/admin/trainer-profile',
+    element: <ProtectedRoute role="staff"><TrainerProfile /></ProtectedRoute>
   },
   {
-    path: "/admin/training-schedule",
-    element: (
-      <ProtectedRoute role="staff">
-        <TrainingSchedule />
-      </ProtectedRoute>
-    ),
+    path: '/admin/training-schedule',
+    element: <ProtectedRoute role="staff"><TrainingSchedule /></ProtectedRoute>
   },
   {
-    path: "/admin/lockers",
-    element: (
-      <ProtectedRoute role="staff">
-        <LockerManagement />
-      </ProtectedRoute>
-    ),
+    path: '/admin/lockers',
+    element: <ProtectedRoute role="staff"><LockerManagement /></ProtectedRoute>
   },
   {
-    path: "/admin/schedule-confirmations",
-    element: (
-      <ProtectedRoute role="staff">
-        <ScheduleConfirmations />
-      </ProtectedRoute>
-    ),
+    path: '/admin/schedule-confirmations',
+    element: <ProtectedRoute role="staff"><ScheduleConfirmations /></ProtectedRoute>
   },
   {
-    path: "/admin/tasks",
-    element: (
-      <ProtectedRoute role="staff">
-        <Tasks />
-      </ProtectedRoute>
-    ),
+    path: '/admin/tasks',
+    element: <ProtectedRoute role="staff"><Tasks /></ProtectedRoute>
   },
   {
-    path: "/admin/bookings",
-    element: (
-      <ProtectedRoute role="staff">
-        <BookingManagement />
-      </ProtectedRoute>
-    ),
+    path: '/admin/bookings',
+    element: <ProtectedRoute role="staff"><BookingManagement /></ProtectedRoute>
   },
   {
-    path: "/admin/invoices",
-    element: (
-      <ProtectedRoute role="staff">
-        <Invoices />
-      </ProtectedRoute>
-    ),
+    path: '/admin/invoices',
+    element: <ProtectedRoute role="staff"><Invoices /></ProtectedRoute>
   },
   {
-    path: "/admin/posts",
-    element: (
-      <ProtectedRoute role="staff">
-        <PostManagement />
-      </ProtectedRoute>
-    ),
+    path: '/admin/posts',
+    element: <ProtectedRoute role="staff"><PostManagement /></ProtectedRoute>
   },
   {
-    path: "/admin/community",
-    element: (
-      <ProtectedRoute role="staff">
-        <AdminCommunity />
-      </ProtectedRoute>
-    ),
+    path: '/admin/community',
+    element: <ProtectedRoute role="staff"><AdminCommunity /></ProtectedRoute>
   },
   {
-    path: "/admin/messages",
-    element: (
-      <ProtectedRoute role="staff">
-        <AdminMessages />
-      </ProtectedRoute>
-    ),
+    path: '/admin/messages',
+    element: <ProtectedRoute role="staff"><AdminMessages /></ProtectedRoute>
   },
 ]);
