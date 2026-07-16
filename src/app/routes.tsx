@@ -294,12 +294,10 @@ export const router = createBrowserRouter([
         <Community />
       </ProtectedRoute>
     ),
-    path: '/dashboard/bookings/:bookingId/status',
-    element: <ProtectedRoute role="member"><BookingStatus /></ProtectedRoute>
   },
   {
-    path: '/dashboard/progress',
-    element: <ProtectedRoute role="member"><Progress /></ProtectedRoute>
+    path: '/dashboard/bookings/:bookingId/status',
+    element: <ProtectedRoute role="member"><BookingStatus /></ProtectedRoute>
   },
   {
     path: "/dashboard/messages",

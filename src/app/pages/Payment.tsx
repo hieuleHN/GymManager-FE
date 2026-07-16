@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useLocation, useNavigate, Navigate } from 'react-router';
 import { Button } from '@mui/material';
-import { CreditCard, Building2, Smartphone, Check, Loader2, ExternalLink, QrCode, X } from 'lucide-react';
+import { CreditCard, Building2, Smartphone, Check, Loader2, ExternalLink, QrCode, X, Wallet, AlertTriangle } from 'lucide-react';
 import { useAuth, getApiUrl, getAuthHeaders } from '../context/AuthContext';
 
 
@@ -22,10 +22,10 @@ const paymentMethods = [
     description: "Thanh toán qua ví điện tử MoMo",
   },
   {
-    id: "bank-card",
-    name: "Thẻ ngân hàng",
-    icon: CreditCard,
-    description: "Thanh toán bằng thẻ ATM/Visa/Mastercard",
+    id: "wallet",
+    name: "Ví điện tử",
+    icon: Wallet,
+    description: "Thanh toán bằng số dư Ví điện tử",
 
   },
   {
@@ -72,12 +72,54 @@ export function Payment() {
   const transactionNo = params.get('transactionNo');
   const vnpayBookingId = params.get('bookingId');
 
-  if (vnpaySuccess && transactionNo) {
-    const redirectUrl = vnpayBookingId
-      ? `/dashboard/bookings/${vnpayBookingId}/status?success=true`
-      : '/dashboard/my-packages';
-    navigate(redirectUrl, { replace: true });
-    return null;
+  const [processingVnpay, setProcessingVnpay] = useState(false);
+  const [showWalletConfirm, setShowWalletConfirm] = useState(false);
+  const [walletBalance, setWalletBalance] = useState(0);
+  const [walletError, setWalletError] = useState('');
+  const [walletSuccess, setWalletSuccess] = useState(false);
+
+  useEffect(() => {
+    if (!vnpaySuccess || !transactionNo) return;
+    let cancelled = false;
+    const handleVnpayReturn = async () => {
+      setProcessingVnpay(true);
+      sessionStorage.removeItem('vnpay_batch_id');
+      let batchId = '';
+      if (vnpayBookingId) {
+        try {
+          const res = await fetch(`${getApiUrl()}/api/bookings/${vnpayBookingId}`, {
+            headers: getAuthHeaders() as any,
+          });
+          if (res.ok) {
+            const data = await res.json();
+            batchId = data.batchId || '';
+          }
+        } catch {}
+      }
+      if (cancelled) return;
+      const redirectUrl = vnpayBookingId
+        ? `/dashboard/bookings/${vnpayBookingId}/status${batchId ? `?batchId=${batchId}` : ''}`
+        : '/dashboard/my-packages';
+      navigate(redirectUrl, { replace: true });
+    };
+    handleVnpayReturn();
+    return () => { cancelled = true; };
+  }, []);
+
+  const isVnpayReturn = vnpaySuccess || vnpayFailed;
+
+  if (processingVnpay || (isVnpayReturn && !vnpayFailed)) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center py-12 px-4">
+        <div className="max-w-md w-full bg-white p-8 rounded-2xl shadow-lg text-center">
+          <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
+            <Loader2 className="w-10 h-10 text-green-600 animate-spin" />
+          </div>
+          <h2 className="text-2xl font-bold text-slate-900 mb-4">Đang xử lý thanh toán...</h2>
+          <p className="text-slate-600 mb-8">Vui lòng đợi trong giây lát.</p>
+        </div>
+      </div>
+    );
   }
 
   if (vnpayFailed) {
@@ -99,7 +141,7 @@ export function Payment() {
     );
   }
 
-  if (!paymentData || !paymentData.package) {
+  if (!isVnpayReturn && (!paymentData || !paymentData.package)) {
     return <Navigate to={isBookingPayment ? '/dashboard/trainers' : '/packages'} />;
   }
 
@@ -110,12 +152,19 @@ export function Payment() {
     durationMonths,
     totalPrice,
     booking,
+    bookings,
+    batchId,
     trainer
   } = paymentData;
 
+  // Lấy tất cả booking IDs, hỗ trợ cả mảng bookings (mới) và booking đơn (cũ)
+  const allBookings = bookings || (booking ? [booking] : []);
+  const allBookingIds = allBookings.map((b: any) => b._id || b.id).filter(Boolean);
+  const bookingId = allBookingIds[0] || booking?._id || booking?.id;
+  const bookingBatchId = batchId || allBookings[0]?.batchId || '';
+
   // Lấy ID đăng ký an toàn (hỗ trợ cả id và _id)
   const regId = registration?.id || registration?._id;
-  const bookingId = booking?._id || booking?.id;
 
   useEffect(() => {
     const locationId =
@@ -150,7 +199,7 @@ export function Payment() {
   }, [customer, registration, pkg, booking, trainer]);
 
   const formatPrice = (price: number) => {
-    return price.toLocaleString("vi-VN") + "đ";
+    return Math.round(price).toLocaleString("vi-VN") + "₫";
   };
 
   const handlePayment = async () => {
@@ -163,29 +212,73 @@ export function Payment() {
 
     try {
       if (isBookingPayment) {
-        if (!bookingId) throw new Error('Không tìm thấy thông tin đặt lịch!');
+        if (!bookingId && allBookingIds.length === 0) throw new Error('Không tìm thấy thông tin đặt lịch!');
+        const idsToPay = allBookingIds.length > 0 ? allBookingIds : [bookingId];
+
+        if (selectedMethod === "wallet") {
+          setProcessing(false);
+          setWalletError('');
+          try {
+            const res = await fetch(`${getApiUrl()}/api/wallet/balance`, {
+              headers: getAuthHeaders() as any
+            });
+            if (res.ok) {
+              const data = await res.json();
+              setWalletBalance(data.balance || 0);
+            }
+          } catch {}
+          setShowWalletConfirm(true);
+          return;
+        }
+
         if (selectedMethod === "vnpay") {
-          const res = await fetch(`${getApiUrl()}/api/bookings/${bookingId}/vnpay-url`, {
-            headers: getAuthHeaders() as any,
-          });
-          if (!res.ok) {
-            let errMsg = "Lỗi kết nối VNPAY";
-            try { const err = await res.json(); errMsg = err.error || errMsg; } catch { errMsg = `HTTP ${res.status}`; }
-            throw new Error(errMsg);
+          sessionStorage.setItem('vnpay_batch_id', idsToPay.join(','));
+          const useBulk = idsToPay.length > 1 && totalPrice && totalPrice > 0;
+          let data;
+          if (useBulk) {
+            const res = await fetch(`${getApiUrl()}/api/bookings/bulk-vnpay-url`, {
+              method: 'POST',
+              headers: getAuthHeaders() as any,
+              body: JSON.stringify({
+                bookingIds: idsToPay,
+                totalAmount: totalPrice,
+                trainerId: allBookings[0]?.trainerId?._id || null,
+                disciplineId: allBookings[0]?.disciplineId?._id || null
+              })
+            });
+            if (!res.ok) {
+              sessionStorage.removeItem('vnpay_batch_id');
+              let errMsg = "Lỗi kết nối VNPAY";
+              try { const err = await res.json(); errMsg = err.error || errMsg; } catch { errMsg = `HTTP ${res.status}`; }
+              throw new Error(errMsg);
+            }
+            data = await res.json();
+          } else {
+            const res = await fetch(`${getApiUrl()}/api/bookings/${idsToPay[0]}/vnpay-url`, {
+              headers: getAuthHeaders() as any,
+            });
+            if (!res.ok) {
+              sessionStorage.removeItem('vnpay_batch_id');
+              let errMsg = "Lỗi kết nối VNPAY";
+              try { const err = await res.json(); errMsg = err.error || errMsg; } catch { errMsg = `HTTP ${res.status}`; }
+              throw new Error(errMsg);
+            }
+            data = await res.json();
           }
-          const data = await res.json();
           if (!data.paymentUrl) throw new Error('Không nhận được URL thanh toán VNPAY');
           window.location.href = data.paymentUrl;
         } else {
-          const res = await fetch(`${getApiUrl()}/api/bookings/${bookingId}/payment`, {
-            method: 'PUT',
-            headers: getAuthHeaders() as any,
-            body: JSON.stringify({ paymentMethod: selectedMethod })
-          });
-          if (!res.ok) {
-            let errMsg = 'Cập nhật thất bại';
-            try { const err = await res.json(); errMsg = err.error || errMsg; } catch { errMsg = `HTTP ${res.status}`; }
-            throw new Error(errMsg);
+          for (const id of idsToPay) {
+            const res = await fetch(`${getApiUrl()}/api/bookings/${id}/payment`, {
+              method: 'PUT',
+              headers: getAuthHeaders() as any,
+              body: JSON.stringify({ paymentMethod: selectedMethod })
+            });
+            if (!res.ok) {
+              let errMsg = 'Cập nhật thất bại';
+              try { const err = await res.json(); errMsg = err.error || errMsg; } catch { errMsg = `HTTP ${res.status}`; }
+              throw new Error(errMsg);
+            }
           }
           setPaymentSuccess(true);
         }
@@ -194,6 +287,22 @@ export function Payment() {
           alert('Không tìm thấy thông tin đăng ký!');
           return;
         }
+        if (selectedMethod === "wallet") {
+          setProcessing(false);
+          setWalletError('');
+          try {
+            const res = await fetch(`${getApiUrl()}/api/wallet/balance`, {
+              headers: getAuthHeaders() as any
+            });
+            if (res.ok) {
+              const data = await res.json();
+              setWalletBalance(data.balance || 0);
+            }
+          } catch {}
+          setShowWalletConfirm(true);
+          return;
+        }
+
         if (selectedMethod === "vnpay") {
           const res = await fetch(`${getApiUrl()}/api/user-packages/${regId}/vnpay-url`, {
             headers: getAuthHeaders() as any,
@@ -234,10 +343,15 @@ export function Payment() {
   const pdfUrl = `${getApiUrl()}/api/user-packages/${regId}/contract-pdf?token=${pdfToken}`;
 
   if (paymentSuccess) {
-    const redirectUrl = isBookingPayment && bookingId
-      ? `/dashboard/bookings/${bookingId}/status?success=true`
-      : '/dashboard/my-packages';
-    navigate(redirectUrl, { replace: true });
+    if (isBookingPayment) {
+      const firstId = bookingId;
+      const url = firstId
+        ? `/dashboard/bookings/${firstId}/status${bookingBatchId ? `?batchId=${bookingBatchId}` : ''}`
+        : '/dashboard/history';
+      navigate(url, { replace: true });
+    } else {
+      navigate('/dashboard/my-packages', { replace: true });
+    }
     return null;
   }
 
@@ -302,6 +416,99 @@ export function Payment() {
   }
 
 
+
+  const handleWalletPay = async () => {
+    setProcessing(true);
+    setShowWalletConfirm(false);
+    try {
+      const idsToPay = allBookingIds.length > 0 ? allBookingIds : [bookingId];
+      const res = await fetch(`${getApiUrl()}/api/wallet/pay`, {
+        method: 'POST',
+        headers: { ...getAuthHeaders() as any, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: isBookingPayment ? 'booking' : 'package',
+          ids: idsToPay,
+          totalAmount: totalPrice
+        })
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Thanh toán thất bại');
+      }
+      const data = await res.json();
+      sessionStorage.removeItem('vnpay_batch_id');
+      setWalletSuccess(true);
+      setTimeout(() => setPaymentSuccess(true), 100);
+    } catch (err: any) {
+      setWalletError(err.message || 'Có lỗi xảy ra');
+      setShowWalletConfirm(true);
+      setProcessing(false);
+    }
+  };
+
+  if (showWalletConfirm) {
+    const enough = walletBalance >= totalPrice;
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center py-12 px-4">
+        <div className="max-w-md w-full bg-white p-8 rounded-2xl shadow-lg text-center">
+          {enough ? (
+            <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Wallet className="w-8 h-8 text-emerald-600" />
+            </div>
+          ) : (
+            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <AlertTriangle className="w-8 h-8 text-red-600" />
+            </div>
+          )}
+          <h2 className="text-2xl font-bold text-slate-900 mb-2">
+            {enough ? 'Xác nhận thanh toán' : 'Số dư không đủ'}
+          </h2>
+          <p className="text-slate-600 mb-6">
+            {enough
+              ? `Bạn có chắc muốn thanh toán ${formatPrice(totalPrice)} từ Ví điện tử?`
+              : `Số dư Ví: ${formatPrice(walletBalance)} - Cần ${formatPrice(totalPrice)}`}
+          </p>
+
+          <div className="bg-slate-50 rounded-xl p-4 mb-6 text-left space-y-2">
+            <div className="flex justify-between">
+              <span className="text-slate-600">Số dư Ví:</span>
+              <span className="font-bold text-emerald-600">{formatPrice(walletBalance)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-600">Số tiền thanh toán:</span>
+              <span className="font-bold text-slate-900">{formatPrice(totalPrice)}</span>
+            </div>
+            {enough && (
+              <div className="flex justify-between pt-2 border-t border-slate-200">
+                <span className="text-slate-600">Còn lại sau TT:</span>
+                <span className="font-bold text-indigo-600">{formatPrice(walletBalance - (totalPrice || 0))}</span>
+              </div>
+            )}
+          </div>
+
+          {walletError && (
+            <p className="text-sm text-red-600 mb-4 bg-red-50 p-3 rounded-lg">{walletError}</p>
+          )}
+
+          <div className="flex gap-3">
+            <Button fullWidth variant="outlined" size="large"
+              onClick={() => { setShowWalletConfirm(false); setWalletError(''); }}
+              sx={{ height: 56, borderRadius: 3, textTransform: 'none', fontSize: '1rem', fontWeight: 700 }}>
+              Quay lại
+            </Button>
+            {enough && (
+              <Button fullWidth variant="contained" size="large"
+                onClick={handleWalletPay} disabled={processing}
+                sx={{ height: 56, borderRadius: 3, textTransform: 'none', fontSize: '1rem', fontWeight: 700,
+                  bgcolor: '#10b981', '&:hover': { bgcolor: '#059669' } }}>
+                {processing ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Xác nhận thanh toán'}
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const qrDynamicUrl = (bankInfo.bankName && bankInfo.accountNumber) 
     ? `https://img.vietqr.io/image/${bankInfo.bankName}-${bankInfo.accountNumber}-compact2.png?amount=${totalPrice}&addInfo=${encodeURIComponent(customer?.fullName || customer?.phone || 'Thanh toan')} goi ${encodeURIComponent(pkg.name)}&accountName=${encodeURIComponent(bankInfo.accountName)}`
@@ -519,6 +726,12 @@ export function Payment() {
                         <p className="font-bold text-slate-900">{trainer.fullName}</p>
                       </div>
                     )}
+                    {booking?.disciplineName && (
+                      <div>
+                        <p className="text-sm text-slate-500">Bộ môn</p>
+                        <p className="font-bold text-slate-900">{booking.disciplineName}</p>
+                      </div>
+                    )}
                     {booking && (
                       <div>
                         <p className="text-sm text-slate-500">Mã đặt lịch</p>
@@ -591,7 +804,9 @@ export function Payment() {
                 fullWidth
                 variant="text"
                 size="small"
-                onClick={() => navigate("/dashboard/my-packages")}
+                onClick={() => {
+                  navigate(isBookingPayment ? '/dashboard/history' : '/dashboard/my-packages', { replace: true });
+                }}
                 sx={{ mt: 1, textTransform: "none", color: "#94a3b8" }}
               >
                 Thanh toán sau

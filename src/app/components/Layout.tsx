@@ -19,7 +19,8 @@ import {
   XCircle,
   Loader2,
   AlertCircle,
-  ChevronRight
+  ChevronRight,
+  Wallet
 } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { useAuth, getApiUrl, getAuthHeaders } from '../context/AuthContext';
@@ -28,6 +29,7 @@ import { Button } from '@mui/material';
 
 import logo from "../../imports/ChatGPT_Image_May_14__2026__09_48_52_PM.png";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
+import { WalletBalance } from './WalletBalance';
 import { clubsData, disciplinesData } from "../data";
 import "slick-carousel/slick/slick.css";
 import "slick-carousel/slick/slick-theme.css";
@@ -99,6 +101,8 @@ export function Layout() {
     setShowNotifications(false);
     if (notif.type === 'booking_transferred') {
       navigate('/dashboard/schedule');
+    } else if (notif.type === 'wallet_topup' || notif.type === 'wallet_payment') {
+      navigate('/dashboard/history');
     } else if (notif.relatedBookingId?._id || notif.relatedBookingId) {
       const bookingId = notif.relatedBookingId._id || notif.relatedBookingId;
       navigate(`/dashboard/bookings/${bookingId}/status`);
@@ -125,6 +129,8 @@ export function Layout() {
       case 'booking_rejected':
       case 'booking_cancelled': return <XCircle className="w-4 h-4 text-red-500" />;
       case 'booking_request': return <Calendar className="w-4 h-4 text-indigo-500" />;
+      case 'wallet_topup':
+      case 'wallet_payment': return <Wallet className="w-4 h-4 text-emerald-500" />;
       default: return <AlertCircle className="w-4 h-4 text-slate-500" />;
     }
   };
@@ -282,6 +288,7 @@ export function Layout() {
                       </div>
                     </div>
                   )}
+                  <WalletBalance balance={(user as any)?.balance || 0} />
                   <div className="flex items-center gap-3 pl-4 border-l border-slate-200">
                     <div className="text-right">
                       <p className="text-sm font-medium text-slate-900">

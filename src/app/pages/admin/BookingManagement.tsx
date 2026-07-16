@@ -14,6 +14,8 @@ interface Booking {
   status: 'pending' | 'confirmed' | 'rejected' | 'cancelled';
   rejectionReason?: string;
   locationId?: { _id: string; title: string };
+  disciplineId?: { _id: string; name: string } | null;
+  disciplineName?: string;
   createdAt: string;
 }
 
@@ -181,7 +183,7 @@ export function BookingManagement() {
                         </div>
                         <Chip label={getStatusText(booking.status)} color={getStatusColor(booking.status) as any} size="small" />
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
                         <div className="flex items-center gap-2 text-slate-600">
                           <User className="w-4 h-4" />
                           <span>HLV: <span className="font-semibold">{booking.trainerId?.fullName || 'N/A'}</span></span>
@@ -193,6 +195,9 @@ export function BookingManagement() {
                         <div className="flex items-center gap-2 text-slate-600">
                           <Clock className="w-4 h-4" />
                           <span>Giờ: <span className="font-semibold">{booking.time}</span></span>
+                        </div>
+                        <div className="flex items-center gap-2 text-slate-600">
+                          <span>Bộ môn: <span className="font-semibold">{booking.disciplineId?.name || booking.disciplineName || 'N/A'}</span></span>
                         </div>
                       </div>
                       {booking.customerId?.phone && (

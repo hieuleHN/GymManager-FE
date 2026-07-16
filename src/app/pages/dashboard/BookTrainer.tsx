@@ -1,8 +1,8 @@
 import { DashboardLayout } from '../../components/DashboardLayout';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { Button } from '@mui/material';
-import { ChevronLeft, ChevronRight, CreditCard, ArrowLeft, User, MapPin, Phone, Mail, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, CreditCard, ArrowLeft, User, MapPin, Phone, Mail, X, Trash2, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth, getApiUrl, getAuthHeaders } from '../../context/AuthContext';
 
@@ -33,19 +33,31 @@ const timeSlots = [
   { start: '19:30', end: '21:00' }
 ];
 
+function formatDateKey(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function parseDateKey(key: string): { day: number; month: number; year: number } {
+  const [y, m, d] = key.split('-').map(Number);
+  return { day: d, month: m - 1, year: y };
+}
+
 export function BookTrainer() {
   const { trainerId } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
   const [trainer, setTrainer] = useState<Trainer | null>(null);
   const [currentMonth, setCurrentMonth] = useState(new Date());
-  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
-  const [selectedTime, setSelectedTime] = useState<{ start: string; end: string } | null>(null);
+  const [selections, setSelections] = useState<Record<string, { start: string; end: string }>>({});
+  const [activeDate, setActiveDate] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingSlots, setLoadingSlots] = useState(false);
   const [checkingConflict, setCheckingConflict] = useState(false);
   const [showContact, setShowContact] = useState(false);
   const [bookedTimes, setBookedTimes] = useState<Set<string>>(new Set());
   const [selectedDisciplineId, setSelectedDisciplineId] = useState<string | null>(null);
+  const activeDateRef = useRef(activeDate);
+  useEffect(() => { activeDateRef.current = activeDate; }, [activeDate]);
 
   useEffect(() => {
     fetchTrainer();
@@ -68,18 +80,21 @@ export function BookTrainer() {
   };
 
   useEffect(() => {
-    if (!selectedDate || !trainerId) return;
-    fetchTrainerBookings();
-  }, [selectedDate, trainerId]);
+    if (!activeDate || !trainerId) {
+      setBookedTimes(new Set());
+      return;
+    }
+    fetchBookingsForDate(activeDate);
+  }, [activeDate, trainerId]);
 
-  const fetchTrainerBookings = async () => {
-    if (!selectedDate || !trainerId) return;
+  const fetchBookingsForDate = async (dateStr: string) => {
+    setLoadingSlots(true);
     try {
-      const dateStr = selectedDate.toISOString().split('T')[0];
       const res = await fetch(
         `${getApiUrl()}/api/bookings/trainer/${trainerId}?date=${dateStr}`,
         { headers: getAuthHeaders() }
       );
+      if (activeDateRef.current !== dateStr) return;
       if (res.ok) {
         const data = await res.json();
         const times = new Set<string>();
@@ -88,16 +103,14 @@ export function BookTrainer() {
         }
         setBookedTimes(times);
       }
-    } catch {}
+    } catch {} finally {
+      if (activeDateRef.current === dateStr) setLoadingSlots(false);
+    }
   };
 
-  const isTimeDisabled = (slot: { start: string; end: string }): boolean => {
-    if (!selectedDate) return true;
-    const now = new Date();
-    const selectedDateTime = new Date(selectedDate);
-    const [hours, minutes] = slot.start.split(':').map(Number);
-    selectedDateTime.setHours(hours, minutes, 0, 0);
-    if (selectedDateTime <= now) return true;
+  const isSlotDisabled = (slot: { start: string; end: string }): boolean => {
+    if (!activeDate) return true;
+    if (selections[activeDate]?.start === slot.start) return false;
     for (const t of bookedTimes) {
       if (t >= slot.start && t < slot.end) return true;
     }
@@ -125,35 +138,70 @@ export function BookTrainer() {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     if (clickedDate < today) return;
-    setSelectedDate(clickedDate);
-    setSelectedTime(null);
-  };
 
-  const handleTimeSelect = (slot: { start: string; end: string }) => {
-    if (isTimeDisabled(slot)) return;
-    setSelectedTime(slot);
-  };
+    const dateKey = formatDateKey(clickedDate);
 
-  const handlePayment = async () => {
-    if (!selectedDate || !selectedTime || !trainer) {
-      toast.error('Vui lòng chọn ngày và giờ!');
+    if (activeDate === dateKey) {
+      setActiveDate(null);
       return;
     }
 
+    setActiveDate(dateKey);
+  };
+
+  const handleTimeSelect = (slot: { start: string; end: string }) => {
+    if (!activeDate) return;
+    if (isSlotDisabled(slot)) return;
+
+    setSelections(prev => ({
+      ...prev,
+      [activeDate]: slot
+    }));
+    setActiveDate(null);
+  };
+
+  const handleRemoveDate = (dateKey: string) => {
+    setSelections(prev => {
+      const next = { ...prev };
+      delete next[dateKey];
+      return next;
+    });
+    if (activeDate === dateKey) {
+      setActiveDate(null);
+    }
+  };
+
+  const handlePayment = async () => {
+    if (!selectedDisciplineId) {
+      toast.error('Vui lòng chọn bộ môn tập!');
+      return;
+    }
+    const slotCount = Object.keys(selections).length;
+    if (slotCount === 0) {
+      toast.error('Vui lòng chọn ít nhất một ngày và giờ!');
+      return;
+    }
+    if (!trainer) return;
+
     setCheckingConflict(true);
     try {
-      const dateStr = selectedDate.toISOString().split('T')[0];
       const locId = trainer.locationId?._id || user?.locationId || null;
       const price = trainer.pricePerSession || 500000;
 
-      const bookingRes = await fetch(`${getApiUrl()}/api/bookings`, {
+      const slots = Object.entries(selections).map(([date, time]) => ({
+        date,
+        time: time.start,
+        startTime: time.start,
+        endTime: time.end
+      }));
+
+      const bookingRes = await fetch(`${getApiUrl()}/api/bookings/bulk`, {
         method: 'POST',
         headers: { ...getAuthHeaders() as any, 'Content-Type': 'application/json' },
         body: JSON.stringify({
           trainerId: trainer._id,
           disciplineId: selectedDisciplineId,
-          date: dateStr,
-          time: selectedTime.start,
+          slots,
           locationId: locId,
           price
         })
@@ -162,13 +210,18 @@ export function BookTrainer() {
       const bookingData = await bookingRes.json();
       if (!bookingRes.ok) throw new Error(bookingData.error || 'Đặt lịch thất bại');
 
+      const allBookings = bookingData.bookings || (bookingData.booking ? [bookingData.booking] : []);
+      const batchId = allBookings[0]?.batchId || '';
+      const totalPrice = price * (allBookings.length || 1);
+
       navigate('/payment', {
         state: {
           type: 'trainer_booking',
-          booking: bookingData.booking || bookingData,
+          bookings: allBookings,
+          batchId,
           trainer,
-          totalPrice: price,
-          package: { name: `PT 1 buổi với ${trainer.fullName}`, price }
+          totalPrice,
+          package: { name: `PT ${allBookings.length} buổi với ${trainer.fullName}`, price: totalPrice }
         }
       });
     } catch (err: any) {
@@ -181,6 +234,7 @@ export function BookTrainer() {
   const daysInMonth = getDaysInMonth(currentMonth);
   const firstDay = getFirstDayOfMonth(currentMonth);
   const price = trainer?.pricePerSession || 500000;
+  const selectionCount = Object.keys(selections).length;
 
   if (loading) {
     return (
@@ -248,7 +302,6 @@ export function BookTrainer() {
           </div>
         </div>
 
-        {/* Chọn bộ môn */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
           <h3 className="font-bold text-slate-900 mb-4">Chọn bộ môn tập</h3>
           {(() => {
@@ -301,15 +354,15 @@ export function BookTrainer() {
               {Array.from({ length: 42 }, (_, i) => {
                 const day = i - firstDay + 1;
                 const isValid = day >= 1 && day <= daysInMonth;
+                const dateObj = isValid ? new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day) : null;
+                const dateKey = dateObj ? formatDateKey(dateObj) : '';
                 const isToday = isValid &&
                   day === new Date().getDate() &&
                   currentMonth.getMonth() === new Date().getMonth() &&
                   currentMonth.getFullYear() === new Date().getFullYear();
-                const isSelected = isValid && selectedDate &&
-                  day === selectedDate.getDate() &&
-                  currentMonth.getMonth() === selectedDate.getMonth() &&
-                  currentMonth.getFullYear() === selectedDate.getFullYear();
-                const isPast = isValid && new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day) < new Date(new Date().setHours(0, 0, 0, 0));
+                const isBooked = isValid && !!selections[dateKey];
+                const isActive = isValid && activeDate === dateKey;
+                const isPast = isValid && dateObj! < new Date(new Date().setHours(0, 0, 0, 0));
 
                 return (
                   <button key={i} onClick={() => isValid && handleDateClick(day)}
@@ -317,8 +370,10 @@ export function BookTrainer() {
                     className={`aspect-square rounded-xl border-2 font-semibold transition-all ${
                       !isValid || isPast
                         ? 'bg-slate-50 border-slate-100 cursor-not-allowed text-slate-300'
-                        : isSelected
+                        : isBooked
                         ? 'border-indigo-600 bg-indigo-600 text-white shadow-md'
+                        : isActive
+                        ? 'border-indigo-400 bg-indigo-100 text-indigo-700 ring-2 ring-indigo-300'
                         : isToday
                         ? 'border-green-400 bg-green-50 text-green-700'
                         : 'border-slate-200 hover:border-indigo-300 hover:bg-slate-50'
@@ -328,32 +383,92 @@ export function BookTrainer() {
                 );
               })}
             </div>
+
+            <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-500">
+              <span className="flex items-center gap-1">
+                <span className="w-3 h-3 rounded border-2 border-indigo-600 bg-indigo-600" />
+                Đã chọn giờ
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="w-3 h-3 rounded border-2 border-indigo-400 bg-indigo-100" />
+                Đang chọn giờ
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="w-3 h-3 rounded border-2 border-green-400 bg-green-50" />
+                Hôm nay
+              </span>
+            </div>
           </div>
 
           <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
             <h3 className="font-bold text-slate-900 mb-4">
-              {selectedDate
-                ? `Chọn giờ cho ngày ${selectedDate.getDate()}/${selectedDate.getMonth() + 1}`
+              {activeDate
+                ? `Chọn giờ cho ngày ${activeDate.split('-')[2]}/${activeDate.split('-')[1]}`
+                : selectionCount > 0
+                ? `Đã chọn ${selectionCount} buổi`
                 : 'Chọn ngày trước'}
             </h3>
 
-            {selectedDate ? (
-              <div className="grid grid-cols-2 gap-3 max-h-[500px] overflow-y-auto pr-2">
-                {timeSlots.map((slot) => {
-                  const disabled = isTimeDisabled(slot);
-                  return (
-                    <button key={slot.start} onClick={() => handleTimeSelect(slot)} disabled={disabled}
-                      className={`px-4 py-3 rounded-xl border-2 font-semibold transition-all ${
-                        disabled
-                          ? 'border-slate-100 bg-slate-50 text-slate-300 cursor-not-allowed'
-                          : selectedTime?.start === slot.start
-                          ? 'border-indigo-600 bg-indigo-600 text-white shadow-md'
-                          : 'border-slate-200 hover:border-indigo-300 hover:bg-slate-50'
-                      }`}>
-                      {slot.start} - {slot.end}
+            {activeDate ? (
+              <>
+                {loadingSlots ? (
+                  <div className="flex items-center justify-center py-12 text-slate-500">
+                    <Loader2 className="w-5 h-5 animate-spin mr-2" /> Đang tải...
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-3 max-h-[500px] overflow-y-auto pr-2">
+                    {timeSlots.map((slot) => {
+                      const disabled = isSlotDisabled(slot);
+                      const isSelected = selections[activeDate]?.start === slot.start;
+                      return (
+                        <button key={slot.start} onClick={() => handleTimeSelect(slot)} disabled={disabled}
+                          className={`relative px-4 py-3 rounded-xl border-2 font-semibold transition-all ${
+                            disabled
+                              ? 'border-slate-100 bg-slate-50 text-slate-300 cursor-not-allowed'
+                              : isSelected
+                              ? 'border-indigo-600 bg-indigo-600 text-white shadow-md'
+                              : 'border-slate-200 hover:border-indigo-300 hover:bg-slate-50'
+                          }`}>
+                          {slot.start} - {slot.end}
+                          {disabled && (
+                            <span className="block text-[10px] text-slate-400 mt-0.5">HLV đã có lịch</span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+                {selections[activeDate] && (
+                  <div className="mt-4 flex justify-end">
+                    <button onClick={() => handleRemoveDate(activeDate)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                      <Trash2 className="w-4 h-4" /> Xoá buổi này
                     </button>
-                  );
-                })}
+                  </div>
+                )}
+              </>
+            ) : selectionCount > 0 ? (
+              <div className="space-y-3 max-h-[500px] overflow-y-auto pr-2">
+                {Object.entries(selections).map(([dateKey, time]) => (
+                  <div key={dateKey}
+                    className="flex items-center justify-between p-3 rounded-xl border border-indigo-200 bg-indigo-50">
+                    <div>
+                      <span className="font-semibold text-indigo-900">
+                        {dateKey.split('-')[2]}/{dateKey.split('-')[1]}/{dateKey.split('-')[0]}
+                      </span>
+                      <span className="ml-3 text-sm text-indigo-600">
+                        {time.start} - {time.end}
+                      </span>
+                    </div>
+                    <button onClick={() => handleRemoveDate(dateKey)}
+                      className="p-1.5 hover:bg-indigo-200 rounded-lg transition-colors text-indigo-500 hover:text-red-600">
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+                <p className="text-sm text-slate-500 pt-1">
+                  Click vào ngày trên lịch để thêm buổi tập mới
+                </p>
               </div>
             ) : (
               <div className="text-center py-12">
@@ -366,18 +481,30 @@ export function BookTrainer() {
           </div>
         </div>
 
-        {selectedDate && selectedTime && (
-          <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-6">
-            <h4 className="font-semibold text-indigo-900 mb-2">Thông tin đặt lịch:</h4>
-            <p className="text-indigo-700 mb-2">
-              Ngày: <span className="font-bold">{selectedDate.getDate()}/{selectedDate.getMonth() + 1}/{selectedDate.getFullYear()}</span> - Giờ: <span className="font-bold">{selectedTime.start} - {selectedTime.end}</span>
-            </p>
-            <div className="flex justify-between items-center pt-3 border-t border-indigo-200">
-              <span className="text-indigo-800 font-medium">Phí HLV:</span>
-              <span className="text-xl font-bold text-indigo-900">{price.toLocaleString('vi-VN')}đ</span>
+        {selectionCount > 0 && (() => {
+          return (
+            <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-6">
+              <h4 className="font-semibold text-indigo-900 mb-2">Thông tin đặt lịch:</h4>
+              <p className="text-indigo-700 mb-3">
+                Tổng số buổi: <span className="font-bold">{selectionCount}</span>
+              </p>
+              <div className="flex flex-wrap gap-1.5 mb-3">
+                {Object.entries(selections).map(([dateKey, time]) => {
+                  const { day, month, year } = parseDateKey(dateKey);
+                  return (
+                    <span key={dateKey} className="px-2 py-0.5 text-xs font-medium bg-indigo-100 text-indigo-700 rounded-full">
+                      {day}/{month + 1}: {time.start}-{time.end}
+                    </span>
+                  );
+                })}
+              </div>
+              <div className="flex justify-between items-center pt-3 border-t border-indigo-200">
+                <span className="text-indigo-800 font-medium">Tổng phí HLV ({selectionCount} buổi):</span>
+                <span className="text-xl font-bold text-indigo-900">{(price * selectionCount).toLocaleString('vi-VN')}đ</span>
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         <div className="flex gap-4">
           <Button variant="outlined" onClick={() => navigate(-1)}
@@ -389,11 +516,11 @@ export function BookTrainer() {
             Liên hệ HLV
           </Button>
           <Button variant="contained" onClick={handlePayment}
-            disabled={!selectedDate || !selectedTime || checkingConflict}
+            disabled={selectionCount === 0 || checkingConflict}
             startIcon={<CreditCard className="w-5 h-5" />}
             sx={{ flex: 2, height: 56, borderRadius: 3, textTransform: 'none', fontSize: '1rem',
               fontWeight: 700, bgcolor: '#4f46e5', '&:hover': { bgcolor: '#4338ca' } }}>
-            {checkingConflict ? 'Đang kiểm tra...' : 'Thanh toán'}
+            {checkingConflict ? 'Đang kiểm tra...' : `Thanh toán`}
           </Button>
         </div>
       </div>

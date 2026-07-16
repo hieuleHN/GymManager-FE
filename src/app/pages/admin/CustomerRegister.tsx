@@ -5,21 +5,43 @@ import { useNavigate } from 'react-router';
 import { Camera } from 'lucide-react';
 import { getAuthHeaders, getApiUrl } from '../../context/AuthContext';
 import { useClub } from '../../context/ClubContext';
+import { useForm } from 'react-hook-form';
+
+interface CustomerFormData {
+  account: string;
+  password: string;
+  fullName: string;
+  gender: string;
+  phone: string;
+  email: string;
+  address: string;
+  idNumber: string;
+  registerDate: string;
+}
 
 export function CustomerRegister() {
   const navigate = useNavigate();
   const { selectedClub } = useClub();
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [formData, setFormData] = useState({
-    account: '', password: '', fullName: '', gender: 'Nam', phone: '',
-    email: '', address: '', idNumber: '', registerDate: new Date().toISOString().split('T')[0]
-  });
   const [idCardFront, setIdCardFront] = useState<File | null>(null);
   const [idCardBack, setIdCardBack] = useState<File | null>(null);
   const [frontPreview, setFrontPreview] = useState('');
   const [backPreview, setBackPreview] = useState('');
-  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const { register, handleSubmit, formState: { errors } } = useForm<CustomerFormData>({
+    defaultValues: {
+      account: '',
+      password: '',
+      fullName: '',
+      gender: 'Nam',
+      phone: '',
+      email: '',
+      address: '',
+      idNumber: '',
+      registerDate: new Date().toISOString().split('T')[0]
+    }
+  });
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, side: 'front' | 'back') => {
     const file = e.target.files?.[0];
@@ -33,45 +55,16 @@ export function CustomerRegister() {
     }
   };
 
-  const handleChange = (field: string, value: any) => {
-    setFormData({ ...formData, [field]: value });
-    if (errors[field]) setErrors(prev => ({ ...prev, [field]: '' }));
-  };
-
-  const handleBlur = (field: string, value: any) => {
-    let msg = '';
-    if (!value && (field === 'account' || field === 'fullName' || field === 'phone' || field === 'email' || field === 'password')) {
-      const labels: Record<string, string> = { account: 'tài khoản', fullName: 'họ tên', phone: 'số điện thoại', email: 'email', password: 'mật khẩu' };
-      msg = 'Vui lòng nhập ' + labels[field];
-    } else if (field === 'phone' && value && !/(84|0[3|5|7|8|9])+([0-9]{8})\b/.test(value)) {
-      msg = 'Số điện thoại không hợp lệ';
-    } else if (field === 'email' && value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
-      msg = 'Email không hợp lệ';
-    } else if (field === 'password' && value && value.length < 6) {
-      msg = 'Mật khẩu phải có ít nhất 6 ký tự';
-    }
-    setErrors(prev => ({ ...prev, [field]: msg }));
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const onSubmit = async (data: CustomerFormData) => {
     setError('');
-    const newErrors: Record<string, string> = {};
-    if (!formData.account) newErrors.account = 'Vui lòng nhập tài khoản';
-    if (!formData.fullName) newErrors.fullName = 'Vui lòng nhập họ tên';
-    if (!formData.phone) newErrors.phone = 'Vui lòng nhập số điện thoại';
-    else if (!/(84|0[3|5|7|8|9])+([0-9]{8})\b/.test(formData.phone)) newErrors.phone = 'Số điện thoại không hợp lệ';
-    if (!formData.email) newErrors.email = 'Vui lòng nhập email';
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) newErrors.email = 'Email không hợp lệ';
-    if ('password' in formData && !formData.password) newErrors.password = 'Vui lòng nhập mật khẩu';
-    else if ('password' in formData && formData.password && formData.password.length < 6) newErrors.password = 'Mật khẩu phải có ít nhất 6 ký tự';
-    if (!selectedClub || selectedClub === 'all') newErrors.club = 'Bạn chưa chọn câu lạc bộ';
-    setErrors(newErrors);
-    if (Object.keys(newErrors).length > 0) return;
+    if (!selectedClub || selectedClub === 'all') {
+      setError('Bạn chưa chọn câu lạc bộ');
+      return;
+    }
     setLoading(true);
     try {
       const form = new FormData();
-      Object.entries(formData).forEach(([k, v]) => form.append(k, v));
+      Object.entries(data).forEach(([k, v]) => form.append(k, v));
       if (selectedClub && selectedClub !== 'all') form.append('locationId', selectedClub);
       if (idCardFront) form.append('idCardFront', idCardFront);
       if (idCardBack) form.append('idCardBack', idCardBack);
@@ -80,8 +73,8 @@ export function CustomerRegister() {
         method: 'POST',
         body: form
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Đăng ký thất bại!');
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || 'Đăng ký thất bại!');
       alert('Đăng ký khách hàng thành công!');
       navigate('/admin/customers');
     } catch (err: any) {
@@ -99,34 +92,31 @@ export function CustomerRegister() {
           <p className="text-slate-600">Thêm khách hàng mới vào hệ thống</p>
         </div>
 
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit(onSubmit)}>
           <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-8">
             {error && <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm">{error}</div>}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">Tài khoản <span className="text-red-500">*</span></label>
-                <input type="text" required value={formData.account} onChange={(e) => handleChange('account', e.target.value)}
-                  onBlur={() => handleBlur('account', formData.account)}
+                <input type="text" {...register('account', { required: 'Vui lòng nhập tài khoản' })}
                   className={`w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 ${errors.account ? 'border-red-500' : 'border-slate-200'}`} />
-                {errors.account && <p className="text-red-500 text-sm mt-1">{errors.account}</p>}
+                {errors.account && <span className="text-red-500 text-sm mt-1">{errors.account.message}</span>}
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">Mật khẩu <span className="text-red-500">*</span></label>
-                <input type="password" required value={formData.password} onChange={(e) => handleChange('password', e.target.value)}
-                  onBlur={() => handleBlur('password', formData.password)}
+                <input type="password" {...register('password', { required: 'Vui lòng nhập mật khẩu', minLength: { value: 6, message: 'Mật khẩu phải có ít nhất 6 ký tự' } })}
                   className={`w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 ${errors.password ? 'border-red-500' : 'border-slate-200'}`} />
-                {errors.password && <p className="text-red-500 text-sm mt-1">{errors.password}</p>}
+                {errors.password && <span className="text-red-500 text-sm mt-1">{errors.password.message}</span>}
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">Họ và tên <span className="text-red-500">*</span></label>
-                <input type="text" required value={formData.fullName} onChange={(e) => handleChange('fullName', e.target.value)}
-                  onBlur={() => handleBlur('fullName', formData.fullName)}
+                <input type="text" {...register('fullName', { required: 'Vui lòng nhập họ tên' })}
                   className={`w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 ${errors.fullName ? 'border-red-500' : 'border-slate-200'}`} />
-                {errors.fullName && <p className="text-red-500 text-sm mt-1">{errors.fullName}</p>}
+                {errors.fullName && <span className="text-red-500 text-sm mt-1">{errors.fullName.message}</span>}
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">Giới tính</label>
-                <select value={formData.gender} onChange={(e) => handleChange('gender', e.target.value)}
+                <select {...register('gender')}
                   className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500">
                   <option value="Nam">Nam</option>
                   <option value="Nữ">Nữ</option>
@@ -135,26 +125,24 @@ export function CustomerRegister() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">Số điện thoại <span className="text-red-500">*</span></label>
-                <input type="tel" required value={formData.phone} onChange={(e) => handleChange('phone', e.target.value)}
-                  onBlur={() => handleBlur('phone', formData.phone)}
+                <input type="tel" {...register('phone', { required: 'Vui lòng nhập số điện thoại', pattern: { value: /(84|0[3|5|7|8|9])+([0-9]{8})\b/, message: 'Số điện thoại không hợp lệ' } })}
                   className={`w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 ${errors.phone ? 'border-red-500' : 'border-slate-200'}`} />
-                {errors.phone && <p className="text-red-500 text-sm mt-1">{errors.phone}</p>}
+                {errors.phone && <span className="text-red-500 text-sm mt-1">{errors.phone.message}</span>}
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">Email <span className="text-red-500">*</span></label>
-                <input type="email" required value={formData.email} onChange={(e) => handleChange('email', e.target.value)}
-                  onBlur={() => handleBlur('email', formData.email)}
+                <input type="email" {...register('email', { required: 'Vui lòng nhập email', pattern: { value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/, message: 'Email không hợp lệ' } })}
                   className={`w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 ${errors.email ? 'border-red-500' : 'border-slate-200'}`} />
-                {errors.email && <p className="text-red-500 text-sm mt-1">{errors.email}</p>}
+                {errors.email && <span className="text-red-500 text-sm mt-1">{errors.email.message}</span>}
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">Số căn cước</label>
-                <input type="text" value={formData.idNumber} onChange={(e) => handleChange('idNumber', e.target.value)}
+                <input type="text" {...register('idNumber')}
                   className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">Ngày đăng ký</label>
-                <input type="date" value={formData.registerDate} onChange={(e) => handleChange('registerDate', e.target.value)}
+                <input type="date" {...register('registerDate')}
                   className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" />
               </div>
               <div>
@@ -177,7 +165,7 @@ export function CustomerRegister() {
               </div>
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-slate-700 mb-2">Địa chỉ</label>
-                <textarea value={formData.address} onChange={(e) => handleChange('address', e.target.value)} rows={3}
+                <textarea {...register('address')} rows={3}
                   className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" />
               </div>
             </div>
