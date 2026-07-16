@@ -91,7 +91,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     { name: 'Lịch tập', href: '/dashboard/schedule', icon: Calendar },
     { name: 'Đặt lịch / Liên hệ HLV', href: '/dashboard/trainers', icon: UserCircle },
     { name: 'Cộng đồng', href: '/dashboard/community', icon: Users },
-    { name: 'Tin nhắn', href: '/dashboard/messages', icon: MessageCircle },
+    // { name: 'Tin nhắn', href: '/dashboard/messages', icon: MessageCircle }, // đã thay thế bằng bong bóng chat
     { name: 'Theo dõi tiến độ', href: '/dashboard/progress', icon: TrendingUp },
     { name: 'Dịch vụ', href: '/dashboard/services', icon: FileText },
     { name: 'Cài đặt', href: '/dashboard/settings', icon: Settings },

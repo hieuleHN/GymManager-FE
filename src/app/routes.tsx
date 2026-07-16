@@ -67,6 +67,8 @@ import { ScheduleConfirmations } from './pages/admin/ScheduleConfirmations';
 import { Community } from './pages/dashboard/Community';
 import { Messages } from './pages/dashboard/Messages';
 import { Tasks } from './pages/admin/Tasks';
+import MemberQR from './pages/MemberQR';
+import { BookingStatus } from './pages/dashboard/BookingStatus';
 
 // IMPORT TRANG THỐNG KÊ BIỂU ĐỒ ADMIN
 import { AdminStats } from './pages/dashboard/AdminStats';
