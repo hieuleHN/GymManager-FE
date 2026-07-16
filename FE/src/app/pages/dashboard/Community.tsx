@@ -434,7 +434,7 @@ export function Community() {
                     </button>
                     {openMenu === post._id && (
                       <div ref={menuRef} className="absolute right-0 mt-1 w-48 bg-white rounded-xl shadow-lg border border-slate-200 z-50 py-1">
-                        {author._id === user?.id && (
+                        {author._id === user?.id ? (
                           <button
                             onClick={() => openEdit(post)}
                             className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
@@ -442,14 +442,15 @@ export function Community() {
                             <Edit3 className="w-4 h-4 text-indigo-500" />
                             Chỉnh sửa bài viết
                           </button>
+                        ) : (
+                          <button
+                            onClick={() => openReport(post._id)}
+                            className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                          >
+                            <Flag className="w-4 h-4 text-red-500" />
+                            Báo cáo bài viết
+                          </button>
                         )}
-                        <button
-                          onClick={() => openReport(post._id)}
-                          className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
-                        >
-                          <Flag className="w-4 h-4 text-red-500" />
-                          Báo cáo bài viết
-                        </button>
                       </div>
                     )}
                   </div>
@@ -519,12 +520,15 @@ export function Community() {
                               onClick={() => navigateToProfile(cAuthor?._id, comment.authorModel)}
                             />
                             <div className="flex-1 bg-slate-50 rounded-xl px-4 py-2">
-                              <p
-                                className="text-sm font-bold text-slate-900 cursor-pointer hover:text-indigo-600"
-                                onClick={() => navigateToProfile(cAuthor?._id, comment.authorModel)}
-                              >
-                                {cAuthor?.fullName || 'Unknown'}
-                              </p>
+                              <div className="flex items-center gap-2">
+                                <p
+                                  className="text-sm font-bold text-slate-900 cursor-pointer hover:text-indigo-600"
+                                  onClick={() => navigateToProfile(cAuthor?._id, comment.authorModel)}
+                                >
+                                  {cAuthor?.fullName || 'Unknown'}
+                                </p>
+                                <span className="text-xs text-slate-400">{formatDate(comment.createdAt)}</span>
+                              </div>
                               <p className="text-sm text-slate-700">{comment.content}</p>
                             </div>
                           </div>
@@ -580,13 +584,21 @@ export function Community() {
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Tiêu đề báo cáo</label>
-                <input
-                  type="text"
+                <select
                   value={reportTitle}
                   onChange={(e) => setReportTitle(e.target.value)}
-                  placeholder="VD: Nội dung không phù hợp"
-                  className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
+                  className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+                >
+                  <option value="">Chọn tiêu đề...</option>
+                  <option value="Nội dung phản cảm">Nội dung phản cảm</option>
+                  <option value="Ngôn từ tục tĩu">Ngôn từ tục tĩu</option>
+                  <option value="Quảng cáo spam">Quảng cáo / Spam</option>
+                  <option value="Thông tin sai lệch">Thông tin sai lệch</option>
+                  <option value="Quấy rối">Quấy rối</option>
+                  <option value="Xâm phạm quyền riêng tư">Xâm phạm quyền riêng tư</option>
+                  <option value="Nội dung bạo lực">Nội dung bạo lực</option>
+                  <option value="Khác">Khác</option>
+                </select>
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Lý do báo cáo</label>
