@@ -258,6 +258,7 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
         onlineStatuses,
         openChatWith,
         selectContact,
+        clearSelectedContact,
         closeChat,
         toggleChat,
         sendMessage,
