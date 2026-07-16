@@ -303,285 +303,157 @@ export function TrainingSchedule() {
     <AdminLayout>
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900">Lịch tập của Huấn luyện viên</h1>
-          <p className="text-slate-600 mt-2">Quản lý lịch tập và yêu cầu chuyển lịch</p>
+          <h1 className="text-3xl font-bold text-slate-900">Lịch tập</h1>
+          <p className="text-slate-600 mt-2">Quản lý lịch tập của huấn luyện viên</p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-4">
-          <div className="flex items-center gap-2">
-            <label className="text-sm font-medium text-slate-700">Từ ngày:</label>
-            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
-              className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500" />
-          </div>
-          <div className="flex items-center gap-2">
-            <label className="text-sm font-medium text-slate-700">Đến ngày:</label>
-            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
-              className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500" />
-          </div>
-          <button onClick={fetchData}
-            className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm font-semibold">
-            Lọc
+        {/* Quick Actions */}
+        <div className="grid md:grid-cols-3 gap-4">
+          <button className="p-6 bg-white rounded-xl border border-slate-200 hover:border-indigo-400 hover:bg-indigo-50 transition-all text-left">
+            <Calendar className="w-8 h-8 text-indigo-600 mb-3" />
+            <h3 className="font-bold text-slate-900">Đặt lịch mới</h3>
+            <p className="text-sm text-slate-600 mt-1">Tạo lịch tập cho hội viên</p>
+          </button>
+
+          <button
+            onClick={() => setShowTransferModal(true)}
+            className="p-6 bg-white rounded-xl border border-slate-200 hover:border-orange-400 hover:bg-orange-50 transition-all text-left"
+          >
+            <AlertCircle className="w-8 h-8 text-orange-600 mb-3" />
+            <h3 className="font-bold text-slate-900">Chuyển lịch</h3>
+            <p className="text-sm text-slate-600 mt-1">Chuyển cho đồng nghiệp khi bận</p>
+          </button>
+
+          <button className="p-6 bg-white rounded-xl border border-slate-200 hover:border-green-400 hover:bg-green-50 transition-all text-left">
+            <Clock className="w-8 h-8 text-green-600 mb-3" />
+            <h3 className="font-bold text-slate-900">Xem lịch tháng</h3>
+            <p className="text-sm text-slate-600 mt-1">Xem toàn bộ lịch trong tháng</p>
           </button>
         </div>
 
-        {loading ? (
-          <div className="flex items-center justify-center py-20">
-            <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />
-          </div>
-        ) : error ? (
-          <div className="p-6 bg-red-50 rounded-xl border border-red-200 text-red-700">{error}</div>
-        ) : bookings.length === 0 ? (
-          <div className="p-12 bg-white rounded-2xl border border-slate-200 text-center">
-            <Calendar className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-            <p className="text-slate-500">Không có lịch tập nào trong khoảng thời gian này</p>
-          </div>
-        ) : (
-          sortedDates.map(dateStr => (
-            <div key={dateStr} className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-              <div className="px-6 py-4 bg-indigo-50 border-b border-indigo-100">
-                <h2 className="text-lg font-bold text-indigo-900 flex items-center gap-2">
-                  <Calendar className="w-5 h-5" />
-                  {dateStr}
-                  <span className="text-sm font-normal text-indigo-600 ml-2">({groupedByDate[dateStr].length} buổi)</span>
-                </h2>
-              </div>
-              <div className="divide-y divide-slate-200">
-                {groupedByDate[dateStr]
-                  .sort((a, b) => (a.time || a.startTime || '').localeCompare(b.time || b.startTime || ''))
-                  .map(booking => (
-                    <div key={booking._id} className="p-6 hover:bg-slate-50 transition-colors">
-                      <div className="flex items-start gap-4">
-                        <img
-                          src={booking.customerId?.avatar ||
-                            'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&q=80&w=100'}
-                          alt={booking.customerId?.fullName || 'Hội viên'}
-                          className="w-14 h-14 rounded-full object-cover ring-2 ring-slate-200"
-                        />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-3 mb-1 flex-wrap">
-                            <h3 className="text-lg font-bold text-slate-900">
-                              {booking.customerId?.fullName || 'Hội viên'}
-                            </h3>
-                            <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(booking.status)}`}>
-                              {getStatusText(booking.status)}
-                            </span>
-                            {getTransferBadge(booking)}
-                          </div>
-                          <div className="flex items-center gap-4 text-sm text-slate-600 flex-wrap">
-                            <div className="flex items-center gap-1.5">
-                              <Clock className="w-4 h-4" />
-                              {`${booking.startTime || booking.time} - ${booking.endTime}`}
-                            </div>
-                            {booking.customerId?.phone && (
-                              <div className="flex items-center gap-1.5">
-                                <User className="w-4 h-4" />
-                                {booking.customerId.phone}
-                              </div>
-                            )}
-                          </div>
-                          {booking.transferStatus !== 'none' && (
-                            <div className="mt-3 p-3 bg-orange-50 rounded-lg border border-orange-200">
-                              <p className="text-sm text-orange-900">
-                                <span className="font-semibold">Yêu cầu chuyển lịch:</span>{' '}
-                                {booking.transferType === 'to_colleague' ? (
-                                  booking.transferStatus === 'approved' ? (
-                                    booking.trainerId?._id === user?.id ? (
-                                      <>Đã nhận lịch từ HLV <strong>{booking.transferredFromTrainerId?.fullName || 'HLV'}</strong></>
-                                    ) : (
-                                      <>Đã chuyển cho HLV <strong>{booking.transferToTrainerId?.fullName || 'đồng nghiệp'}</strong> do HLV {booking.transferredFromTrainerId?.fullName || 'HLV'} chuyển</>
-                                    )
-                                  ) : booking.transferStatus === 'rejected' ? (
-                                    <>Đã bị từ chối bởi: {(booking.rejectedColleagueIds || []).map(p => typeof p === 'string' ? p : (p as any).fullName).join(', ')}</>
-                                  ) : (
-                                    <>
-                                      <div>Đã gửi yêu cầu: {(booking.pendingColleagueIds || []).map(p => typeof p === 'string' ? p : (p as any).fullName).join(', ')}</div>
-                                      {(booking.rejectedColleagueIds || []).length > 0 && (
-                                        <div className="text-red-600">Đã từ chối: {(booking.rejectedColleagueIds || []).map(p => typeof p === 'string' ? p : (p as any).fullName).join(', ')}</div>
-                                      )}
-                                    </>
-                                  )
-                                ) : (
-                                  <>Chuyển sang ngày {booking.transferNewDate ? new Date(booking.transferNewDate).toLocaleDateString('vi-VN') : ''} lúc {booking.transferNewTime || ''}</>
-                                )}
-                                {booking.transferReason && `. Lý do: ${booking.transferReason}`}
-                              </p>
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex gap-2 shrink-0">
-                          {canTransfer(booking) && (
-                            <button onClick={() => openTransfer(booking)}
-                              className="px-3 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm font-semibold flex items-center gap-1.5">
-                              <ArrowRight className="w-4 h-4" />
-                              Chuyển lịch
-                            </button>
-                          )}
-                          {isColleaguePending(booking) && (
-                            <div className="flex gap-1">
-                              <button onClick={() => handleColleagueConfirm(booking._id, true)}
-                                className="p-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors" title="Nhận lịch">
-                                <Check className="w-4 h-4" />
-                              </button>
-                              <button onClick={() => handleColleagueConfirm(booking._id, false)}
-                                className="p-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors" title="Từ chối">
-                                <X className="w-4 h-4" />
-                              </button>
-                            </div>
-                          )}
-                          {canApprove(booking) && !isColleaguePending(booking) && (
-                            <div className="flex gap-1">
-                              <button onClick={() => handleApproveTransfer(booking._id)}
-                                className="px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-semibold flex items-center gap-1.5">
-                                <Check className="w-4 h-4" />
-                                Duyệt
-                              </button>
-                              <button onClick={() => handleRejectTransfer(booking._id)}
-                                className="px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-semibold flex items-center gap-1.5">
-                                <X className="w-4 h-4" />
-                                Từ chối
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-              </div>
+        {/* Schedule List */}
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-bold text-slate-900">Lịch dạy tuần</h2>
+            <div className="flex items-center gap-4">
+              <button onClick={handlePrevWeek} className="p-2 hover:bg-slate-100 rounded-lg">
+                <ChevronLeft className="w-5 h-5" />
+              </button>
+              <span className="font-semibold">{weekRangeText}</span>
+              <button onClick={handleNextWeek} className="p-2 hover:bg-slate-100 rounded-lg">
+                <ChevronRight className="w-5 h-5" />
+              </button>
             </div>
-          ))
-        )}
-      </div>
+          </div>
 
-      {showTransferModal && selectedBooking && (
-        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4" onClick={() => setShowTransferModal(false)}>
-          <div className="bg-white rounded-2xl max-w-lg w-full" onClick={e => e.stopPropagation()}>
-            <div className="p-6 border-b border-slate-200">
-              <h3 className="text-2xl font-bold text-slate-900">Chuyển lịch tập</h3>
-              <p className="text-sm text-slate-600 mt-1">
-                Hội viên: <strong>{selectedBooking.customerId?.fullName}</strong> -{' '}
-                {new Date(selectedBooking.date).toLocaleDateString('vi-VN')} lúc{' '}
-{`${selectedBooking.startTime || selectedBooking.time} - ${selectedBooking.endTime}`}
-              </p>
-            </div>
+          <div className="overflow-y-auto max-h-[500px]">
+            <div className="grid grid-cols-8 gap-px bg-slate-200 rounded-lg">
+              <div className="bg-slate-50 p-2 text-center text-sm font-medium">Giờ</div>
+              {getWeekDays.map((date, idx) => (
+                <div key={idx} className="bg-slate-50 p-2 text-center text-sm font-medium">
+                  {weekDays[idx]} {date.getDate()}/{date.getMonth() + 1}
+                </div>
+              ))}
 
-            <div className="p-6 space-y-4">
-              <div className="flex gap-2">
-                <button onClick={() => setTransferTab('colleague')}
-                  className={`flex-1 py-3 rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-2 ${transferTab === 'colleague' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
-                  <UserPlus className="w-4 h-4" />
-                  Chuyển cho đồng nghiệp
-                </button>
-                <button onClick={() => setTransferTab('date')}
-                  className={`flex-1 py-3 rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-2 ${transferTab === 'date' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
-                  <CalendarDays className="w-4 h-4" />
-                  Chuyển sang ngày khác
-                </button>
-              </div>
-
-              {transferTab === 'colleague' ? (
-                <>
-                  {successMsg && (
-                    <div className="p-3 bg-green-50 rounded-lg border border-green-200 text-sm text-green-900 flex items-center gap-2">
-                      <Check className="w-4 h-4 shrink-0" />
-                      {successMsg}
-                    </div>
-                  )}
-                  {(sentColleagues.length > 0 || (selectedBooking.pendingColleagueIds || []).length > 0) && (
-                    <div className="p-3 bg-purple-50 rounded-lg border border-purple-200">
-                      <p className="text-sm text-purple-900 font-semibold">Đã gửi yêu cầu:</p>
-                      <ul className="text-sm text-purple-800 mt-1 space-y-1">
-                        {trainers.filter(t =>
-                          sentColleagues.includes(t._id) ||
-                          (selectedBooking.pendingColleagueIds || []).some(p => {
-                            const id = typeof p === 'string' ? p : (p as any)._id;
-                            return id === t._id;
-                          })
-                        ).map(t => (
-                          <li key={t._id} className="flex items-center gap-1.5">
-                            <Check className="w-3.5 h-3.5" />
-                            {t.fullName}
-                          </li>
+              {hours.map((hour) => (
+                <div key={hour} className="contents">
+                  <div className="bg-white p-2 text-sm text-center border-t border-slate-100">{hour}</div>
+                  {getWeekDays.map((date, dayIdx) => {
+                    const hourBookings = getBookingsForHour(date, hour);
+                    return (
+                      <div key={dayIdx} className="bg-white p-1 min-h-[50px] border-t border-slate-100 relative">
+                        {hourBookings.map((b) => (
+                          <div
+                            key={b._id}
+                            onClick={() => navigate(`/admin/schedule-confirmations`, { state: { bookingId: b._id } })}
+                            className={`text-xs p-1 rounded mb-0.5 cursor-pointer hover:opacity-80 transition-opacity ${b.status === 'confirmed'
+                                ? 'bg-green-100 text-green-700'
+                                : 'bg-amber-100 text-amber-700'
+                              }`}
+                          >
+                            <div className="font-semibold">{b.customerId?.fullName || 'Khách'}</div>
+                            <div>{b.time}</div>
+                          </div>
                         ))}
-                      </ul>
-                    </div>
-                  )}
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">Chọn đồng nghiệp</label>
-                    <select value={selectedColleague} onChange={e => setSelectedColleague(e.target.value)}
-                      className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 bg-white">
-                      <option value="">-- Chọn HLV --</option>
-                      {trainers.map(t => {
-                        const alreadySent = sentColleagues.includes(t._id) ||
-                          (selectedBooking.pendingColleagueIds || []).some(p => {
-                            const id = typeof p === 'string' ? p : (p as any)._id;
-                            return id === t._id;
-                          });
-                        return (
-                          <option key={t._id} value={t._id} disabled={alreadySent}>
-                            {t.fullName} {t.job?.name ? `(${t.job.name})` : ''}{alreadySent ? ' (Đã gửi)' : ''}
-                          </option>
-                        );
-                      })}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">Lý do chuyển lịch</label>
-                    <textarea value={transferReason} onChange={e => setTransferReason(e.target.value)}
-                      className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 resize-none"
-                      rows={2} placeholder="Nhập lý do (vd: HLV bận việc gia đình...)" />
-                  </div>
-                  <div className="p-4 bg-purple-50 rounded-lg border border-purple-200">
-                    <p className="text-sm text-purple-900">
-                      <span className="font-semibold">Quy trình:</span> Đồng nghiệp xác nhận là thành công ngay. Có thể gửi yêu cầu cho nhiều đồng nghiệp. Đồng nghiệp nào xác nhận trước thì lịch sẽ chuyển cho người đó.
-                    </p>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">Chọn ngày mới</label>
-                    <input type="date" value={transferNewDate} onChange={e => setTransferNewDate(e.target.value)}
-                      className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500" />
-                    {selectedBooking && (
-                      <p className="text-sm text-slate-500 mt-2">
-                        Giữ nguyên khung giờ: <strong>{`${selectedBooking.startTime || selectedBooking.time} - ${selectedBooking.endTime}`}</strong>
-                      </p>
-                    )}
-                    {conflictError && (
-                      <p className="text-sm text-red-600 mt-2 flex items-center gap-1">
-                        <AlertCircle className="w-4 h-4" /> {conflictError}
-                      </p>
-                    )}
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">Lý do chuyển lịch</label>
-                    <textarea value={transferReason} onChange={e => setTransferReason(e.target.value)}
-                      className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 resize-none"
-                      rows={2} placeholder="Nhập lý do..." />
-                  </div>
-                  <div className="p-4 bg-green-50 rounded-lg border border-green-200">
-                    <p className="text-sm text-green-900">
-                      <span className="font-semibold">Lưu ý:</span> Giữ nguyên khung giờ cũ, chỉ thay đổi ngày tập. Lịch sẽ được cập nhật ngay, hội viên sẽ nhận được thông báo.
-                    </p>
-                  </div>
-                </>
-              )}
-            </div>
-
-            <div className="p-6 border-t border-slate-200 flex gap-3">
-              <button onClick={handleTransfer} disabled={submitting}
-                className="flex-1 px-4 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-semibold disabled:opacity-50 flex items-center justify-center gap-2">
-                {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
-                {transferTab === 'colleague' ? 'Gửi yêu cầu' : 'Xác nhận chuyển'}
-              </button>
-              <button onClick={() => setShowTransferModal(false)}
-                className="flex-1 px-4 py-3 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 transition-colors font-semibold">
-                {transferTab === 'colleague' && (sentColleagues.length > 0) ? 'Đóng' : 'Hủy'}
-              </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
             </div>
           </div>
         </div>
-      )}
+
+        {/* Transfer Modal */}
+        {showTransferModal && (
+          <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl max-w-2xl w-full">
+              <div className="p-6 border-b border-slate-200">
+                <h3 className="text-2xl font-bold text-slate-900">Chuyển lịch cho đồng nghiệp</h3>
+              </div>
+
+              <div className="p-6 space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Chọn lịch cần chuyển</label>
+                  <select className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500">
+                    <option>05/06/2026 - 08:00-09:00 - Nguyễn Văn A</option>
+                    <option>05/06/2026 - 10:00-11:00 - Trần Thị B</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Chọn đồng nghiệp</label>
+                  <select className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500">
+                    <option>HLV Nguyễn Văn D</option>
+                    <option>HLV Trần Thị E</option>
+                    <option>HLV Lê Văn F</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Lý do chuyển lịch</label>
+                  <textarea
+                    className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 resize-none"
+                    rows={3}
+                    placeholder="Nhập lý do..."
+                  />
+                </div>
+
+                <div className="p-4 bg-yellow-50 rounded-lg border border-yellow-200">
+                  <p className="text-sm text-yellow-900">
+                    <span className="font-semibold">Lưu ý:</span> Hội viên sẽ nhận được thông báo về việc thay đổi huấn luyện viên và cần xác nhận.
+                  </p>
+                </div>
+              </div>
+
+              <div className="p-6 border-t border-slate-200 flex gap-3">
+                <button className="flex-1 px-4 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors font-semibold">
+                  Gửi yêu cầu chuyển lịch
+                </button>
+                <button
+                  onClick={() => setShowTransferModal(false)}
+                  className="flex-1 px-4 py-3 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 transition-colors font-semibold"
+                >
+                  Hủy
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        {/* Legend */}
+<div className="mt-4 pt-4 border-t border-slate-200">
+  <div className="flex flex-wrap gap-4 text-sm">
+    <div className="flex items-center gap-2">
+      <div className="w-3 h-3 rounded bg-amber-400"></div>
+      <span className="text-slate-600">Đang chờ xác nhận</span>
+    </div>
+    <div className="flex items-center gap-2">
+      <div className="w-3 h-3 rounded bg-green-500"></div>
+      <span className="text-slate-600">Xác nhận lịch tập thành công</span>
+    </div>
+  </div>
+</div>
+      </div>
     </AdminLayout>
   );
 }

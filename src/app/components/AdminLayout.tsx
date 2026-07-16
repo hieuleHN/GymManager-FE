@@ -163,10 +163,11 @@ export function AdminLayout({ children }: AdminLayoutProps) {
     { name: 'Quản lý chi phí', href: '/admin/expenses', icon: DollarSign, feature: 'statistics' },
     { name: 'Hồ sơ HLV', href: '/admin/trainer-profile', icon: UserCircle, feature: 'training' },
     { name: 'Lịch tập', href: '/admin/training-schedule', icon: Calendar, feature: 'training' },
-    { name: 'Quản lý tủ đồ', href: '/admin/lockers', icon: Lock, feature: 'equipment' },
-    { name: 'Xác nhận lịch tập', href: '/admin/schedule-confirmations', icon: CheckCircle, feature: 'schedule' },
-    { name: 'Cộng đồng', href: '/admin/community', icon: Users, feature: 'services' },
-    { name: 'Tin nhắn', href: '/admin/messages', icon: MessageCircle, feature: 'services' }
+    // Admin/quản lý (isAdmin) vào trang duyệt-xử lý đầy đủ; HLV/nhân viên khác chỉ vào trang báo cáo sự cố.
+    user?.isAdmin
+      ? { name: 'Quản lý tủ đồ', href: '/admin/lockers', icon: Lock}
+      : { name: 'Báo cáo sự cố tủ đồ', href: '/dashboard/locker-issues', icon: Lock},
+    { name: 'Xác nhận lịch tập', href: '/admin/schedule-confirmations', icon: CheckCircle, feature: 'schedule' }
   ];
 
   const menuItems = allMenuItems.filter(item => {

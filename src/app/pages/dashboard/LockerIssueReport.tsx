@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Lock, AlertTriangle, Key, Trash2, CheckCircle, XCircle, Loader2, Plus, HelpCircle, Calendar } from 'lucide-react';
+import { Lock, AlertTriangle, Key, Trash2, CheckCircle, XCircle, Loader2, Plus, Clock, HelpCircle, Calendar } from 'lucide-react';
 import { AdminLayout } from '../../components/AdminLayout';
 import { Pagination } from '../../components/Pagination';
 import { getAuthHeaders } from '../../context/AuthContext';
-import { useClub } from '../../context/ClubContext';
 import { toast } from 'sonner';
 
 interface LockerIssue {
@@ -21,10 +20,18 @@ interface LockerIssue {
 
 const emptyForm = { lockerNumber: '', issueType: 'broken' as const, description: '' };
 
-export function LockerManagement() {
+export function LockerIssueReport() {
   const headers = getAuthHeaders();
-  const { selectedClub, clubs } = useClub();
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [editImageFile, setEditImageFile] = useState<File | null>(null);
   const [issues, setIssues] = useState<LockerIssue[]>([]);
+  const [editingIssue, setEditingIssue] = useState<LockerIssue | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<string | null>(null);
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
+  const [dateError, setDateError] = useState('');
+  const [stats, setStats] = useState({ total: 0, pending: 0, resolved: 0 });
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [formData, setFormData] = useState(emptyForm);
@@ -33,16 +40,6 @@ export function LockerManagement() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
-  const [rejectingId, setRejectingId] = useState<string | null>(null);
-  const [rejectionReason, setRejectionReason] = useState('');
-  const [rejecting, setRejecting] = useState(false);
-  const [statusFilter, setStatusFilter] = useState<string | null>(null);
-  const [fromDate, setFromDate] = useState('');
-  const [toDate, setToDate] = useState('');
-  const [dateError, setDateError] = useState('');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [resolvingId, setResolvingId] = useState<string | null>(null);
-  const [stats, setStats] = useState({ pending: 0, resolved: 0 });
 
   const today = new Date().toISOString().split('T')[0];
 
@@ -65,33 +62,45 @@ export function LockerManagement() {
     validateDates(fromDate, value);
   };
 
-  const fetchIssues = async (p = page) => {
-    if (dateError) return;
-    setLoading(true);
+  const fetchStats = async () => {
     try {
-      const base = selectedClub && selectedClub !== 'all'
-        ? `/api/lockers?locationId=${selectedClub}`
-        : '/api/lockers';
-      const url = `${base}${base.includes('?') ? '&' : '?'}page=${p}&limit=15${fromDate ? `&fromDate=${fromDate}` : ''}${toDate ? `&toDate=${toDate}` : ''}`;
-      const res = await fetch(url, { headers });
+      const res = await fetch('/api/lockers?page=1&limit=9999', { headers });
       if (!res.ok) throw new Error('Failed');
       const data = await res.json();
       const allIssues = data.data || [];
-      setIssues(allIssues);
-      setTotalPages(data.totalPages || 1);
-      setTotal(data.total || 0);
       setStats({
+        total: allIssues.length,
         pending: allIssues.filter((i: LockerIssue) => i.status === 'pending').length,
         resolved: allIssues.filter((i: LockerIssue) => i.status === 'resolved').length,
       });
     } catch {
-      toast.error('Không thể tải danh sách vấn đề');
+      // ignore
+    }
+  };
+
+  const fetchIssues = async (p = page) => {
+    if (dateError) return;
+    setLoading(true);
+    try {
+      let url = `/api/lockers?page=${p}&limit=15`;
+      if (statusFilter) url += `&status=${statusFilter}`;
+      if (fromDate) url += `&fromDate=${fromDate}`;
+      if (toDate) url += `&toDate=${toDate}`;
+      const res = await fetch(url, { headers });
+      if (!res.ok) throw new Error('Failed');
+      const data = await res.json();
+      setIssues(data.data || []);
+      setTotalPages(data.totalPages || 1);
+      setTotal(data.total || 0);
+    } catch {
+      toast.error('Không thể tải danh sách báo cáo của bạn');
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => { setPage(1); fetchIssues(1); }, [selectedClub, fromDate, toDate]);
+  useEffect(() => { setPage(1); fetchIssues(1); }, [statusFilter, fromDate, toDate]);
+  useEffect(() => { fetchStats(); }, []);
 
   const getIssueTypeIcon = (type: LockerIssue['issueType']) => {
     switch (type) {
@@ -131,10 +140,10 @@ export function LockerManagement() {
 
   const getStatusText = (status: LockerIssue['status']) => {
     switch (status) {
-      case 'pending': return 'Chờ xử lý';
+      case 'pending': return 'Chờ admin xem xét';
       case 'in-progress': return 'Đang xử lý';
       case 'resolved': return 'Đã giải quyết';
-      case 'rejected': return 'Đã từ chối';
+      case 'rejected': return 'Đã bị từ chối';
     }
   };
 
@@ -151,6 +160,15 @@ export function LockerManagement() {
       case 'high': return 'Ưu tiên cao';
       case 'medium': return 'Ưu tiên TB';
       case 'low': return 'Thấp';
+    }
+  };
+
+  const getStatusIcon = (status: LockerIssue['status']) => {
+    switch (status) {
+      case 'pending': return <Clock className="w-3.5 h-3.5" />;
+      case 'in-progress': return <Loader2 className="w-3.5 h-3.5" />;
+      case 'resolved': return <CheckCircle className="w-3.5 h-3.5" />;
+      case 'rejected': return <XCircle className="w-3.5 h-3.5" />;
     }
   };
 
@@ -174,63 +192,79 @@ export function LockerManagement() {
   const handleReport = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validateAll()) return;
-
     setSubmitting(true);
     try {
-      const body: any = { ...formData };
-      if (selectedClub && selectedClub !== 'all') body.locationId = selectedClub;
+      const fd = new FormData();
+      fd.append('lockerNumber', formData.lockerNumber);
+      fd.append('issueType', formData.issueType);
+      fd.append('description', formData.description);
+      if (imageFile) fd.append('image', imageFile);
+
       const res = await fetch('/api/lockers', {
         method: 'POST',
-        headers,
-        body: JSON.stringify(body),
+        headers: { Authorization: headers.Authorization || '' },
+        body: fd,
       });
       if (!res.ok) throw new Error('Failed');
-      toast.success('Báo cáo vấn đề thành công!');
+      toast.success('Đã gửi báo cáo, chờ admin xem xét!');
       setShowModal(false);
       setFormData(emptyForm);
-      setPage(1); fetchIssues(1);
+      setImageFile(null);
+      fetchIssues(1);
+      fetchStats();
+      setPage(1);
     } catch {
       toast.error('Gửi báo cáo thất bại');
     } finally {
       setSubmitting(false);
     }
   };
-
-  const handleResolve = async (id: string) => {
-    setResolvingId(id);
+  const handleEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingIssue) return;
+    setSubmitting(true);
     try {
-      const res = await fetch(`/api/lockers/${id}/resolve`, { method: 'PATCH', headers });
+      const fd = new FormData();
+      fd.append('lockerNumber', editingIssue.lockerNumber);
+      fd.append('issueType', editingIssue.issueType);
+      fd.append('description', editingIssue.description);
+      if (editImageFile) fd.append('image', editImageFile);
+
+      const res = await fetch(`/api/lockers/${editingIssue._id}`, {
+        method: 'PUT',
+        headers: { Authorization: headers.Authorization || '' },
+        body: fd,
+      });
       if (!res.ok) throw new Error('Failed');
-      toast.success('Đã đánh dấu hoàn thành!');
+      toast.success('Đã cập nhật báo cáo!');
+      setEditingIssue(null);
+      setEditImageFile(null);
       fetchIssues(page);
     } catch {
       toast.error('Cập nhật thất bại');
     } finally {
-      setResolvingId(null);
+      setSubmitting(false);
     }
   };
 
-  const handleReject = async () => {
-    if (!rejectionReason.trim()) {
-      toast.error('Vui lòng nhập lý do từ chối');
-      return;
-    }
-    setRejecting(true);
+  const handleDelete = async (id: string) => {
+    const confirmed = window.confirm('Bạn có chắc chắn muốn xóa báo cáo này không?');
+    if (!confirmed) return;
+
+    setDeletingId(id);
     try {
-      const res = await fetch(`/api/lockers/${rejectingId}/reject`, {
-        method: 'PATCH',
+      const res = await fetch(`/api/lockers/${id}`, {
+        method: 'DELETE',
         headers,
-        body: JSON.stringify({ rejectionReason: rejectionReason.trim() }),
       });
       if (!res.ok) throw new Error('Failed');
-      toast.success('Đã từ chối báo cáo!');
-      setRejectingId(null);
-      setRejectionReason('');
+      toast.success('Đã xóa báo cáo!');
       fetchIssues(page);
+      fetchStats();
     } catch {
-      toast.error('Từ chối thất bại');
+      toast.error('Xóa thất bại');
     } finally {
-      setRejecting(false);
+      setDeletingId(null);
     }
   };
 
@@ -239,27 +273,40 @@ export function LockerManagement() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-slate-900">Quản lý tủ đồ</h1>
-            <p className="text-slate-600 mt-2">
-              {selectedClub === 'all' ? 'Tất cả cơ sở' : clubs.find(c => c._id === selectedClub)?.address || 'Đã chọn'}
-            </p>
+            <h1 className="text-3xl font-bold text-slate-900">Báo cáo sự cố tủ đồ</h1>
+            <p className="text-slate-600 mt-2">Danh sách báo cáo bạn đã gửi và trạng thái xử lý</p>
           </div>
+          <button onClick={() => { setFormData(emptyForm); setErrors({}); setShowModal(true); }}
+            className="flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-semibold">
+            <Plus className="w-5 h-5" /> Báo cáo vấn đề mới
+          </button>
         </div>
 
         <div className="grid md:grid-cols-3 gap-4">
           <button onClick={() => setStatusFilter(null)}
             className={`bg-white rounded-xl p-6 border-2 transition-all text-left ${statusFilter === null ? 'border-indigo-500 shadow-md' : 'border-slate-200 hover:border-slate-300'}`}>
-            <div className="flex items-center gap-3 mb-2"><Lock className="w-6 h-6 text-indigo-600" /><h3 className="font-semibold text-slate-900">Tổng số vấn đề</h3></div>
-            <p className="text-3xl font-bold text-slate-900">{total}</p>
+            <div className="flex items-center gap-3 mb-2">
+              <Lock className="w-6 h-6 text-indigo-600" />
+              <h3 className="font-semibold text-slate-900">Tổng số báo cáo</h3>
+            </div>
+            <p className="text-3xl font-bold text-slate-900">{stats.total}</p>
           </button>
+
           <button onClick={() => setStatusFilter('pending')}
             className={`bg-white rounded-xl p-6 border-2 transition-all text-left ${statusFilter === 'pending' ? 'border-yellow-500 shadow-md' : 'border-slate-200 hover:border-slate-300'}`}>
-            <div className="flex items-center gap-3 mb-2"><AlertTriangle className="w-6 h-6 text-yellow-600" /><h3 className="font-semibold text-slate-900">Chờ xử lý</h3></div>
+            <div className="flex items-center gap-3 mb-2">
+              <Clock className="w-6 h-6 text-yellow-600" />
+              <h3 className="font-semibold text-slate-900">Chờ xử lý</h3>
+            </div>
             <p className="text-3xl font-bold text-yellow-600">{stats.pending}</p>
           </button>
+
           <button onClick={() => setStatusFilter('resolved')}
             className={`bg-white rounded-xl p-6 border-2 transition-all text-left ${statusFilter === 'resolved' ? 'border-green-500 shadow-md' : 'border-slate-200 hover:border-slate-300'}`}>
-            <div className="flex items-center gap-3 mb-2"><CheckCircle className="w-6 h-6 text-green-600" /><h3 className="font-semibold text-slate-900">Đã giải quyết</h3></div>
+            <div className="flex items-center gap-3 mb-2">
+              <CheckCircle className="w-6 h-6 text-green-600" />
+              <h3 className="font-semibold text-slate-900">Đã giải quyết</h3>
+            </div>
             <p className="text-3xl font-bold text-green-600">{stats.resolved}</p>
           </button>
         </div>
@@ -267,19 +314,6 @@ export function LockerManagement() {
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
           <div className="flex items-center gap-4 flex-wrap">
             <div className="flex items-center gap-2 text-slate-700 font-semibold">
-              <Lock className="w-4 h-4" />
-              <span>Tìm tủ:</span>
-            </div>
-            <input type="text" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Nhập số tủ..."
-              className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 w-40" />
-            {searchTerm && (
-              <button onClick={() => setSearchTerm('')}
-                className="px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors font-medium">
-                Xóa
-              </button>
-            )}
-            <div className="flex items-center gap-2 text-slate-700 font-semibold ml-2">
               <Calendar className="w-4 h-4" />
               <span>Lọc theo ngày:</span>
             </div>
@@ -305,65 +339,127 @@ export function LockerManagement() {
 
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200">
           <div className="p-6 border-b border-slate-200">
-            <h2 className="text-xl font-bold text-slate-900">Danh sách vấn đề</h2>
+            <h2 className="text-xl font-bold text-slate-900">Báo cáo của tôi</h2>
           </div>
 
           {loading ? (
             <div className="p-8 text-center text-slate-500 flex items-center justify-center gap-3"><Loader2 className="w-5 h-5 animate-spin" /> Đang tải...</div>
           ) : (
             <div className="divide-y divide-slate-200">
-              {issues.filter(i => !statusFilter || i.status === statusFilter).filter(i => !searchTerm || i.lockerNumber.toLowerCase().includes(searchTerm.toLowerCase())).map((issue) => (
-                <div key={issue._id} className="p-6 hover:bg-slate-50 transition-colors">
+              {issues.map((issue) => (
+                <div key={issue._id} className="p-6">
                   <div className="flex items-start gap-4">
                     <div className={`p-3 rounded-lg ${getIssueTypeColor(issue.issueType)}`}>{getIssueTypeIcon(issue.issueType)}</div>
                     <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-2">
+                      <div className="flex items-center gap-3 mb-2 flex-wrap">
                         <h3 className="text-lg font-bold text-slate-900">Tủ số {issue.lockerNumber}</h3>
                         <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getIssueTypeColor(issue.issueType)}`}>{getIssueTypeName(issue.issueType)}</span>
-                        <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(issue.status)}`}>{getStatusText(issue.status)}</span>
+                        <span className={`px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-1 ${getStatusColor(issue.status)}`}>
+                          {getStatusIcon(issue.status)} {getStatusText(issue.status)}
+                        </span>
                         <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${getPriorityColor(issue.priority)}`}>{getPriorityText(issue.priority)}</span>
                       </div>
-                      <p className="text-slate-700 mb-3">{issue.description}</p>
+                      <p className="text-slate-700 mb-2">{issue.description}</p>
                       {issue.image && (
                         <img src={`/uploads/lockers/${issue.image}`} alt="Ảnh báo cáo"
-                          className="w-40 h-40 object-cover rounded-lg border border-slate-200 mb-3" />
+                          className="w-40 h-40 object-cover rounded-lg border border-slate-200 mb-2" />
                       )}
                       {issue.status === 'rejected' && issue.rejectionReason && (
                         <p className="text-sm text-red-600 mb-2">Lý do từ chối: {issue.rejectionReason}</p>
                       )}
-                      <div className="flex items-center gap-4 text-sm text-slate-600">
-                        <span>Báo cáo bởi: <span className="font-semibold">{issue.reporterName}</span></span>
-                        <span>•</span>
-                        <span>{new Date(issue.createdAt).toLocaleString('vi-VN')}</span>
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      {issue.status !== 'resolved' && issue.status !== 'rejected' && (
-                        <>
-                          <button onClick={() => handleResolve(issue._id)} disabled={resolvingId === issue._id}
-                            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-semibold flex items-center gap-1 disabled:opacity-50">
-                            {resolvingId === issue._id ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />} {resolvingId === issue._id ? 'Đang xử lý...' : 'Hoàn thành'}
+                      {issue.status === 'pending' && (
+                        <div className="flex gap-2 mt-2">
+                          <button
+                            onClick={() => { setEditingIssue({ ...issue }); setEditImageFile(null); }}
+                            className="px-3 py-1 text-sm text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                          >
+                            Sửa
                           </button>
-                          <button onClick={() => { setRejectingId(issue._id); setRejectionReason(''); }}
-                            className="px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors text-sm font-semibold flex items-center gap-1">
-                            <XCircle className="w-4 h-4" /> Từ chối
+                          <button
+                            onClick={() => handleDelete(issue._id)}
+                            disabled={deletingId === issue._id}
+                            className="px-3 py-1 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                          >
+                            {deletingId === issue._id ? 'Đang xóa...' : 'Xóa'}
                           </button>
-                        </>
+                        </div>
                       )}
+                      <span className="text-sm text-slate-500">{new Date(issue.createdAt).toLocaleString('vi-VN')}</span>
                     </div>
                   </div>
                 </div>
               ))}
-              {issues.filter(i => !statusFilter || i.status === statusFilter).filter(i => !searchTerm || i.lockerNumber.toLowerCase().includes(searchTerm.toLowerCase())).length === 0 && (
-                <div className="p-8 text-center text-slate-500">
-                  {searchTerm ? 'Không tìm thấy tủ phù hợp' : statusFilter ? 'Không có vấn đề nào phù hợp' : 'Chưa có vấn đề nào được báo cáo'}
-                </div>
-              )}
+              {issues.length === 0 && <div className="p-8 text-center text-slate-500">Bạn chưa báo cáo vấn đề nào</div>}
             </div>
           )}
           {!loading && <Pagination page={page} totalPages={totalPages} total={total} limit={15} onPageChange={(p) => { setPage(p); fetchIssues(p); }} />}
         </div>
       </div>
+
+      {editingIssue && (
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4"
+          onClick={() => setEditingIssue(null)}>
+          <div className="bg-white rounded-2xl max-w-2xl w-full" onClick={e => e.stopPropagation()}>
+            <div className="p-6 border-b border-slate-200">
+              <h3 className="text-2xl font-bold text-slate-900">Sửa báo cáo</h3>
+            </div>
+            <form onSubmit={handleEdit}>
+              <div className="p-6 space-y-4">
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">Số tủ</label>
+                    <input type="text" required value={editingIssue.lockerNumber}
+                      onChange={(e) => setEditingIssue({ ...editingIssue, lockerNumber: e.target.value })}
+                      className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">Loại vấn đề</label>
+                    <select required value={editingIssue.issueType}
+                      onChange={(e) => setEditingIssue({ ...editingIssue, issueType: e.target.value as LockerIssue['issueType'] })}
+                      className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500">
+                      <option value="broken">Hỏng hóc</option>
+                      <option value="dirty">Bẩn</option>
+                      <option value="lost-key">Mất chìa khóa</option>
+                      <option value="other">Khác</option>
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Mô tả chi tiết</label>
+                  <textarea required value={editingIssue.description}
+                    onChange={(e) => setEditingIssue({ ...editingIssue, description: e.target.value })}
+                    className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 resize-none"
+                    rows={4} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Ảnh hiện tại</label>
+                  {editingIssue.image ? (
+                    <img src={`/uploads/lockers/${editingIssue.image}`}
+                      alt="Ảnh hiện tại" className="w-40 h-40 object-cover rounded-lg border border-slate-200 mb-2" />
+                  ) : (
+                    <p className="text-sm text-slate-500 mb-2">Chưa có ảnh</p>
+                  )}
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Thay đổi ảnh</label>
+                  <input type="file" accept="image/*"
+                    onChange={(e) => setEditImageFile(e.target.files?.[0] || null)}
+                    className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500" />
+                </div>
+              </div>
+              <div className="p-6 border-t border-slate-200 flex gap-3">
+                <button type="submit" disabled={submitting}
+                  className="flex-1 px-4 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-semibold disabled:opacity-50 flex items-center justify-center gap-2">
+                  {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
+                  {submitting ? 'Đang lưu...' : 'Lưu thay đổi'}
+                </button>
+                <button type="button" onClick={() => setEditingIssue(null)}
+                  className="flex-1 px-4 py-3 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 transition-colors font-semibold">
+                  Hủy
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {showModal && (
         <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4" onClick={() => setShowModal(false)}>
@@ -401,6 +497,17 @@ export function LockerManagement() {
                     className={`w-full px-4 py-3 border ${errors.description ? 'border-red-400' : 'border-slate-300'} rounded-lg focus:ring-2 focus:ring-indigo-500 resize-none`} rows={4} placeholder="Mô tả chi tiết vấn đề..." />
                   {errors.description && <p className="text-red-500 text-sm mt-1">{errors.description}</p>}
                 </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    Ảnh thực tế (nếu có)
+                  </label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => setImageFile(e.target.files?.[0] || null)}
+                    className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
               </div>
               <div className="p-6 border-t border-slate-200 flex gap-3">
                 <button type="submit" disabled={submitting}
@@ -412,30 +519,6 @@ export function LockerManagement() {
                   className="flex-1 px-4 py-3 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 transition-colors font-semibold">Hủy</button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
-      {rejectingId && (
-        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4" onClick={() => setRejectingId(null)}>
-          <div className="bg-white rounded-2xl max-w-md w-full" onClick={e => e.stopPropagation()}>
-            <div className="p-6 border-b border-slate-200">
-              <h3 className="text-xl font-bold text-slate-900">Từ chối báo cáo</h3>
-            </div>
-            <div className="p-6">
-              <label className="block text-sm font-medium text-slate-700 mb-2">Lý do từ chối <span className="text-red-500">*</span></label>
-              <textarea autoFocus value={rejectionReason} onChange={(e) => setRejectionReason(e.target.value)}
-                className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 resize-none" rows={3}
-                placeholder="Vd: Báo cáo trùng lặp với vấn đề đã ghi nhận trước đó" />
-            </div>
-            <div className="p-6 border-t border-slate-200 flex gap-3">
-              <button onClick={handleReject} disabled={rejecting}
-                className="flex-1 px-4 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-semibold disabled:opacity-50 flex items-center justify-center gap-2">
-                {rejecting && <Loader2 className="w-4 h-4 animate-spin" />}
-                {rejecting ? 'Đang xử lý...' : 'Xác nhận từ chối'}
-              </button>
-              <button onClick={() => setRejectingId(null)}
-                className="flex-1 px-4 py-3 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 transition-colors font-semibold">Hủy</button>
-            </div>
           </div>
         </div>
       )}

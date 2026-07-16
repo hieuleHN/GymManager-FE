@@ -129,6 +129,7 @@ export function ConfirmTrainerBooking() {
           <p className="text-slate-600">Thông tin chi tiết về lịch tập của bạn</p>
         </div>
 
+        {/* Status Banner */}
         <div className={`${statusConfig.bgColor} border ${statusConfig.borderColor} rounded-2xl p-6`}>
           <div className="flex items-center gap-4">
             {statusConfig.icon}
@@ -189,7 +190,10 @@ export function ConfirmTrainerBooking() {
                   <p className="text-xs text-slate-500">Ngày tập</p>
                   <p className="font-semibold text-slate-900">
                     {new Date(booking.date).toLocaleDateString('vi-VN', {
-                      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+                      weekday: 'long',
+                      year: 'numeric',
+                      month: 'long',
+                      day: 'numeric'
                     })}
                   </p>
                 </div>
@@ -213,14 +217,35 @@ export function ConfirmTrainerBooking() {
             </div>
 
             <div className="space-y-3">
-              <Button fullWidth variant="contained" onClick={() => navigate('/dashboard/schedule')}
-                sx={{ height: 48, borderRadius: 3, textTransform: 'none', fontSize: '1rem',
-                  fontWeight: 700, bgcolor: '#4f46e5', '&:hover': { bgcolor: '#4338ca' } }}>
+              <Button
+                fullWidth
+                variant="contained"
+                onClick={() => navigate('/dashboard/schedule/book')}
+                sx={{
+                  height: 48,
+                  borderRadius: 3,
+                  textTransform: 'none',
+                  fontSize: '1rem',
+                  fontWeight: 700,
+                  bgcolor: '#4f46e5',
+                  '&:hover': { bgcolor: '#4338ca' }
+                }}
+              >
                 Quay lại lịch tập
               </Button>
               {booking.status === 'rejected' && (
-                <Button fullWidth variant="outlined" onClick={() => navigate('/dashboard/schedule/book')}
-                  sx={{ height: 48, borderRadius: 3, textTransform: 'none', fontSize: '1rem', fontWeight: 700 }}>
+                <Button
+                  fullWidth
+                  variant="outlined"
+                  onClick={() => navigate('/dashboard/schedule/book')}
+                  sx={{
+                    height: 48,
+                    borderRadius: 3,
+                    textTransform: 'none',
+                    fontSize: '1rem',
+                    fontWeight: 700
+                  }}
+                >
                   Đặt lịch mới
                 </Button>
               )}
