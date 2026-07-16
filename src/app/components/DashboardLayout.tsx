@@ -3,11 +3,12 @@ import { Link, useLocation, useNavigate } from 'react-router';
 import {
   LayoutDashboard, CreditCard, History, Calendar, UserCircle,
   Package, TrendingUp, Settings, LogOut, Menu, X, FileText,
-  Bell, Home, Users, MessageCircle, AlertTriangle, CheckCircle, XCircle, Clock, ArrowRightLeft
+  Bell, Home, Users, MessageCircle, AlertTriangle, CheckCircle, XCircle, Clock, ArrowRightLeft, Wallet
 } from 'lucide-react';
 import { useAuth, getApiUrl, getAuthHeaders } from '../context/AuthContext';
 import logo from '../../imports/ChatGPT_Image_May_14__2026__09_48_52_PM.png';
 import { ImageWithFallback } from './figma/ImageWithFallback';
+import { WalletBalance } from './WalletBalance';
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -135,6 +136,8 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     setShowNotifications(false);
     if (notif.type === 'booking_transferred') {
       navigate('/dashboard/schedule');
+    } else if (notif.type === 'wallet_topup' || notif.type === 'wallet_payment') {
+      navigate('/dashboard/history');
     } else if (notif.relatedBookingId?._id || notif.relatedBookingId) {
       const bookingId = notif.relatedBookingId._id || notif.relatedBookingId;
       navigate(`/dashboard/bookings/${bookingId}/status`);
@@ -151,6 +154,8 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
       case 'transfer_approved':
       case 'booking_transferred': return <ArrowRightLeft className="w-5 h-5 text-green-500 shrink-0 mt-0.5" />;
       case 'transfer_rejected': return <ArrowRightLeft className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />;
+      case 'wallet_topup':
+      case 'wallet_payment': return <Wallet className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" />;
       default: return <Bell className="w-5 h-5 text-slate-500 shrink-0 mt-0.5" />;
     }
   };
@@ -311,6 +316,8 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                   </div>
                 )}
               </div>
+
+              <WalletBalance balance={(user as any)?.balance || 0} />
 
               <Link to="/"
                 className="flex items-center gap-2 text-sm text-slate-600 hover:text-indigo-600 transition-colors">

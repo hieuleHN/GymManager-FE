@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useForm } from 'react-hook-form';
 import { X, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useClub } from '../context/ClubContext';
@@ -8,42 +9,35 @@ interface AddClubModalProps {
   onClose: () => void;
 }
 
+interface FormValues {
+  address: string;
+  phone: string;
+}
+
 export function AddClubModal({ isOpen, onClose }: AddClubModalProps) {
-  const [address, setAddress] = useState('');
-  const [phone, setPhone] = useState('');
+  const { register, handleSubmit, reset, formState: { errors } } = useForm<FormValues>();
   const [submitting, setSubmitting] = useState(false);
   const { setClubs } = useClub();
 
   if (!isOpen) return null;
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!address.trim()) {
-      toast.error('Vui lòng nhập địa chỉ cơ sở!');
-      return;
-    }
-    if (!phone.trim()) {
-      toast.error('Vui lòng nhập số điện thoại!');
-      return;
-    }
-
+  const onSubmit = async (data: FormValues) => {
     setSubmitting(true);
     try {
       const res = await fetch('/api/locations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ address: address.trim(), phone: phone.trim() })
+        body: JSON.stringify({ address: data.address.trim(), phone: data.phone.trim() })
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Thêm cơ sở thất bại!');
+      const resData = await res.json();
+      if (!res.ok) throw new Error(resData.error || 'Thêm cơ sở thất bại!');
 
       toast.success('Thêm cơ sở thành công!');
       const updated = await fetch('/api/locations');
       const updatedData = await updated.json();
       const clubList = Array.isArray(updatedData) ? updatedData : (updatedData?.data || []);
       setClubs(clubList);
-      setAddress('');
-      setPhone('');
+      reset();
       onClose();
     } catch (err: any) {
       toast.error(err.message);
@@ -62,19 +56,18 @@ export function AddClubModal({ isOpen, onClose }: AddClubModalProps) {
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-2">
               Địa chỉ <span className="text-red-500">*</span>
             </label>
             <input
               type="text"
-              required
-              value={address}
-              onChange={e => setAddress(e.target.value)}
+              {...register('address', { required: 'Vui lòng nhập địa chỉ cơ sở!' })}
               placeholder="Nhập địa chỉ cơ sở"
-              className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className={`w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 ${errors.address ? 'border-red-500' : 'border-slate-200'}`}
             />
+            {errors.address && <span className="text-red-500 text-sm mt-1">{errors.address.message}</span>}
           </div>
 
           <div>
@@ -83,12 +76,11 @@ export function AddClubModal({ isOpen, onClose }: AddClubModalProps) {
             </label>
             <input
               type="tel"
-              required
-              value={phone}
-              onChange={e => setPhone(e.target.value)}
+              {...register('phone', { required: 'Vui lòng nhập số điện thoại!' })}
               placeholder="Nhập số điện thoại"
-              className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className={`w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 ${errors.phone ? 'border-red-500' : 'border-slate-200'}`}
             />
+            {errors.phone && <span className="text-red-500 text-sm mt-1">{errors.phone.message}</span>}
           </div>
 
           <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">

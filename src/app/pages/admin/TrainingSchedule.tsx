@@ -7,7 +7,8 @@ interface Staff {
   _id: string;
   fullName: string;
   avatar?: string;
-  job?: { name: string };
+  job?: { name: string; permissions?: string[] };
+  disciplineId?: { _id: string; name: string };
 }
 
 interface Customer {
@@ -28,15 +29,17 @@ interface Booking {
   endTime: string;
   status: string;
   note?: string;
+  disciplineId?: string;
   transferType: string;
   transferToTrainerId?: { _id: string; fullName: string };
   transferReason?: string;
   transferStatus: string;
   transferNewDate?: string;
   transferNewTime?: string;
-  pendingColleagueIds?: { _id: string; fullName: string }[];
-  rejectedColleagueIds?: { _id: string; fullName: string }[];
+  transferFromDate?: string;
+  transferFromTime?: string;
   transferredFromTrainerId?: { _id: string; fullName: string };
+  transferRejectionReason?: string;
 }
 
 export function TrainingSchedule() {
@@ -66,15 +69,19 @@ export function TrainingSchedule() {
   const [conflictError, setConflictError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  const isAdminOrManager = user?.isAdmin === true || user?.permissions?.includes('schedule');
+  const isAdminOrManager = user?.isAdmin === true || user?.jobPermissions?.includes('quan_ly');
 
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [bookingsRes, trainersRes] = await Promise.all([
+      const urls = [
         fetch(`${getApiUrl()}/api/bookings/my-trainer?dateFrom=${dateFrom}&dateTo=${dateTo}`, { headers: getAuthHeaders() }),
-        fetch(`${getApiUrl()}/api/staff/trainers`, { headers: getAuthHeaders() })
-      ]);
+        fetch(`${getApiUrl()}/api/staff/trainers?permission=huan_luyen_vien`, { headers: getAuthHeaders() })
+      ];
+      if (isAdminOrManager) {
+        urls.push(fetch(`${getApiUrl()}/api/bookings/transfer-requests`, { headers: getAuthHeaders() }));
+      }
+      const [bookingsRes, trainersRes, transferRes] = await Promise.all(urls);
       if (bookingsRes.ok) {
         const data = await bookingsRes.json();
         setBookings(data);
@@ -82,6 +89,17 @@ export function TrainingSchedule() {
       if (trainersRes.ok) {
         const data = await trainersRes.json();
         setTrainers(data.filter((t: Staff) => t._id !== user?.id));
+      }
+      if (transferRes?.ok) {
+        const transferData = await transferRes.json();
+        setBookings(prev => {
+          const ids = new Set(prev.map(b => b._id));
+          const merged = [...prev];
+          for (const b of transferData) {
+            if (!ids.has(b._id)) merged.push(b);
+          }
+          return merged;
+        });
       }
     } catch {
       setError('Không thể tải dữ liệu');
@@ -111,9 +129,6 @@ export function TrainingSchedule() {
     checkConflict();
   }, [transferNewDate, selectedBooking, transferTab]);
 
-  const [sentColleagues, setSentColleagues] = useState<string[]>([]);
-  const [successMsg, setSuccessMsg] = useState('');
-
   const openTransfer = (booking: Booking) => {
     setSelectedBooking(booking);
     setSelectedColleague('');
@@ -121,8 +136,6 @@ export function TrainingSchedule() {
     setTransferNewDate('');
     setConflictError('');
     setTransferTab('colleague');
-    setSentColleagues([]);
-    setSuccessMsg('');
     setShowTransferModal(true);
   };
 
@@ -147,39 +160,26 @@ export function TrainingSchedule() {
       });
       const data = await res.json();
       if (res.ok) {
-        if (transferTab === 'colleague') {
-          const name = trainers.find(t => t._id === selectedColleague)?.fullName || selectedColleague;
-          setSentColleagues(prev => [...prev, selectedColleague]);
-          setSuccessMsg(`Đã gửi yêu cầu cho HLV ${name}`);
-          setSelectedColleague('');
-          fetchData();
-        } else {
-          alert('Đã chuyển lịch tập thành công!');
-          setShowTransferModal(false);
-          fetchData();
-        }
+        setBookings(prev => prev.map(b => b._id === selectedBooking._id ? {
+          ...b,
+          transferStatus: 'pending_approval',
+          transferReason: transferReason,
+          transferType: body.transferType,
+          ...(body.transferType === 'to_colleague' ? {
+            transferToTrainerId: body.transferToTrainerId ? { _id: body.transferToTrainerId, fullName: trainers.find(t => t._id === body.transferToTrainerId)?.fullName || '' } : b.transferToTrainerId
+          } : {
+            transferNewDate: body.transferNewDate,
+            transferNewTime: body.transferNewTime,
+            transferFromDate: b.date,
+            transferFromTime: b.time || b.startTime || ''
+          })
+        } : b));
+        setShowTransferModal(false);
       } else {
         alert(data.error || 'Lỗi gửi yêu cầu');
       }
     } catch { alert('Lỗi kết nối'); }
     setSubmitting(false);
-  };
-
-  const handleColleagueConfirm = async (bookingId: string, accept: boolean) => {
-    try {
-      const res = await fetch(`${getApiUrl()}/api/bookings/${bookingId}/colleague-confirm`, {
-        method: 'PUT',
-        headers: getAuthHeaders(),
-        body: JSON.stringify({ accept })
-      });
-      const data = await res.json();
-      if (res.ok) {
-        alert(accept ? 'Bạn đã xác nhận nhận lịch tập!' : 'Bạn đã từ chối nhận lịch tập');
-        fetchData();
-      } else {
-        alert(data.error || 'Lỗi xác nhận');
-      }
-    } catch { alert('Lỗi kết nối'); }
   };
 
   const handleApproveTransfer = async (bookingId: string) => {
@@ -190,8 +190,7 @@ export function TrainingSchedule() {
       });
       const data = await res.json();
       if (res.ok) {
-        alert('Đã phê duyệt chuyển lịch!');
-        fetchData();
+        setBookings(prev => prev.map(b => b._id === bookingId && b.transferStatus === 'pending_approval' ? { ...b, transferStatus: 'approved', trainerId: b.transferToTrainerId || b.trainerId } : b));
       } else {
         alert(data.error || 'Lỗi phê duyệt');
       }
@@ -209,8 +208,7 @@ export function TrainingSchedule() {
       });
       const data = await res.json();
       if (res.ok) {
-        alert('Đã từ chối yêu cầu chuyển lịch!');
-        fetchData();
+        setBookings(prev => prev.map(b => b._id === bookingId && b.transferStatus === 'pending_approval' ? { ...b, transferStatus: 'rejected', transferRejectionReason: reason || 'Từ chối' } : b));
       } else {
         alert(data.error || 'Lỗi từ chối');
       }
@@ -238,14 +236,8 @@ export function TrainingSchedule() {
   const getTransferBadge = (booking: Booking) => {
     const ts = booking.transferStatus;
     if (ts === 'none') return null;
-    if (ts === 'pending_colleague') {
-      const count = (booking.pendingColleagueIds || []).length;
-      return <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded text-xs font-semibold">Chờ đồng nghiệp{count > 0 ? ` (${count})` : ''}</span>;
-    }
     if (ts === 'pending_approval')
       return <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs font-semibold">Chờ phê duyệt</span>;
-    if (ts === 'colleague_accepted')
-      return <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded text-xs font-semibold">Đồng nghiệp đã nhận</span>;
     if (ts === 'approved') {
       if (booking.transferType === 'to_another_day') {
         return <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded text-xs font-semibold">Đã chuyển lịch</span>;
@@ -253,22 +245,15 @@ export function TrainingSchedule() {
       const recipientName = booking.transferToTrainerId?.fullName || 'HLV';
       const isRecipient = booking.trainerId?._id === user?.id;
       if (isRecipient) return null;
-      return <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded text-xs font-semibold">Đã chuyển cho {recipientName}</span>;
+      return <span className="px-2 py-0.5 bg-slate-200 text-slate-600 rounded text-xs font-semibold">Đã chuyển cho {recipientName}</span>;
     }
     if (ts === 'rejected')
       return <span className="px-2 py-0.5 bg-red-100 text-red-700 rounded text-xs font-semibold">Từ chối</span>;
     return null;
   };
 
-  const isColleaguePending = (booking: Booking) =>
-    booking.transferStatus === 'pending_colleague' &&
-    (booking.pendingColleagueIds || []).some(p => {
-      const id = typeof p === 'string' ? p : (p as any)._id;
-      return id === user?.id;
-    });
-
   const canApprove = (booking: Booking) =>
-    (booking.transferStatus === 'pending_approval' || booking.transferStatus === 'pending_colleague') && isAdminOrManager;
+    booking.transferStatus === 'pending_approval' && isAdminOrManager;
 
   const canTransfer = (booking: Booking) => {
     if (booking.status !== 'confirmed') return false;
@@ -282,7 +267,7 @@ export function TrainingSchedule() {
         : booking.trainerId;
       return trainerId === user?.id;
     }
-    return ['none', 'pending_colleague', 'rejected'].includes(booking.transferStatus) &&
+    return ['none', 'rejected'].includes(booking.transferStatus) &&
       (booking.trainerId?._id === user?.id || isAdminOrManager);
   };
 
@@ -331,115 +316,113 @@ export function TrainingSchedule() {
           </button>
         </div>
 
-        {/* Schedule List */}
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-bold text-slate-900">Lịch dạy tuần</h2>
-            <div className="flex items-center gap-4">
-              <button onClick={handlePrevWeek} className="p-2 hover:bg-slate-100 rounded-lg">
-                <ChevronLeft className="w-5 h-5" />
-              </button>
-              <span className="font-semibold">{weekRangeText}</span>
-              <button onClick={handleNextWeek} className="p-2 hover:bg-slate-100 rounded-lg">
-                <ChevronRight className="w-5 h-5" />
-              </button>
-            </div>
+
+        {loading ? (
+          <div className="flex items-center justify-center py-20">
+            <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />
           </div>
-
-          <div className="overflow-y-auto max-h-[500px]">
-            <div className="grid grid-cols-8 gap-px bg-slate-200 rounded-lg">
-              <div className="bg-slate-50 p-2 text-center text-sm font-medium">Giờ</div>
-              {getWeekDays.map((date, idx) => (
-                <div key={idx} className="bg-slate-50 p-2 text-center text-sm font-medium">
-                  {weekDays[idx]} {date.getDate()}/{date.getMonth() + 1}
-                </div>
-              ))}
-
-              {hours.map((hour) => (
-                <div key={hour} className="contents">
-                  <div className="bg-white p-2 text-sm text-center border-t border-slate-100">{hour}</div>
-                  {getWeekDays.map((date, dayIdx) => {
-                    const hourBookings = getBookingsForHour(date, hour);
-                    return (
-                      <div key={dayIdx} className="bg-white p-1 min-h-[50px] border-t border-slate-100 relative">
-                        {hourBookings.map((b) => (
-                          <div
-                            key={b._id}
-                            onClick={() => navigate(`/admin/schedule-confirmations`, { state: { bookingId: b._id } })}
-                            className={`text-xs p-1 rounded mb-0.5 cursor-pointer hover:opacity-80 transition-opacity ${b.status === 'confirmed'
-                                ? 'bg-green-100 text-green-700'
-                                : 'bg-amber-100 text-amber-700'
-                              }`}
-                          >
-                            <div className="font-semibold">{b.customerId?.fullName || 'Khách'}</div>
-                            <div>{b.time}</div>
+        ) : error ? (
+          <div className="p-6 bg-red-50 rounded-xl border border-red-200 text-red-700">{error}</div>
+        ) : bookings.length === 0 ? (
+          <div className="p-12 bg-white rounded-2xl border border-slate-200 text-center">
+            <Calendar className="w-12 h-12 text-slate-300 mx-auto mb-4" />
+            <p className="text-slate-500">Không có lịch tập nào trong khoảng thời gian này</p>
+          </div>
+        ) : (
+          sortedDates.map(dateStr => (
+            <div key={dateStr} className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+              <div className="px-6 py-4 bg-indigo-50 border-b border-indigo-100">
+                <h2 className="text-lg font-bold text-indigo-900 flex items-center gap-2">
+                  <Calendar className="w-5 h-5" />
+                  {dateStr}
+                  <span className="text-sm font-normal text-indigo-600 ml-2">({groupedByDate[dateStr].length} buổi)</span>
+                </h2>
+              </div>
+              <div className="divide-y divide-slate-200">
+                {groupedByDate[dateStr]
+                  .sort((a, b) => (a.time || a.startTime || '').localeCompare(b.time || b.startTime || ''))
+                  .map(booking => (
+                    <div key={booking._id} className="p-6 hover:bg-slate-50 transition-colors">
+                      <div className="flex items-start gap-4">
+                        <img
+                          src={booking.customerId?.avatar ||
+                            'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&q=80&w=100'}
+                          alt={booking.customerId?.fullName || 'Hội viên'}
+                          className="w-14 h-14 rounded-full object-cover ring-2 ring-slate-200"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-3 mb-1 flex-wrap">
+                            <h3 className="text-lg font-bold text-slate-900">
+                              {booking.customerId?.fullName || 'Hội viên'}
+                            </h3>
+                            <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(booking.status)}`}>
+                              {getStatusText(booking.status)}
+                            </span>
+                            {getTransferBadge(booking)}
                           </div>
-                        ))}
+                          <div className="flex items-center gap-4 text-sm text-slate-600 flex-wrap">
+                            <div className={`flex items-center gap-1.5 ${booking.transferStatus === 'approved' && booking.transferType === 'to_colleague' ? 'line-through text-slate-400' : ''}`}>
+                              <Clock className="w-4 h-4" />
+                              {`${booking.startTime || booking.time} - ${booking.endTime}`}
+                            </div>
+                            {booking.customerId?.phone && (
+                              <div className="flex items-center gap-1.5">
+                                <User className="w-4 h-4" />
+                                {booking.customerId.phone}
+                              </div>
+                            )}
+                          </div>
+                          {booking.transferStatus !== 'none' && (
+                            <div className="mt-3 p-3 bg-orange-50 rounded-lg border border-orange-200">
+                              <p className="text-sm text-orange-900">
+                                <span className="font-semibold">Yêu cầu chuyển lịch:</span>{' '}
+                                {booking.transferStatus === 'approved' ? (
+                                  booking.transferType === 'to_colleague' ? (
+                                    <>Đã chuyển cho HLV <strong>{booking.transferToTrainerId?.fullName || 'đồng nghiệp'}</strong></>
+                                  ) : (
+                                    <>Chuyển từ ngày {booking.transferFromDate ? new Date(booking.transferFromDate).toLocaleDateString('vi-VN') : ''} lúc {booking.transferFromTime || ''} sang ngày {booking.transferNewDate ? new Date(booking.transferNewDate).toLocaleDateString('vi-VN') : ''} lúc {booking.transferNewTime || ''}</>
+                                  )
+                                ) : booking.transferStatus === 'rejected' ? (
+                                  <>Đã bị từ chối. Lý do: {booking.transferRejectionReason || 'Không có lý do'}</>
+                                ) : (
+                                  <>Đang chờ quản lý phê duyệt</>
+                                )}
+                                {booking.transferReason && `. Lý do: ${booking.transferReason}`}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex gap-2 shrink-0">
+                          {canTransfer(booking) && (
+                            <button onClick={() => openTransfer(booking)}
+                              className="px-3 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm font-semibold flex items-center gap-1.5">
+                              <ArrowRight className="w-4 h-4" />
+                              Chuyển lịch
+                            </button>
+                          )}
+                          {canApprove(booking) && (
+                            <div className="flex gap-1">
+                              <button onClick={() => handleApproveTransfer(booking._id)}
+                                className="px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-semibold flex items-center gap-1.5">
+                                <Check className="w-4 h-4" />
+                                Duyệt
+                              </button>
+                              <button onClick={() => handleRejectTransfer(booking._id)}
+                                className="px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-semibold flex items-center gap-1.5">
+                                <X className="w-4 h-4" />
+                                Từ chối
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    );
-                  })}
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Transfer Modal */}
-        {showTransferModal && (
-          <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl max-w-2xl w-full">
-              <div className="p-6 border-b border-slate-200">
-                <h3 className="text-2xl font-bold text-slate-900">Chuyển lịch cho đồng nghiệp</h3>
-              </div>
-
-              <div className="p-6 space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Chọn lịch cần chuyển</label>
-                  <select className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500">
-                    <option>05/06/2026 - 08:00-09:00 - Nguyễn Văn A</option>
-                    <option>05/06/2026 - 10:00-11:00 - Trần Thị B</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Chọn đồng nghiệp</label>
-                  <select className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500">
-                    <option>HLV Nguyễn Văn D</option>
-                    <option>HLV Trần Thị E</option>
-                    <option>HLV Lê Văn F</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Lý do chuyển lịch</label>
-                  <textarea
-                    className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 resize-none"
-                    rows={3}
-                    placeholder="Nhập lý do..."
-                  />
-                </div>
-
-                <div className="p-4 bg-yellow-50 rounded-lg border border-yellow-200">
-                  <p className="text-sm text-yellow-900">
-                    <span className="font-semibold">Lưu ý:</span> Hội viên sẽ nhận được thông báo về việc thay đổi huấn luyện viên và cần xác nhận.
-                  </p>
-                </div>
-              </div>
-
-              <div className="p-6 border-t border-slate-200 flex gap-3">
-                <button className="flex-1 px-4 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors font-semibold">
-                  Gửi yêu cầu chuyển lịch
-                </button>
-                <button
-                  onClick={() => setShowTransferModal(false)}
-                  className="flex-1 px-4 py-3 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 transition-colors font-semibold"
-                >
-                  Hủy
-                </button>
+                    </div>
+                  ))}
               </div>
             </div>
-          </div>
+          ))
         )}
+
         {/* Legend */}
 <div className="mt-4 pt-4 border-t border-slate-200">
   <div className="flex flex-wrap gap-4 text-sm">

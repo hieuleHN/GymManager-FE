@@ -1,6 +1,7 @@
 import MemberQR from './pages/MemberQR'; // Nhúng màn hình QR vào route
 import { AttendanceScanner } from './pages/admin/AttendanceScanner';
 import { createBrowserRouter, Navigate, useLocation } from 'react-router';
+import { RouteErrorBoundary } from '../lib/ErrorBoundary';
 import { Layout } from './components/Layout';
 import { Home } from './pages/Home';
 import { Learn } from './pages/Learn';
@@ -24,6 +25,7 @@ import { BookTrainer } from './pages/dashboard/BookTrainer';
 import { ConfirmTrainerBooking } from './pages/dashboard/ConfirmTrainerBooking';
 import { TrainerDetail } from './pages/dashboard/TrainerDetail';
 import { Progress } from './pages/dashboard/Progress';
+import { BookingStatus } from './pages/dashboard/BookingStatus';
 import { Services as MemberServices } from './pages/dashboard/Services';
 import { Settings } from './pages/dashboard/Settings';
 import { AdminDashboard } from './pages/admin/Dashboard';
@@ -160,7 +162,8 @@ function ProtectedRoute({ children, role }: { children: React.ReactNode, role?: 
 export const router = createBrowserRouter([
   {
     path: '/',
-    Component: Layout, // File Layout chứa thanh Navbar menu màu trắng của bạn
+    Component: Layout,
+    errorElement: <RouteErrorBoundary />,
     children: [
       { index: true, Component: Home },
       { path: 'learn', Component: Learn },
@@ -221,6 +224,14 @@ export const router = createBrowserRouter([
   {
     path: '/dashboard/progress',
     element: <ProtectedRoute role="member"><Progress /></ProtectedRoute>
+  },
+  {
+    path: '/dashboard/community',
+    element: <ProtectedRoute role="member"><Community /></ProtectedRoute>
+  },
+  {
+    path: '/dashboard/bookings/:bookingId/status',
+    element: <ProtectedRoute role="member"><BookingStatus /></ProtectedRoute>
   },
   {
     path: '/dashboard/community',

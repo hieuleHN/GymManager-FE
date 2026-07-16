@@ -14,6 +14,7 @@ interface Booking {
   status: string;
   rejectionReason?: string;
   disciplineId?: { _id: string; name: string } | null;
+  disciplineName?: string;
   trainerId?: { fullName: string; _id: string; specialties?: string[]; disciplineId?: { _id: string; name: string } | string } | null;
   customerId: { fullName: string };
   locationId: { title: string };
@@ -302,8 +303,8 @@ export function Schedule() {
                                     {b.trainerId ? (
                                       <>
                                         <p className="text-[10px] opacity-75 truncate">HLV: {b.trainerId.fullName}</p>
-                                        {b.disciplineId && (
-                                          <p className="text-[10px] opacity-75 truncate">{b.disciplineId.name}</p>
+                                        {(b.disciplineId || b.disciplineName) && (
+                                          <p className="text-[10px] opacity-75 truncate">{b.disciplineId?.name || b.disciplineName}</p>
                                         )}
                                       </>
                                     ) : (
@@ -356,8 +357,8 @@ export function Schedule() {
                                     <div key={b._id} className={`text-xs px-1 py-0.5 rounded mb-0.5 ${colorClass}`}>
                                       <div className="truncate">{b.startTime ? `${b.startTime}-${b.endTime}` : formatTimeRange(b.time)}</div>
                                       <div className="truncate">{b.trainerId ? `HLV: ${b.trainerId.fullName}` : 'Tập cá nhân'}</div>
-                                      {b.disciplineId && (
-                                        <div className="truncate">{b.disciplineId.name}</div>
+                                      {(b.disciplineId || b.disciplineName) && (
+                                        <div className="truncate">{b.disciplineId?.name || b.disciplineName}</div>
                                       )}
                                     </div>
                                   );
@@ -420,8 +421,8 @@ export function Schedule() {
                       </span>
                     </div>
                     <p className="text-sm">{b.trainerId ? `HLV: ${b.trainerId.fullName}` : 'Tập cá nhân'}</p>
-                    {b.disciplineId && (
-                      <p className="text-xs text-slate-500 mt-0.5">Bộ môn: {b.disciplineId.name}</p>
+                    {(b.disciplineId || b.disciplineName) && (
+                      <p className="text-xs text-slate-500 mt-0.5">Bộ môn: {b.disciplineId?.name || b.disciplineName}</p>
                     )}
                     {b.rejectionReason && (
                       <p className="text-sm mt-1 italic">Lý do: {b.rejectionReason}</p>

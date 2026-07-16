@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { useForm } from 'react-hook-form';
 import { Lock, AlertTriangle, Key, Trash2, CheckCircle, XCircle, Loader2, Plus, HelpCircle, Calendar } from 'lucide-react';
 import { AdminLayout } from '../../components/AdminLayout';
 import { Pagination } from '../../components/Pagination';
@@ -19,7 +20,11 @@ interface LockerIssue {
   priority: 'high' | 'medium' | 'low';
 }
 
-const emptyForm = { lockerNumber: '', issueType: 'broken' as const, description: '' };
+type LockerFormData = {
+  lockerNumber: string;
+  issueType: 'broken' | 'dirty' | 'lost-key';
+  description: string;
+};
 
 export function LockerManagement() {
   const headers = getAuthHeaders();
@@ -27,9 +32,7 @@ export function LockerManagement() {
   const [issues, setIssues] = useState<LockerIssue[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
-  const [formData, setFormData] = useState(emptyForm);
   const [submitting, setSubmitting] = useState(false);
-  const [errors, setErrors] = useState<Record<string, string>>({});
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
@@ -65,8 +68,20 @@ export function LockerManagement() {
     validateDates(fromDate, value);
   };
 
-  const fetchIssues = async (p = page) => {
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors },
+  } = useForm<LockerFormData>({
+    defaultValues: { lockerNumber: '', issueType: 'broken', description: '' },
+  });
+
+  const fetchIdRef = useRef(0);
+
+  const fetchIssues = async (p: number) => {
     if (dateError) return;
+    const id = ++fetchIdRef.current;
     setLoading(true);
     try {
       const base = selectedClub && selectedClub !== 'all'
@@ -76,6 +91,7 @@ export function LockerManagement() {
       const res = await fetch(url, { headers });
       if (!res.ok) throw new Error('Failed');
       const data = await res.json();
+      if (id !== fetchIdRef.current) return;
       const allIssues = data.data || [];
       setIssues(allIssues);
       setTotalPages(data.totalPages || 1);
@@ -85,13 +101,18 @@ export function LockerManagement() {
         resolved: allIssues.filter((i: LockerIssue) => i.status === 'resolved').length,
       });
     } catch {
-      toast.error('Không thể tải danh sách vấn đề');
+      if (id === fetchIdRef.current) toast.error('Không thể tải danh sách vấn đề');
     } finally {
-      setLoading(false);
+      if (id === fetchIdRef.current) setLoading(false);
     }
   };
 
-  useEffect(() => { setPage(1); fetchIssues(1); }, [selectedClub, fromDate, toDate]);
+  useEffect(() => {
+    if (dateError) return;
+    setPage(1);
+    fetchIssues(1);
+    return () => { fetchIdRef.current++; };
+  }, [selectedClub, fromDate, toDate]);
 
   const getIssueTypeIcon = (type: LockerIssue['issueType']) => {
     switch (type) {
@@ -154,30 +175,10 @@ export function LockerManagement() {
     }
   };
 
-  const handleBlur = (field: string) => {
-    let error = '';
-    if (field === 'lockerNumber' && !formData.lockerNumber.trim()) error = 'Vui lòng nhập số tủ';
-    else if (field === 'issueType' && !formData.issueType) error = 'Vui lòng chọn loại vấn đề';
-    else if (field === 'description' && !formData.description.trim()) error = 'Vui lòng nhập mô tả';
-    setErrors(prev => ({ ...prev, [field]: error }));
-  };
-
-  const validateAll = () => {
-    const newErrors: Record<string, string> = {};
-    if (!formData.lockerNumber.trim()) newErrors.lockerNumber = 'Vui lòng nhập số tủ';
-    if (!formData.issueType) newErrors.issueType = 'Vui lòng chọn loại vấn đề';
-    if (!formData.description.trim()) newErrors.description = 'Vui lòng nhập mô tả';
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
-  const handleReport = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!validateAll()) return;
-
+  const onSubmit = async (data: LockerFormData) => {
     setSubmitting(true);
     try {
-      const body: any = { ...formData };
+      const body: any = { ...data };
       if (selectedClub && selectedClub !== 'all') body.locationId = selectedClub;
       const res = await fetch('/api/lockers', {
         method: 'POST',
@@ -187,7 +188,7 @@ export function LockerManagement() {
       if (!res.ok) throw new Error('Failed');
       toast.success('Báo cáo vấn đề thành công!');
       setShowModal(false);
-      setFormData(emptyForm);
+      reset();
       setPage(1); fetchIssues(1);
     } catch {
       toast.error('Gửi báo cáo thất bại');
@@ -244,6 +245,10 @@ export function LockerManagement() {
               {selectedClub === 'all' ? 'Tất cả cơ sở' : clubs.find(c => c._id === selectedClub)?.address || 'Đã chọn'}
             </p>
           </div>
+          <button onClick={() => { reset(); setShowModal(true); }}
+            className="flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-semibold">
+            <Plus className="w-5 h-5" /> Báo cáo vấn đề mới
+          </button>
         </div>
 
         <div className="grid md:grid-cols-3 gap-4">
@@ -371,36 +376,34 @@ export function LockerManagement() {
             <div className="p-6 border-b border-slate-200">
               <h3 className="text-2xl font-bold text-slate-900">Báo cáo vấn đề tủ đồ</h3>
             </div>
-            <form onSubmit={handleReport}>
+            <form onSubmit={handleSubmit(onSubmit)}>
               <div className="p-6 space-y-4">
                 <div className="grid md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-2">Số tủ <span className="text-red-500">*</span></label>
-                    <input type="text" required value={formData.lockerNumber} onChange={(e) => { setFormData({ ...formData, lockerNumber: e.target.value }); setErrors(prev => ({ ...prev, lockerNumber: '' })); }}
-                      onBlur={() => handleBlur('lockerNumber')}
+                    <input type="text" {...register('lockerNumber', { required: 'Vui lòng nhập số tủ', validate: v => v.trim() !== '' || 'Vui lòng nhập số tủ' })}
                       className={`w-full px-4 py-3 border ${errors.lockerNumber ? 'border-red-400' : 'border-slate-300'} rounded-lg focus:ring-2 focus:ring-indigo-500`} placeholder="Vd: A15" />
-                    {errors.lockerNumber && <p className="text-red-500 text-sm mt-1">{errors.lockerNumber}</p>}
+                    {errors.lockerNumber && <span className="text-red-500 text-sm mt-1">{errors.lockerNumber.message}</span>}
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-2">Loại vấn đề <span className="text-red-500">*</span></label>
-                    <select required value={formData.issueType} onChange={(e) => { setFormData({ ...formData, issueType: e.target.value as any }); setErrors(prev => ({ ...prev, issueType: '' })); }}
-                      onBlur={() => handleBlur('issueType')}
+                    <select {...register('issueType', { required: 'Vui lòng chọn loại vấn đề' })}
                       className={`w-full px-4 py-3 border ${errors.issueType ? 'border-red-400' : 'border-slate-300'} rounded-lg focus:ring-2 focus:ring-indigo-500`}>
                       <option value="broken">Hỏng hóc</option>
                       <option value="dirty">Bẩn</option>
                       <option value="lost-key">Mất chìa khóa</option>
                       <option value="other">Khác</option>
                     </select>
-                    {errors.issueType && <p className="text-red-500 text-sm mt-1">{errors.issueType}</p>}
+                    {errors.issueType && <span className="text-red-500 text-sm mt-1">{errors.issueType.message}</span>}
                   </div>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">Mô tả chi tiết <span className="text-red-500">*</span></label>
-                  <textarea required value={formData.description} onChange={(e) => { setFormData({ ...formData, description: e.target.value }); setErrors(prev => ({ ...prev, description: '' })); }}
-                    onBlur={() => handleBlur('description')}
+                  <textarea {...register('description', { required: 'Vui lòng nhập mô tả', validate: v => v.trim() !== '' || 'Vui lòng nhập mô tả' })}
                     className={`w-full px-4 py-3 border ${errors.description ? 'border-red-400' : 'border-slate-300'} rounded-lg focus:ring-2 focus:ring-indigo-500 resize-none`} rows={4} placeholder="Mô tả chi tiết vấn đề..." />
-                  {errors.description && <p className="text-red-500 text-sm mt-1">{errors.description}</p>}
+                  {errors.description && <span className="text-red-500 text-sm mt-1">{errors.description.message}</span>}
                 </div>
+
               </div>
               <div className="p-6 border-t border-slate-200 flex gap-3">
                 <button type="submit" disabled={submitting}

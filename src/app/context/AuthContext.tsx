@@ -13,6 +13,7 @@ export interface User {
   locationId?: string | null;
   avatar?: string;
   permissions?: string[];
+  jobPermissions?: string[];
   status?: string;
 }
 
@@ -73,6 +74,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       locationId: data.user.locationId || null,
       avatar: data.user.avatar,
       permissions: data.user.permissions || [],
+      jobPermissions: data.user.jobPermissions || [],
       status: data.user.status
     };
 
