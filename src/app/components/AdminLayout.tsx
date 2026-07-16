@@ -31,7 +31,8 @@ import {
   CheckCircle,
   Shield,
   Plus,
-  Building2
+  Building2,
+  MessageCircle
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useClub } from '../context/ClubContext';
@@ -90,6 +91,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
 
   const allMenuItems: MenuItem[] = [
     { name: 'Dashboard', href: '/admin/dashboard', icon: LayoutDashboard, feature: 'statistics' },
+    { name: 'Tin nhắn', href: '/admin/messages', icon: MessageCircle },
     {
       name: 'Quản lý khách hàng', icon: Users, feature: 'customers',
       submenu: [

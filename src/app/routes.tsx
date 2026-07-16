@@ -66,6 +66,7 @@ import { LockerManagement } from './pages/admin/LockerManagement';
 import { ScheduleConfirmations } from './pages/admin/ScheduleConfirmations';
 import { Community } from './pages/dashboard/Community';
 import { Messages } from './pages/dashboard/Messages';
+import { AdminMessages } from './pages/admin/AdminMessages';
 import { Tasks } from './pages/admin/Tasks';
 
 const routeFeatures: Record<string, string> = {
@@ -218,6 +219,10 @@ export const router = createBrowserRouter([
   {
     path: '/admin/dashboard',
     element: <ProtectedRoute role="staff"><AdminDashboard /></ProtectedRoute>
+  },
+  {
+    path: '/admin/messages',
+    element: <ProtectedRoute role="staff"><AdminMessages /></ProtectedRoute>
   },
   {
     path: '/admin/customers',
