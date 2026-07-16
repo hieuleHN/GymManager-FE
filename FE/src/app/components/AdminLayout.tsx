@@ -33,10 +33,13 @@ import {
   Plus,
   Building2,
   MessageCircle,
-  Flag
+  Flag,
+  Heart,
+  MessageSquare
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useClub } from '../context/ClubContext';
+import { useNotifications } from '../hooks/useNotifications';
 import { AddClubModal } from './AddClubModal';
 import logo from '../../imports/ChatGPT_Image_May_14__2026__09_48_52_PM.png';
 import { ImageWithFallback } from './figma/ImageWithFallback';
@@ -62,10 +65,34 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   const [expandedMenus, setExpandedMenus] = useState<string[]>(['customers']);
   const [clubDropdownOpen, setClubDropdownOpen] = useState(false);
   const clubDropdownRef = useRef<HTMLDivElement>(null);
+  const notifDropdownRef = useRef<HTMLDivElement>(null);
   const [isLoadingClubs, setIsLoadingClubs] = useState(false);
   const [showAddClubModal, setShowAddClubModal] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
 
   const isAdminUser = user?.isAdmin === true;
+  const recipientRole = user?.isStaff ? 'staff' : 'member';
+  const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications(user?.id, recipientRole);
+
+  const formatNotifTime = (dateStr: string) => {
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diff = Math.floor((now.getTime() - date.getTime()) / 1000);
+    if (diff < 60) return 'Vừa xong';
+    if (diff < 3600) return `${Math.floor(diff / 60)} phút trước`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)} giờ trước`;
+    if (diff < 604800) return `${Math.floor(diff / 86400)} ngày trước`;
+    return date.toLocaleDateString('vi-VN');
+  };
+
+  const getNotifIcon = (type: string) => {
+    switch (type) {
+      case 'like': return <Heart className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />;
+      case 'comment': return <MessageSquare className="w-5 h-5 text-indigo-500 shrink-0 mt-0.5" />;
+      case 'report': return <Flag className="w-5 h-5 text-orange-500 shrink-0 mt-0.5" />;
+      default: return <Bell className="w-5 h-5 text-slate-500 shrink-0 mt-0.5" />;
+    }
+  };
 
   useEffect(() => {
     if (!isAdminUser) return;
@@ -84,6 +111,9 @@ export function AdminLayout({ children }: AdminLayoutProps) {
     const handleClickOutside = (e: MouseEvent) => {
       if (clubDropdownRef.current && !clubDropdownRef.current.contains(e.target as Node)) {
         setClubDropdownOpen(false);
+      }
+      if (notifDropdownRef.current && !notifDropdownRef.current.contains(e.target as Node)) {
+        setShowNotifications(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -332,6 +362,54 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                   )}
                 </div>
               )}
+              <div className="relative" ref={notifDropdownRef}>
+                <button onClick={() => setShowNotifications(!showNotifications)}
+                  className="p-2 rounded-lg hover:bg-slate-100 transition-colors relative">
+                  <Bell className="w-5 h-5 text-slate-600" />
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 flex items-center justify-center min-w-[18px] h-[18px] rounded-full bg-red-500 text-white text-[10px] font-bold ring-2 ring-white px-1">
+                      {unreadCount > 99 ? '99+' : unreadCount}
+                    </span>
+                  )}
+                </button>
+                {showNotifications && (
+                  <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-xl border border-slate-200 z-50">
+                    <div className="flex items-center justify-between p-4 border-b border-slate-200">
+                      <h3 className="font-bold text-slate-900">Thông báo</h3>
+                      {unreadCount > 0 && (
+                        <button onClick={markAllAsRead} className="text-xs text-indigo-600 hover:text-indigo-700 font-medium">
+                          Đánh dấu đã đọc
+                        </button>
+                      )}
+                    </div>
+                    <div className="max-h-96 overflow-y-auto">
+                      {notifications.length === 0 && (
+                        <div className="p-4 text-center text-sm text-slate-500">Không có thông báo</div>
+                      )}
+                      {notifications.map((notif) => (
+                        <button
+                          key={notif._id}
+                          onClick={() => { if (!notif.read) markAsRead(notif._id); }}
+                          className={`w-full text-left block p-4 hover:bg-slate-50 border-b border-slate-100 transition-colors ${!notif.read ? 'bg-indigo-50/40' : ''}`}
+                        >
+                          <div className="flex gap-3">
+                            {getNotifIcon(notif.type)}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between gap-2">
+                                <h4 className={`text-sm ${!notif.read ? 'font-bold text-slate-900' : 'font-medium text-slate-800'}`}>
+                                  {notif.title}
+                                </h4>
+                                <span className="text-xs text-slate-400 shrink-0">{formatNotifTime(notif.createdAt)}</span>
+                              </div>
+                              <p className="text-sm text-slate-600 mt-0.5 line-clamp-2">{notif.message}</p>
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
               <Link to="/" className="flex items-center gap-2 text-sm text-slate-600 hover:text-indigo-600 transition-colors">
                 <Home className="w-4 h-4" />
                 Về trang chủ
