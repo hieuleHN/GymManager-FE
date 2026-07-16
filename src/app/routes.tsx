@@ -66,11 +66,17 @@ import { LockerManagement } from './pages/admin/LockerManagement';
 import { ScheduleConfirmations } from './pages/admin/ScheduleConfirmations';
 import { Community } from './pages/dashboard/Community';
 import { Messages } from './pages/dashboard/Messages';
-import { AdminMessages } from './pages/admin/AdminMessages';
 import { Tasks } from './pages/admin/Tasks';
+
+// IMPORT TRANG THỐNG KÊ BIỂU ĐỒ ADMIN
+import { AdminStats } from './pages/dashboard/AdminStats';
+
+// CÁCH NHANH NHẤT: Định nghĩa trực tiếp RouteErrorBoundary giả lập để sửa lỗi import
+const RouteErrorBoundary = ({ children }: { children?: React.ReactNode }) => <>{children}</>;
 
 const routeFeatures: Record<string, string> = {
   '/admin/dashboard': 'statistics',
+  '/admin/admin-stats': 'statistics',
   '/admin/customers': 'customers',
   '/admin/customers/:id/edit': 'customers',
   '/admin/customers/register': 'customers',
@@ -162,6 +168,10 @@ export const router = createBrowserRouter([
       { path: 'clubs/:id', Component: ClubDetail },
       { path: 'disciplines/:id', Component: DisciplineDetail },
       { path: 'auth', Component: Auth },
+      {
+        path: 'dashboard/qr',
+        element: <ProtectedRoute role="member"><MemberQR /></ProtectedRoute>
+      }
     ],
   },
   {
@@ -205,6 +215,10 @@ export const router = createBrowserRouter([
     element: <ProtectedRoute role="member"><Community /></ProtectedRoute>
   },
   {
+    path: '/dashboard/bookings/:bookingId/status',
+    element: <ProtectedRoute role="member"><BookingStatus /></ProtectedRoute>
+  },
+  {
     path: '/dashboard/messages',
     element: <ProtectedRoute role="member"><Messages /></ProtectedRoute>
   },
@@ -221,8 +235,8 @@ export const router = createBrowserRouter([
     element: <ProtectedRoute role="staff"><AdminDashboard /></ProtectedRoute>
   },
   {
-    path: '/admin/messages',
-    element: <ProtectedRoute role="staff"><AdminMessages /></ProtectedRoute>
+    path: '/admin/admin-stats',
+    element: <ProtectedRoute role="staff"><AdminStats /></ProtectedRoute>
   },
   {
     path: '/admin/customers',

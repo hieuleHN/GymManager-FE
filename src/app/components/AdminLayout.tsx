@@ -91,7 +91,8 @@ export function AdminLayout({ children }: AdminLayoutProps) {
 
   const allMenuItems: MenuItem[] = [
     { name: 'Dashboard', href: '/admin/dashboard', icon: LayoutDashboard, feature: 'statistics' },
-    { name: 'Tin nhắn', href: '/admin/messages', icon: MessageCircle },
+    // ĐỒNG BỘ: Thêm menu "Báo cáo thống kê" (Biểu đồ nâng cao) vào ngay dưới Dashboard
+    { name: 'Báo cáo thống kê', href: '/admin/admin-stats', icon: BarChart3, feature: 'statistics' },
     {
       name: 'Quản lý khách hàng', icon: Users, feature: 'customers',
       submenu: [
@@ -155,7 +156,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
         { name: 'Thêm công việc', href: '/admin/jobs/add' }
       ]
     },
-    { name: 'Quản lý thống kê', href: '/admin/statistics', icon: BarChart3, feature: 'statistics' },
+    { name: 'Quản lý thống kê (Cũ)', href: '/admin/statistics', icon: BarChart3, feature: 'statistics' },
     { name: 'Quản lý cơ sở', href: '/admin/clubs', icon: MapPin, feature: 'clubs' },
     { name: 'Quản lý chính sách', href: '/admin/policies', icon: FileText, feature: 'services' },
     { name: 'Giao diện Trang chủ', href: '/admin/homepage', icon: Globe, feature: 'services' },
@@ -164,7 +165,10 @@ export function AdminLayout({ children }: AdminLayoutProps) {
     { name: 'Quản lý chi phí', href: '/admin/expenses', icon: DollarSign, feature: 'statistics' },
     { name: 'Hồ sơ HLV', href: '/admin/trainer-profile', icon: UserCircle, feature: 'training' },
     { name: 'Lịch tập', href: '/admin/training-schedule', icon: Calendar, feature: 'training' },
-    { name: 'Quản lý tủ đồ', href: '/admin/lockers', icon: Lock, feature: 'equipment' },
+    // Admin/quản lý (isAdmin) vào trang duyệt-xử lý đầy đủ; HLV/nhân viên khác chỉ vào trang báo cáo sự cố.
+    user?.isAdmin
+      ? { name: 'Quản lý tủ đồ', href: '/admin/lockers', icon: Lock }
+      : { name: 'Báo cáo sự cố tủ đồ', href: '/dashboard/locker-issues', icon: Lock },
     { name: 'Xác nhận lịch tập', href: '/admin/schedule-confirmations', icon: CheckCircle, feature: 'schedule' }
   ];
 
