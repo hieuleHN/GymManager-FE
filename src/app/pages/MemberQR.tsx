@@ -153,7 +153,7 @@ const MemberQR: React.FC = () => {
     );
 };
 
-// ĐỊNH NGHĨA CSS OBJECTS - TỐI ƯU CHỮ ĐEN & Ô ĐIỂM NHẤN MÀU XÁM NHẸ
+// ĐỊNH NGHĨA CSS OBJECTS - ĐÃ ĐƯỢC TỐI ƯU HÓA PADDING TRÁNH BỊ ĐÈ BỞI MENU NAVBAR
 const styles: { [key: string]: React.CSSProperties } = {
     container: {
         display: 'flex',
@@ -162,7 +162,7 @@ const styles: { [key: string]: React.CSSProperties } = {
         minHeight: '100vh',
         backgroundColor: '#f8fafc', // Màu nền xám/trắng dịu mắt
         fontFamily: '"Segoe UI", Tahoma, Geneva, Verdana, sans-serif',
-        padding: '20px'
+        padding: '120px 20px 60px 20px' // Đẩy phần trên xuống 120px để tránh bị Header che khuất
     },
     card: {
         width: '100%',
