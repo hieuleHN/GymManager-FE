@@ -1,341 +1,409 @@
 import { DashboardLayout } from '../../components/DashboardLayout';
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import {
-  CheckCircle2,
-  XCircle,
-  Calendar,
-  Activity,
-  Award,
-  Clock,
-  User,
-  RotateCcw,
-  TrendingUp,
-  Flame,
-  Dumbbell,
-  RefreshCw
-} from 'lucide-react';
-import { getApiUrl } from '../../context/AuthContext'; // Điều chỉnh import cho đúng cấp thư mục
+import { Clock, User, Dumbbell, Calendar, RefreshCw, AlertCircle } from 'lucide-react';
+import { getApiUrl } from '../../context/AuthContext';
 
-interface WorkoutExercise {
-  name: string;
-  sets: number;
-  reps: string;
-}
-
-interface AttendanceSession {
-  date: string;
-  time: string;
-  status: 'attended' | 'cancelled';
-  packageName: string;
+// Cấu trúc dữ liệu check-in thô nhận về trực tiếp từ API Backend
+interface RawCheckIn {
+  _id?: string;
+  checkInTime: string;   // Có thể là định dạng giờ "17:50:00" hoặc chuỗi ISO date "2026-07-16T17:50:00.000Z"
+  dateStr?: string;       // Định dạng ngày "DD/MM/YYYY" (nếu Backend có trả về)
+  createdAt?: string;    // Thời gian tạo bản ghi trong MongoDB làm phương án dự phòng
+  packageName?: string;
   trainerName?: string;
-  duration: string;
-  caloriesBurned: number;
-  focusZone: string;
-  exercises: WorkoutExercise[];
+  duration?: string;
+  caloriesBurned?: number;
+  focusZone?: string;
+  exercises?: { name: string; sets: number; reps: string }[];
   trainerNotes?: string;
 }
 
+// Cấu trúc một ô ngày hoàn chỉnh trong Ma trận Lịch sử hiển thị ở giao diện
+interface CheckedInDay {
+  dateStr: string;      // Định dạng 'DD/MM/YYYY' để so khớp
+  dayOfWeek: string;    // T2, T3...
+  weekLabel: string;    // Tuần 1, Tuần 2...
+  isPast: boolean;      // Ngày này đã qua hoặc là ngày hôm nay chưa
+  checkInTime?: string; // Giờ quét cửa thực tế lấy từ Database
+  packageName?: string;
+  trainerName?: string;
+  duration?: string;
+  caloriesBurned?: number;
+  focusZone?: string;
+  exercises?: { name: string; sets: number; reps: string }[];
+  trainerNotes?: string;
+}
+
+interface WeekRow {
+  week: string;
+  days: (CheckedInDay | null)[];
+}
+
 export function Progress() {
-  const totalSessions = 30;
-
-  // Quản lý trạng thái giao diện
-  const [filterStatus, setFilterStatus] = useState<'all' | 'attended' | 'cancelled'>('all');
   const [loading, setLoading] = useState<boolean>(false);
-  const [sessions, setSessions] = useState<AttendanceSession[]>([
-    {
-      date: '06/07/2026',
-      time: '14:15:22',
-      status: 'attended',
-      packageName: 'Gói Thể Hình VIP PT 1:1',
-      trainerName: 'Nguyễn Văn Hùng',
-      duration: '60 phút',
-      caloriesBurned: 520,
-      focusZone: 'Cơ Ngực & Tay Sau (Chest & Triceps)',
-      exercises: [
-        { name: 'Barbell Bench Press', sets: 4, reps: '10-12 reps' },
-        { name: 'Incline Dumbbell Fly', sets: 3, reps: '12 reps' },
-        { name: 'Triceps Rope Pushdown', sets: 4, reps: '15 reps' }
-      ],
-      trainerNotes: 'Thể trạng tốt, nâng tạ đúng form. Cần chú ý siết cơ bụng hơn khi đẩy tạ nặng.'
-    },
-    {
-      date: '04/07/2026',
-      time: '18:30:12',
-      status: 'attended',
-      packageName: 'Gói Thể Hình VIP PT 1:1',
-      trainerName: 'Nguyễn Văn Hùng',
-      duration: '60 phút',
-      caloriesBurned: 450,
-      focusZone: 'Cơ Lưng & Tay Trước (Back & Biceps)',
-      exercises: [
-        { name: 'Lat Pulldown', sets: 4, reps: '12 reps' },
-        { name: 'Seated Cable Row', sets: 3, reps: '12 reps' }
-      ],
-      trainerNotes: 'Lực kéo tốt, cơ bắp đáp ứng cường độ cao. Khuyến nghị bổ sung thêm protein sau tập.'
-    },
-    {
-      date: '02/07/2026',
-      time: '--:--:--',
-      status: 'cancelled',
-      packageName: 'Gói Thể Hình VIP PT 1:1',
-      trainerName: 'Nguyễn Văn Hùng',
-      duration: '0 phút',
-      caloriesBurned: 0,
-      focusZone: 'Nghỉ ngơi phục hồi (Rest Day)',
-      exercises: [],
-      trainerNotes: 'Hội viên chủ động hủy lịch quét cửa để chuyển sang ngày khác.'
-    },
-    {
-      date: '30/06/2026',
-      time: '19:00:03',
-      status: 'attended',
-      packageName: 'Gói Thể Hình VIP PT 1:1',
-      trainerName: 'Nguyễn Văn Hùng',
-      duration: '75 phút',
-      caloriesBurned: 580,
-      focusZone: 'Cơ Đùi & Mông (Leg Day)',
-      exercises: [
-        { name: 'Barbell Back Squat', sets: 4, reps: '8-10 reps' }
-      ],
-      trainerNotes: 'Buổi tập chân cường độ cao rất tốt. Khớp gối ổn định.'
-    }
-  ]);
+  const [checkInList, setCheckInList] = useState<RawCheckIn[]>([]);
+  const [trainingHistory, setTrainingHistory] = useState<WeekRow[]>([]);
+  const [selectedSession, setSelectedSession] = useState<CheckedInDay | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string>('');
 
-  const [selectedSession, setSelectedSession] = useState<AttendanceSession | null>(null);
-
-  const fetchAttendanceProgress = async () => {
+  // 1. GỌI API LẤY LỊCH SỬ CHECK-IN THỰC TẾ TỪ DATABASE BACKEND
+  const fetchProgressData = async () => {
     setLoading(true);
+    setErrorMsg('');
     try {
       const authUserData = localStorage.getItem('auth_user');
       let userToken = '';
-      if (authUserData) userToken = JSON.parse(authUserData).token || '';
-
-      if (userToken) {
-        const response = await axios.get(`${getApiUrl()}/api/progress/member-history`, {
-          headers: { Authorization: `Bearer ${userToken}` }
-        });
-        if (response.data && response.data.sessions) {
-          setSessions(response.data.sessions);
-          if (response.data.sessions.length > 0) setSelectedSession(response.data.sessions[0]);
+      if (authUserData) {
+        try {
+          userToken = JSON.parse(authUserData).token || '';
+        } catch (e) {
+          console.error("Lỗi đọc token từ localStorage:", e);
         }
       }
-    } catch (err) {
-      console.log("Chạy Mock Data nội bộ.");
+
+      if (!userToken) {
+        setErrorMsg('Bạn chưa đăng nhập. Vui lòng đăng nhập lại để xem tiến độ!');
+        setLoading(false);
+        return;
+      }
+
+      // ĐỒNG BỘ: Đã đổi sang endpoint /api/checkin/history trùng khớp hoàn toàn với Backend
+      const response = await axios.get(`${getApiUrl()}/api/checkin/history`, {
+        headers: { Authorization: `Bearer ${userToken}` }
+      });
+
+      if (response.data) {
+        // Hỗ trợ cả trường hợp API trả về mảng trực tiếp hoặc bọc trong object { history: [...] }
+        const rawHistory = Array.isArray(response.data) ? response.data : (response.data.history || []);
+
+        // Tiến hành chuẩn hóa dữ liệu ngày tháng từ DB trả về để Frontend dễ dàng so khớp
+        const formattedHistory: RawCheckIn[] = rawHistory.map((item: any) => {
+          // Lấy mốc thời gian thực tế từ thuộc tính của Database (ưu tiên checkInTime hoặc createdAt)
+          const timeValue = item.checkInTime || item.createdAt;
+          if (!timeValue) return item;
+
+          const d = new Date(timeValue);
+
+          // Trích xuất Ngày/Tháng/Năm
+          const dd = String(d.getDate()).padStart(2, '0');
+          const mm = String(d.getMonth() + 1).padStart(2, '0');
+          const yyyy = d.getFullYear();
+          const calculatedDateStr = `${dd}/${mm}/${yyyy}`;
+
+          // Trích xuất Giờ:Phút:Giây quét mã thành công
+          const hours = String(d.getHours()).padStart(2, '0');
+          const minutes = String(d.getMinutes()).padStart(2, '0');
+          const seconds = String(d.getSeconds()).padStart(2, '0');
+          const calculatedTimeStr = `${hours}:${minutes}:${seconds}`;
+
+          return {
+            ...item,
+            dateStr: calculatedDateStr, // Ép chuẩn định dạng DD/MM/YYYY để so khớp tự động
+            checkInTime: calculatedTimeStr, // Giờ quét cửa thực tế
+            packageName: item.packageName || 'Gói Thẻ Hội Viên Tiêu Chuẩn',
+            trainerName: item.trainerName || 'Hệ thống tự động ghi nhận',
+            duration: item.duration || '60 phút',
+            focusZone: item.focusZone || 'Tập luyện độc lập',
+            exercises: item.exercises || [],
+            trainerNotes: item.trainerNotes || 'Ghi nhận quét mã thành công tại cửa ra vào.'
+          };
+        });
+
+        setCheckInList(formattedHistory);
+      }
+    } catch (err: any) {
+      console.error("Lỗi kết nối API:", err);
+      setErrorMsg(err.response?.data?.message || 'Không thể đồng bộ dữ liệu check-in từ máy chủ phòng gym.');
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    fetchAttendanceProgress();
-    if (sessions.length > 0 && !selectedSession) {
-      setSelectedSession(sessions[0]);
+  // 2. TỰ ĐỘNG XÂY DỰNG MA TRẬN 5 TUẦN THEO THỜI GIAN THỰC
+  const buildTrainingMatrix = () => {
+    const today = new Date();
+    const currentYear = today.getFullYear();
+    const currentMonth = today.getMonth(); // 0 - 11
+
+    // Tìm ngày đầu tiên của tháng hiện tại
+    const firstDayOfMonth = new Date(currentYear, currentMonth, 1);
+
+    // Xác định thứ của ngày mùng 1 (0 là Chủ Nhật, chuyển đổi về quy ước: T2=0, T3=1... CN=6)
+    let startDayOfWeek = firstDayOfMonth.getDay();
+    startDayOfWeek = startDayOfWeek === 0 ? 6 : startDayOfWeek - 1;
+
+    // Lùi ngày bắt đầu về đúng Thứ 2 của tuần chứa ngày mùng 1 đầu tháng
+    const startDate = new Date(firstDayOfMonth);
+    startDate.setDate(startDate.getDate() - startDayOfWeek);
+
+    const tempWeeks: WeekRow[] = [];
+    const dayLabels = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
+    let latestSession: CheckedInDay | null = null;
+
+    // Chạy vòng lặp vẽ đủ 5 tuần
+    for (let w = 0; w < 5; w++) {
+      const daysInWeek: (CheckedInDay | null)[] = [];
+
+      for (let d = 0; d < 7; d++) {
+        const currentDate = new Date(startDate);
+        currentDate.setDate(startDate.getDate() + (w * 7 + d));
+
+        // Định dạng chuỗi ngày DD/MM/YYYY để tiến hành đối chiếu
+        const dd = String(currentDate.getDate()).padStart(2, '0');
+        const mm = String(currentDate.getMonth() + 1).padStart(2, '0');
+        const yyyy = currentDate.getFullYear();
+        const dateStr = `${dd}/${mm}/${yyyy}`;
+
+        // Kiểm tra xem ngày này đã qua hoặc là ngày hôm nay chưa (so với thời gian thực tế của máy tính)
+        const cleanToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+        const cleanCurrent = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate());
+        const isPast = cleanCurrent <= cleanToday;
+
+        // KIỂM TRA ĐỒNG BỘ: So khớp ngày hiện tại với danh sách Check-in thực tế lấy từ Database
+        const matchedCheckIn = checkInList.find(c => c.dateStr === dateStr);
+
+        const dayObj: CheckedInDay = {
+          dateStr,
+          dayOfWeek: dayLabels[d],
+          weekLabel: `Tuần ${w + 1}`,
+          isPast,
+          ...(matchedCheckIn || {}) // Tự động hợp nhất dữ liệu chi tiết nếu khớp ngày quét
+        };
+
+        daysInWeek.push(dayObj);
+
+        // Giữ lại bản ghi check-in mới nhất để tự động chọn hiển thị giáo án lên màn hình
+        if (matchedCheckIn) {
+          latestSession = dayObj;
+        }
+      }
+
+      tempWeeks.push({
+        week: `Tuần ${w + 1}`,
+        days: daysInWeek
+      });
     }
+
+    setTrainingHistory(tempWeeks);
+
+    // Chỉ tự động chọn buổi mới nhất một lần duy nhất khi khởi tạo
+    if (latestSession && !selectedSession) {
+      setSelectedSession(latestSession);
+    }
+  };
+
+  useEffect(() => {
+    fetchProgressData();
   }, []);
 
-  const attendedCount = sessions.filter(s => s.status === 'attended').length;
-  const progressPercentage = Math.round((attendedCount / totalSessions) * 100);
-  const totalCalories = sessions.reduce((acc, curr) => acc + curr.caloriesBurned, 0);
+  useEffect(() => {
+    buildTrainingMatrix();
+  }, [checkInList]);
 
-  const filteredSessions = sessions.filter(s => {
-    if (filterStatus === 'all') return true;
-    return s.status === filterStatus;
+  // 3. TỰ ĐỘNG TÍNH TOÁN CÁC CHỈ SỐ THỐNG KÊ REAL-TIME
+  let attendedCount = 0;
+  let missedCount = 0;
+
+  trainingHistory.forEach(week => {
+    week.days.forEach(day => {
+      if (day) {
+        if (day.checkInTime) {
+          attendedCount++; // Tích xanh: Đã quét QR thành công
+        } else if (day.isPast) {
+          missedCount++;   // Tích đỏ: Ngày đã qua mà không có lịch sử check-in trong DB
+        }
+      }
+    });
   });
 
-  const handleToggleStatus = async (dateStr: string) => {
-    setLoading(true);
-    try {
-      const authUserData = localStorage.getItem('auth_user');
-      let userToken = '';
-      if (authUserData) userToken = JSON.parse(authUserData).token || '';
+  const totalDaysElapsed = attendedCount + missedCount;
+  const progressPercentage = totalDaysElapsed > 0 ? Math.round((attendedCount / totalDaysElapsed) * 100) : 0;
 
-      await axios.put(`${getApiUrl()}/api/progress/toggle-session`,
-        { date: dateStr },
-        { headers: { Authorization: `Bearer ${userToken}` } }
-      );
-    } catch (e) {
-      console.log("Đang cập nhật State Frontend.");
-    }
+  const stats = [
+    { label: 'Buổi đã tập', value: attendedCount.toString(), color: 'text-green-600' },
+    { label: 'Buổi bỏ lỡ', value: missedCount.toString(), color: 'text-red-600' },
+    { label: 'Tỷ lệ hoàn thành', value: `${progressPercentage}%`, color: 'text-blue-600' }
+  ];
 
-    setSessions(prev => prev.map(s => {
-      if (s.date === dateStr) {
-        const isAttended = s.status === 'attended';
-        const updated: AttendanceSession = {
-          ...s,
-          status: isAttended ? 'cancelled' : 'attended',
-          time: isAttended ? '--:--:--' : new Date().toLocaleTimeString('vi-VN'),
-          caloriesBurned: isAttended ? 0 : 500,
-          focusZone: isAttended ? 'Nghỉ ngơi (Hủy lịch tập)' : 'Cơ bụng & Cardio nhẹ',
-          exercises: isAttended ? [] : [{ name: 'Cardio Machine', sets: 1, reps: '30 phút' }]
-        };
-        if (selectedSession && selectedSession.date === dateStr) setSelectedSession(updated);
-        return updated;
-      }
-      return s;
-    }));
-    setLoading(false);
-  };
+  const weeks = ['Tuần 1', 'Tuần 2', 'Tuần 3', 'Tuần 4', 'Tuần 5'];
 
   return (
     <DashboardLayout>
-      <div className="max-w-7xl mx-auto space-y-6 font-sans antialiased text-slate-900">
-
-        {/* Header tiêu đề chữ đen */}
-        <div className="flex justify-between items-start">
+      <div className="max-w-7xl mx-auto space-y-6">
+        {/* Tiêu đề & Nút làm mới */}
+        <div className="flex justify-between items-center">
           <div>
-            <h1 className="text-2xl font-black text-slate-900 mb-1 flex items-center gap-2">
-              <Activity className="w-7 h-7 text-indigo-600" />
-              Theo dõi tiến độ tập luyện
-            </h1>
-            <p className="text-xs text-slate-600 font-bold">
-              Đồng bộ và xác nhận ngày tập dựa trên lịch sử check-in QR Code tại cửa ra vào
-            </p>
+            <h1 className="text-3xl font-bold text-slate-900 mb-2">Theo dõi tiến độ</h1>
+            <p className="text-slate-600">Hệ thống tự động đồng bộ thông tin chi tiết dựa trên số lần quét QR Code check-in tại cửa</p>
           </div>
           <button
-            onClick={fetchAttendanceProgress}
-            className="p-2 border border-slate-300 rounded-xl bg-white hover:bg-slate-100 text-slate-900 shadow-sm transition-all"
+            onClick={fetchProgressData}
+            className="p-2 border border-slate-200 bg-white hover:bg-slate-50 rounded-xl shadow-sm transition-all"
+            title="Nhấn để đồng bộ dữ liệu mới nhất"
           >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-4 h-4 text-slate-600 ${loading ? 'animate-spin' : ''}`} />
           </button>
         </div>
 
-        {/* Hộp chỉ số màu xám điểm nhấn, chữ đen đậm tương phản cao */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-          <div className="bg-slate-100/90 border border-slate-200/80 rounded-2xl p-5 flex flex-col justify-between shadow-sm">
-            <div className="space-y-1">
-              <span className="text-xs font-black text-slate-950 uppercase tracking-wider flex items-center gap-1.5">
-                <TrendingUp className="w-4 h-4 text-indigo-600" /> Tỷ lệ hoàn thành
-              </span>
-              <div className="text-3xl font-black text-slate-900 pt-1.5">
-                {attendedCount} <span className="text-lg text-slate-400 font-bold">/ {totalSessions} buổi</span>
-              </div>
-            </div>
-            <div className="mt-3 w-full bg-white h-2 rounded-full overflow-hidden border border-slate-200">
-              <div className="bg-indigo-600 h-full rounded-full transition-all duration-300" style={{ width: `${progressPercentage}%` }} />
-            </div>
-            <span className="text-[11px] text-slate-950 font-black mt-2">Đã hoàn thành {progressPercentage}% lộ trình</span>
+        {/* Thông báo lỗi nếu có */}
+        {errorMsg && (
+          <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-xl text-sm flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span>{errorMsg} (Hệ thống đang hiển thị lịch trình dựa trên thời gian thực tế)</span>
           </div>
+        )}
 
-          <div className="bg-slate-100/90 border border-slate-200/80 rounded-2xl p-5 flex items-center gap-4 shadow-sm">
-            <div className="w-11 h-11 bg-white border border-slate-200 rounded-xl flex items-center justify-center shrink-0">
-              <Flame className="w-5 h-5 text-amber-600" />
+        {/* Thống kê động */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {stats.map((stat, idx) => (
+            <div key={idx} className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+              <p className="text-sm text-slate-600 mb-2">{stat.label}</p>
+              <p className={`text-4xl font-bold ${stat.color}`}>{stat.value}</p>
             </div>
-            <div className="space-y-0.5">
-              <span className="text-xs font-black text-slate-950 uppercase tracking-wider">Năng lượng tiêu hao</span>
-              <div className="text-2xl font-black text-slate-900">{totalCalories} <span className="text-sm text-slate-400 font-bold">kcal</span></div>
-              <p className="text-[11px] text-slate-950 font-bold">Tính toán dựa trên số buổi điểm danh thực tế</p>
-            </div>
-          </div>
+          ))}
+        </div>
 
-          <div className="bg-slate-100/90 border border-slate-200/80 rounded-2xl p-5 flex items-center gap-4 shadow-sm">
-            <div className="w-11 h-11 bg-white border border-slate-200 rounded-xl flex items-center justify-center shrink-0">
-              <Award className="w-5 h-5 text-emerald-600" />
+        {/* Ma trận Lịch sử tập luyện thực tế */}
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+          <h3 className="font-bold text-slate-900 mb-6 flex items-center gap-2">
+            <Calendar className="w-5 h-5 text-indigo-600" /> Lịch sử tập luyện thực tế
+          </h3>
+
+          <div className="space-y-3">
+            {/* Header Thứ */}
+            <div className="grid grid-cols-8 gap-2 text-center text-sm font-semibold text-slate-600 mb-2">
+              <div></div>
+              {['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'].map((day, idx) => <div key={idx}>{day}</div>)}
             </div>
-            <div className="space-y-0.5">
-              <span className="text-xs font-black text-slate-950 uppercase tracking-wider">Huy hiệu đạt được</span>
-              <div className="text-base font-black text-slate-900">Chiến binh kỷ luật</div>
-              <p className="text-[11px] text-emerald-700 font-extrabold">Đi tập đúng lịch trình tuần này</p>
+
+            {/* Các hàng tuần */}
+            {weeks.map((weekLabel, idx) => {
+              const weekDays = trainingHistory.find(w => w.week === weekLabel)?.days || Array(7).fill(null);
+
+              return (
+                <div key={idx} className="grid grid-cols-8 gap-2">
+                  <div className="text-sm text-slate-600 font-medium flex items-center">{weekLabel}</div>
+                  {weekDays.map((day, dayIdx) => {
+                    if (!day) return <div key={dayIdx} className="w-8 h-8 rounded-full border-2 border-slate-200 bg-slate-50"></div>;
+
+                    const hasCheckIn = !!day.checkInTime;
+                    const isPastDay = day.isPast;
+
+                    return (
+                      <div key={dayIdx} className="flex items-center justify-center">
+                        {hasCheckIn ? (
+                          /* 🟢 ĐÃ CHECK-IN THÀNH CÔNG: Tích xanh lá */
+                          <button
+                            onClick={() => setSelectedSession(day)}
+                            className={`w-8 h-8 rounded-full bg-green-500 flex items-center justify-center hover:scale-105 transition-transform ${selectedSession?.dateStr === day.dateStr ? 'ring-2 ring-offset-2 ring-indigo-600' : ''
+                              }`}
+                            title={`Click xem dữ liệu ngày check-in: ${day.dateStr}`}
+                          >
+                            <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                            </svg>
+                          </button>
+                        ) : isPastDay ? (
+                          /* 🔴 BỎ LỠ: Tích đỏ */
+                          <div
+                            className="w-8 h-8 rounded-full bg-red-500 flex items-center justify-center cursor-not-allowed opacity-80"
+                            title={`Ngày ${day.dateStr} vắng mặt, không ghi nhận dữ liệu check-in.`}
+                          >
+                            <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </div>
+                        ) : (
+                          /* ⚪ SẮP TỚI: Ngày trong tương lai chưa đến */
+                          <div
+                            className="w-8 h-8 rounded-full border-2 border-slate-200 bg-slate-50"
+                            title={`Ngày ${day.dateStr} (Chưa tới)`}
+                          ></div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
+
+            {/* Chú thích */}
+            <div className="flex gap-6 text-sm pt-4 border-t border-slate-200">
+              <div className="flex items-center gap-2"><div className="w-4 h-4 rounded-full bg-green-500"></div><span className="text-slate-600">Đã tập (Click xem dữ liệu)</span></div>
+              <div className="flex items-center gap-2"><div className="w-4 h-4 rounded-full bg-red-500"></div><span className="text-slate-600">Bỏ lỡ (Không có dữ liệu)</span></div>
+              <div className="flex items-center gap-2"><div className="w-4 h-4 rounded-full border-2 border-slate-300 bg-slate-50"></div><span className="text-slate-600">Sắp tới</span></div>
             </div>
           </div>
         </div>
 
-        {/* Hai cột chức năng chính */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+        {/* Box hiển thị chi tiết giáo án huấn luyện */}
+        {selectedSession && selectedSession.checkInTime ? (
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 space-y-4 animate-[fadeIn_0.15s_ease-out]">
+            <h3 className="font-bold text-slate-900 border-b border-slate-100 pb-2 flex items-center gap-2">
+              <Dumbbell className="w-5 h-5 text-indigo-600" /> Thông tin dữ liệu buổi check-in ngày {selectedSession.dateStr}
+            </h3>
 
-          {/* Cột trái: Nhật ký Check-in và Tabs lọc */}
-          <div className="lg:col-span-7 bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex flex-col w-full">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-100 pb-4 mb-4 gap-3">
-              <h3 className="text-sm font-black text-slate-950 uppercase tracking-wider flex items-center gap-1.5">
-                <Calendar className="w-4 h-4 text-indigo-600" /> Nhật ký điểm danh hội viên
-              </h3>
-              <div className="bg-slate-100 p-1 rounded-xl border border-slate-200 flex gap-1 items-center text-xs font-bold text-slate-950">
-                <button onClick={() => setFilterStatus('all')} className={`px-3 py-1.5 rounded-lg transition-all ${filterStatus === 'all' ? 'bg-white shadow-sm text-indigo-600 font-extrabold' : 'hover:bg-slate-200/60'}`}>Tất cả</button>
-                <button onClick={() => setFilterStatus('attended')} className={`px-3 py-1.5 rounded-lg transition-all ${filterStatus === 'attended' ? 'bg-white shadow-sm text-emerald-700 font-extrabold' : 'hover:bg-slate-200/60'}`}>Đã tập</button>
-                <button onClick={() => setFilterStatus('cancelled')} className={`px-3 py-1.5 rounded-lg transition-all ${filterStatus === 'cancelled' ? 'bg-white shadow-sm text-red-700 font-extrabold' : 'hover:bg-slate-200/60'}`}>Đã hủy</button>
-              </div>
-            </div>
-
-            <div className="overflow-y-auto pr-1 space-y-3 max-h-[440px] flex-1">
-              {filteredSessions.map((session) => (
-                <div
-                  key={session.date}
-                  onClick={() => setSelectedSession(session)}
-                  className={`p-4 rounded-xl border transition-all cursor-pointer flex items-center justify-between text-xs shadow-sm ${selectedSession?.date === session.date ? 'border-indigo-600 bg-indigo-50/20' : 'border-slate-200 bg-slate-50/60 hover:bg-slate-100/50'
-                    }`}
-                >
-                  <div className="flex items-center gap-4">
-                    {session.status === 'attended' ? <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" /> : <XCircle className="w-5 h-5 text-red-500 shrink-0" />}
-                    <div className="space-y-0.5">
-                      <div className="font-black text-slate-900 text-sm">{session.date}</div>
-                      <div className="font-bold text-slate-500 flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" /> {session.status === 'attended' ? `Check-in hợp lệ: ${session.time}` : 'Vắng mặt / Chủ động hủy lịch'}</div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3 shrink-0 ml-4">
-                    <span className={`px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wide border ${session.status === 'attended' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200'}`}>{session.status === 'attended' ? 'Đã tập' : 'Đã hủy'}</span>
-                    <button onClick={(e) => { e.stopPropagation(); handleToggleStatus(session.date); }} className="p-1.5 border border-slate-300 rounded-lg bg-white hover:bg-slate-50 text-slate-950 shadow-sm transition-colors"><RotateCcw className="w-3.5 h-3.5" /></button>
-                  </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Cột thông tin trái */}
+              <div className="space-y-3 text-sm font-semibold text-slate-900">
+                <div className="flex justify-between border-b pb-2 border-slate-100">
+                  <span className="text-slate-500 font-normal">Mốc giờ quét QR Code cửa:</span>
+                  <span className="font-mono text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">
+                    Check-in thành công: {selectedSession.checkInTime}
+                  </span>
                 </div>
-              ))}
-            </div>
-          </div>
+                <div className="flex justify-between border-b pb-2 border-slate-100">
+                  <span className="text-slate-500 font-normal">Gói tập kích hoạt:</span>
+                  <span>{selectedSession.packageName}</span>
+                </div>
+                <div className="flex justify-between border-b pb-2 border-slate-100">
+                  <span className="text-slate-500 font-normal">Huấn luyện viên phụ trách:</span>
+                  <span className="text-indigo-600 flex items-center gap-1">
+                    <User className="w-4 h-4" /> {selectedSession.trainerName}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500 font-normal">Nhóm cơ vận động chính:</span>
+                  <span>{selectedSession.focusZone}</span>
+                </div>
+              </div>
 
-          {/* Cột phải: Chi tiết giáo án và Nhận xét PT */}
-          <div className="lg:col-span-5 flex flex-col w-full">
-            {selectedSession ? (
-              <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4 flex flex-col justify-between h-full">
-                <div className="space-y-4">
-                  <h3 className="text-xs font-black text-slate-950 uppercase tracking-wider flex items-center gap-1.5 border-b border-slate-100 pb-2"><Dumbbell className="w-4 h-4 text-indigo-600" /> Hoạt động ngày {selectedSession.date}</h3>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="bg-slate-100/90 border border-slate-200 p-3 rounded-xl text-center">
-                      <div className="text-[10px] font-black text-slate-500 uppercase">Thời lượng</div>
-                      <div className="text-sm font-black text-slate-900 mt-0.5">{selectedSession.duration}</div>
-                    </div>
-                    <div className="bg-slate-100/90 border border-slate-200 p-3 rounded-xl text-center">
-                      <div className="text-[10px] font-black text-slate-500 uppercase">Năng lượng đốt</div>
-                      <div className="text-sm font-black text-indigo-600 mt-0.5">~{selectedSession.caloriesBurned} kcal</div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2.5 bg-slate-50 border border-slate-200 p-4 rounded-xl text-xs text-slate-900 font-bold">
-                    <div className="flex justify-between border-b border-slate-200/60 pb-2"><span className="text-slate-500 font-normal">Gói đăng ký:</span><span>{selectedSession.packageName}</span></div>
-                    <div className="flex justify-between border-b border-slate-200/60 pb-2"><span className="text-slate-500 font-normal">Huấn luyện viên:</span><span className="text-indigo-600 flex items-center gap-1"><User className="w-3.5 h-3.5" /> {selectedSession.trainerName || 'Tự luyện tập'}</span></div>
-                    <div className="flex justify-between border-b border-slate-200/60 pb-2"><span className="text-slate-500 font-normal">Nhóm cơ chính:</span><span>{selectedSession.focusZone}</span></div>
-                    <div className="flex justify-between pt-0.5"><span className="text-slate-500 font-normal">Giờ quét QR:</span><span className="font-mono">{selectedSession.time}</span></div>
-                  </div>
-
-                  {selectedSession.exercises.length > 0 && (
-                    <div className="space-y-2">
-                      <div className="text-[11px] font-black text-slate-950 uppercase tracking-wide">Giáo án huấn luyện:</div>
-                      <div className="bg-slate-100 border border-slate-200 rounded-xl p-2.5 space-y-1.5 text-xs font-bold text-slate-900">
-                        {selectedSession.exercises.map((ex, i) => (
-                          <div key={i} className="flex justify-between items-center bg-white border border-slate-200 p-2 rounded-lg shadow-sm">
-                            <span>{ex.name}</span>
-                            <span className="text-[10px] font-mono text-purple-700 bg-purple-50 px-2 py-0.5 rounded font-black">{ex.sets} Sets × {ex.reps}</span>
-                          </div>
-                        ))}
+              {/* Cột giáo án bài tập bên phải */}
+              <div className="bg-slate-50 border border-slate-100 p-4 rounded-xl">
+                <p className="text-xs font-black text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1">
+                  <Clock className="w-4 h-4" /> Giáo án tập luyện chi tiết của buổi:
+                </p>
+                {selectedSession.exercises && selectedSession.exercises.length > 0 ? (
+                  <div className="space-y-2">
+                    {selectedSession.exercises.map((ex, i) => (
+                      <div key={i} className="flex justify-between items-center bg-white border border-slate-100 p-2 rounded-lg text-xs font-bold shadow-sm">
+                        <span>{ex.name}</span>
+                        <span className="text-[10px] font-mono text-purple-700 bg-purple-50 px-2 py-0.5 rounded font-black">
+                          {ex.sets} Sets × {ex.reps}
+                        </span>
                       </div>
-                    </div>
-                  )}
-
-                  {selectedSession.trainerNotes && (
-                    <div className="space-y-1.5">
-                      <div className="text-[11px] font-black text-slate-950 uppercase tracking-wide">Đánh giá từ PT:</div>
-                      <p className="bg-amber-50/50 border border-amber-200 text-slate-950 p-3 rounded-xl text-xs font-bold leading-relaxed italic">"{selectedSession.trainerNotes}"</p>
-                    </div>
-                  )}
-                </div>
-
-                <button onClick={() => handleToggleStatus(selectedSession.date)} className={`w-full py-3 rounded-xl font-black text-xs tracking-wide text-white transition-all shadow-sm mt-4 ${selectedSession.status === 'attended' ? 'bg-red-600 hover:bg-red-700' : 'bg-indigo-600 hover:bg-indigo-700'}`}>
-                  {selectedSession.status === 'attended' ? 'Yêu cầu hủy ghi nhận ngày tập' : 'Xác nhận khôi phục ngày tập này'}
-                </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-slate-400 italic text-xs py-2 text-center">Chưa ghi nhận bài tập chi tiết từ HLV cho buổi tập này.</div>
+                )}
               </div>
-            ) : (
-              <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center text-xs text-slate-400 italic flex items-center justify-center h-full">Vui lòng chọn một ngày bên trái để kiểm tra chi tiết.</div>
+            </div>
+
+            {/* Đánh giá từ PT */}
+            {selectedSession.trainerNotes && (
+              <div className="bg-amber-50/50 border border-amber-200 text-slate-900 p-3 rounded-xl text-xs font-bold leading-relaxed italic flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <span>Nhận xét chuyên môn của PT: "{selectedSession.trainerNotes}"</span>
+              </div>
             )}
           </div>
-        </div>
-
+        ) : (
+          <div className="bg-slate-50 border border-slate-100 rounded-2xl p-6 text-center text-sm font-semibold text-slate-400 italic">
+            💡 Vui lòng bấm vào một ô tròn có dấu [ Tích xanh ] ở bảng lịch sử để xem dữ liệu check-in chi tiết và giáo án huấn luyện của ngày đó.
+          </div>
+        )}
       </div>
     </DashboardLayout>
   );
