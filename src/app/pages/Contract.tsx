@@ -124,8 +124,7 @@ export function Contract() {
         locationId: customer?.locationId?._id || customer?.locationId,
         duration_months: durationMonths,
         total_price: totalPrice,
-        signature: signatureData,
-        policies: policies.map(p => p._id)
+        signature: signatureData
       };
 
       const res = await fetch(`${getApiUrl()}/api/user-packages/register`, {

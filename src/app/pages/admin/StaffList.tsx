@@ -1,6 +1,6 @@
 import { AdminLayout } from '../../components/AdminLayout';
 import { Pagination } from '../../components/Pagination';
-import { Search, Edit, Trash2, AlertTriangle } from 'lucide-react';
+import { Search, Edit, Trash2 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { getAuthHeaders, getApiUrl } from '../../context/AuthContext';
 import { useClub } from '../../context/ClubContext';
@@ -26,8 +26,6 @@ export function StaffList() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
-  const [reportCounts, setReportCounts] = useState<Record<string, number>>({});
-  const [loadingReports, setLoadingReports] = useState(true);
 
   const fetchStaff = async (p = page) => {
     try {
@@ -41,29 +39,7 @@ export function StaffList() {
     } catch {}
   };
 
-  useEffect(() => {
-    setPage(1);
-    fetchStaff(1);
-    fetchReportCounts();
-  }, [selectedClub]);
-
-  const fetchReportCounts = async () => {
-    setLoadingReports(true);
-    try {
-      const res = await fetch(`${getApiUrl()}/api/reports?page=1&limit=1000`, {
-        headers: getAuthHeaders()
-      });
-      const data = await res.json();
-      const reports = data?.data || (Array.isArray(data) ? data : []);
-      const counts: Record<string, number> = {};
-      reports.forEach((r: any) => {
-        const targetId = r.targetId?._id || r.targetId;
-        if (targetId) counts[targetId] = (counts[targetId] || 0) + 1;
-      });
-      setReportCounts(counts);
-    } catch {}
-    setLoadingReports(false);
-  };
+  useEffect(() => { setPage(1); fetchStaff(1); }, [selectedClub]);
 
   const filteredStaff = staff.filter(p =>
     p.fullName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -113,7 +89,6 @@ export function StaffList() {
                   <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Số điện thoại</th>
                   <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Giới tính</th>
                   <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Địa chỉ</th>
-                  <th className="px-6 py-4 text-center text-sm font-bold text-slate-900">Báo cáo</th>
                   <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Thao tác</th>
                 </tr>
               </thead>
@@ -128,16 +103,6 @@ export function StaffList() {
                     <td className="px-6 py-4 text-sm text-slate-600">{person.phone}</td>
                     <td className="px-6 py-4 text-sm text-slate-600">{person.gender}</td>
                     <td className="px-6 py-4 text-sm text-slate-600 max-w-xs truncate">{person.address}</td>
-                    <td className="px-6 py-4 text-center">
-                      {reportCounts[person._id] > 0 ? (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-red-100 text-red-700 rounded-full text-xs font-semibold">
-                          <AlertTriangle className="w-3 h-3" />
-                          {reportCounts[person._id]}
-                        </span>
-                      ) : (
-                        <span className="text-xs text-slate-400">{loadingReports ? '-' : '0'}</span>
-                      )}
-                    </td>
                     <td className="px-6 py-4">
                       <div className="flex gap-2">
                         <button className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg" title="Sửa">
@@ -151,7 +116,7 @@ export function StaffList() {
                   </tr>
                 ))}
                 {filteredStaff.length === 0 && (
-                  <tr><td colSpan={10} className="px-6 py-8 text-center text-slate-500">Không tìm thấy nhân viên nào</td></tr>
+                  <tr><td colSpan={9} className="px-6 py-8 text-center text-slate-500">Không tìm thấy nhân viên nào</td></tr>
                 )}
               </tbody>
             </table>
