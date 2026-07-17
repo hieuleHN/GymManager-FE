@@ -421,7 +421,9 @@ export function Payment() {
     setProcessing(true);
     setShowWalletConfirm(false);
     try {
-      const idsToPay = allBookingIds.length > 0 ? allBookingIds : [bookingId];
+      const idsToPay = isBookingPayment
+        ? (allBookingIds.length > 0 ? allBookingIds : [bookingId])
+        : [regId].filter(Boolean);
       const res = await fetch(`${getApiUrl()}/api/wallet/pay`, {
         method: 'POST',
         headers: { ...getAuthHeaders() as any, 'Content-Type': 'application/json' },

@@ -563,7 +563,9 @@ export function BookTrainer() {
               </div>
               <div className="flex justify-between items-center pt-3 border-t border-indigo-200">
                 <span className="text-indigo-800 font-medium">Tổng phí HLV ({selectionCount} buổi):</span>
-                <span className="text-xl font-bold text-indigo-900">{(price * selectionCount).toLocaleString('vi-VN')}đ</span>
+                <span className="text-xl font-bold text-indigo-900">
+                  {(price * selectionCount).toLocaleString('vi-VN')}đ
+                </span>
               </div>
             </div>
           );
@@ -582,8 +584,9 @@ export function BookTrainer() {
             disabled={selectionCount === 0 || checkingConflict}
             startIcon={<CreditCard className="w-5 h-5" />}
             sx={{ flex: 2, height: 56, borderRadius: 3, textTransform: 'none', fontSize: '1rem',
-              fontWeight: 700, bgcolor: '#4f46e5', '&:hover': { bgcolor: '#4338ca' } }}>
-            {checkingConflict ? 'Đang kiểm tra...' : `Thanh toán`}
+              fontWeight: 700, bgcolor: '#4f46e5',
+              '&:hover': { bgcolor: '#4338ca' } }}>
+            {checkingConflict ? 'Đang kiểm tra...' : 'Thanh toán'}
           </Button>
         </div>
       </div>

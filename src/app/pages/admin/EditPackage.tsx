@@ -33,6 +33,8 @@ export function EditPackage() {
 
   const [features, setFeatures] = useState<string[]>(['']);
   const [durations, setDurations] = useState<Array<{ months: string; discount: string }>>([{ months: '', discount: '' }]);
+  const [ptSessionsPerMonth, setPtSessionsPerMonth] = useState('');
+  const [isFullMonth, setIsFullMonth] = useState(false);
   const [contractA, setContractA] = useState('');
   const [contractB, setContractB] = useState('');
   const [contractTerms, setContractTerms] = useState('');
@@ -75,6 +77,8 @@ export function EditPackage() {
                 }))
               : [{ months: '', discount: '' }]
           );
+          setPtSessionsPerMonth(pkg.ptSessionsPerMonth?.toString() || '');
+          setIsFullMonth(pkg.isFullMonth || false);
           setContractA(pkg.contractA || '');
           setContractB(pkg.contractB || '');
           setContractTerms(pkg.contractTerms || '');
@@ -118,6 +122,8 @@ export function EditPackage() {
         locationId: data.locationId,
         unitPrice: Number(data.unitPrice),
         features: features.filter(f => f.trim()),
+        ptSessionsPerMonth: isFullMonth ? 0 : (Number(ptSessionsPerMonth) || 0),
+        isFullMonth,
         durations: durations
           .filter(d => d.months)
           .map(d => ({ months: Number(d.months), discount: Number(d.discount) || 0 })),
@@ -220,6 +226,36 @@ export function EditPackage() {
                 />
                 {errors.unitPrice && <span className="text-red-500 text-sm mt-1">{errors.unitPrice.message}</span>}
               </div>
+            </div>
+
+            <div className="md:col-span-2 space-y-4">
+              <label className="block text-sm font-medium text-slate-700">
+                Huấn luyện viên
+              </label>
+              <div className="flex items-center gap-4">
+                <div className="flex-1">
+                  <input
+                    type="number"
+                    value={ptSessionsPerMonth}
+                    onChange={(e) => setPtSessionsPerMonth(e.target.value)}
+                    disabled={isFullMonth}
+                    className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-slate-100 disabled:text-slate-400"
+                    placeholder="Số buổi tập HLV / tháng"
+                  />
+                </div>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={isFullMonth}
+                    onChange={(e) => setIsFullMonth(e.target.checked)}
+                    className="w-5 h-5 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500"
+                  />
+                  <span className="text-sm font-medium text-slate-700">Full tháng</span>
+                </label>
+              </div>
+              {isFullMonth && (
+                <p className="text-xs text-indigo-600 font-medium">Không giới hạn buổi tập HLV trong tháng</p>
+              )}
             </div>
 
             <div>
