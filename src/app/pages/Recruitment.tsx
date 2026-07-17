@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   UploadCloud,
   CheckCircle,
@@ -15,6 +15,9 @@ export function Recruitment() {
   const [fileName, setFileName] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Thêm state để lưu danh sách công việc gọi từ DB
+  const [jobOptions, setJobOptions] = useState<any[]>([]);
+
   const [formData, setFormData] = useState({
     fullName: "",
     email: "",
@@ -22,6 +25,35 @@ export function Recruitment() {
     position: "",
     description: "",
   });
+
+  // Gọi API lấy danh sách công việc khi load trang
+  useEffect(() => {
+    const fetchJobs = async () => {
+      try {
+        const response = await axios.get("http://localhost:5000/api/jobs");
+
+        // Cố gắng tìm ra cái mảng trong đống response trả về để chống lỗi
+        const rawData = response.data;
+        const jobList = Array.isArray(rawData)
+          ? rawData
+          : rawData.data || rawData.jobs || [];
+
+        // Lọc bỏ chức vụ Admin / Quản trị viên
+        const validJobs = jobList.filter(
+          (job: any) =>
+            job.name &&
+            job.name.toLowerCase() !== "admin" &&
+            job.name.toLowerCase() !== "quản trị viên",
+        );
+
+        setJobOptions(validJobs);
+      } catch (error) {
+        console.error("Lỗi khi kéo dữ liệu công việc:", error);
+      }
+    };
+
+    fetchJobs();
+  }, []);
 
   const handleChange = (
     e: React.ChangeEvent<
@@ -209,16 +241,19 @@ export function Recruitment() {
                     <option value="" disabled>
                       -- Chọn vị trí --
                     </option>
-                    <option value="Huấn luyện viên (PT)">
-                      Huấn luyện viên (PT)
-                    </option>
-                    <option value="Lễ tân">Lễ tân</option>
-                    <option value="Sale / Tư vấn viên">
-                      Sale / Tư vấn viên
-                    </option>
-                    <option value="Quản lý câu lạc bộ">
-                      Quản lý câu lạc bộ
-                    </option>
+
+                    {/* Render động danh sách công việc từ Database */}
+                    {jobOptions.length > 0 ? (
+                      jobOptions.map((job) => (
+                        <option key={job._id || job.name} value={job.name}>
+                          {job.name}
+                        </option>
+                      ))
+                    ) : (
+                      <option value="" disabled>
+                        Đang tải dữ liệu...
+                      </option>
+                    )}
                   </select>
                 </div>
               </div>
