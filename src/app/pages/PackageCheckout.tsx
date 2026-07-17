@@ -16,6 +16,8 @@ interface PackageItem {
   unitPrice: number;
   features: string[];
   durations: { months: number; discount: number }[];
+  ptSessionsPerMonth?: number;
+  isFullMonth?: boolean;
   contractA?: string;
   contractB?: string;
   contractTerms?: string;
@@ -369,6 +371,22 @@ export function PackageCheckout() {
                       <p className="text-sm text-slate-500">Thời hạn</p>
                       <p className="font-semibold text-slate-900">{months} tháng</p>
                     </div>
+                    {(selectedPkg.ptSessionsPerMonth > 0 || selectedPkg.isFullMonth) && (
+                      <div>
+                        <p className="text-sm text-slate-500">Tập với HLV</p>
+                        <p className="font-semibold text-indigo-600">
+                          {selectedPkg.isFullMonth
+                            ? 'Không giới hạn'
+                            : `${selectedPkg.ptSessionsPerMonth} buổi/tháng`
+                          }
+                          {!selectedPkg.isFullMonth && selectedPkg.ptSessionsPerMonth > 0 && (
+                            <span className="text-xs text-slate-400 ml-1">
+                              (Tổng: {selectedPkg.ptSessionsPerMonth * months} buổi)
+                            </span>
+                          )}
+                        </p>
+                      </div>
+                    )}
                     {customer?.locationId && (
                       <div>
                         <p className="text-sm text-slate-500">Cơ sở</p>

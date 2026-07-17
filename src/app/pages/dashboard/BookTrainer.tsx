@@ -329,15 +329,32 @@ export function BookTrainer() {
           </div>
         </div>
 
-        {/* Summary */}
-        {selectedDate && selectedTime && (
-          <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-6">
-            <h4 className="font-semibold text-indigo-900 mb-2">Thông tin đặt lịch:</h4>
-            <p className="text-indigo-700">
-              Ngày: <span className="font-bold">{selectedDate}/06/2024</span> - Giờ: <span className="font-bold">{selectedTime}</span>
-            </p>
-          </div>
-        )}
+        {selectionCount > 0 && (() => {
+          return (
+            <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-6">
+              <h4 className="font-semibold text-indigo-900 mb-2">Thông tin đặt lịch:</h4>
+              <p className="text-indigo-700 mb-3">
+                Tổng số buổi: <span className="font-bold">{selectionCount}</span>
+              </p>
+              <div className="flex flex-wrap gap-1.5 mb-3">
+                {Object.entries(selections).map(([dateKey, time]) => {
+                  const { day, month, year } = parseDateKey(dateKey);
+                  return (
+                    <span key={dateKey} className="px-2 py-0.5 text-xs font-medium bg-indigo-100 text-indigo-700 rounded-full">
+                      {day}/{month + 1}: {time.start}-{time.end}
+                    </span>
+                  );
+                })}
+              </div>
+              <div className="flex justify-between items-center pt-3 border-t border-indigo-200">
+                <span className="text-indigo-800 font-medium">Tổng phí HLV ({selectionCount} buổi):</span>
+                <span className="text-xl font-bold text-indigo-900">
+                  {(price * selectionCount).toLocaleString('vi-VN')}đ
+                </span>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Actions */}
         <div className="flex gap-4">
@@ -348,23 +365,17 @@ export function BookTrainer() {
           >
             Quay lại
           </Button>
-          <Button
-            variant="contained"
-            onClick={handleConfirm}
-            disabled={!selectedDate || !selectedTime}
-            endIcon={<ArrowRight />}
-            sx={{
-              flex: 2,
-              height: 56,
-              borderRadius: 3,
-              textTransform: 'none',
-              fontSize: '1rem',
-              fontWeight: 700,
-              bgcolor: '#4f46e5',
-              '&:hover': { bgcolor: '#4338ca' }
-            }}
-          >
-            Tiếp tục xác nhận
+          <Button variant="outlined" onClick={() => setShowContact(true)} startIcon={<Phone className="w-5 h-5" />}
+            sx={{ flex: 1, height: 56, borderRadius: 3, textTransform: 'none', fontSize: '1rem', borderColor: '#4f46e5', color: '#4f46e5', '&:hover': { borderColor: '#4338ca', bgcolor: '#eef2ff' } }}>
+            Liên hệ HLV
+          </Button>
+          <Button variant="contained" onClick={handlePayment}
+            disabled={selectionCount === 0 || checkingConflict}
+            startIcon={<CreditCard className="w-5 h-5" />}
+            sx={{ flex: 2, height: 56, borderRadius: 3, textTransform: 'none', fontSize: '1rem',
+              fontWeight: 700, bgcolor: '#4f46e5',
+              '&:hover': { bgcolor: '#4338ca' } }}>
+            {checkingConflict ? 'Đang kiểm tra...' : 'Thanh toán'}
           </Button>
         </div>
       </div>

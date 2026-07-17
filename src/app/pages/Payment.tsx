@@ -98,10 +98,17 @@ export function Payment() {
 
     setProcessing(true);
     try {
-      const res = await fetch(`${getApiUrl()}/api/user-packages/${registration.id}/payment-method`, {
-        method: 'PATCH',
-        headers: getAuthHeaders() as any,
-        body: JSON.stringify({ payment_method: selectedMethod })
+      const idsToPay = isBookingPayment
+        ? (allBookingIds.length > 0 ? allBookingIds : [bookingId])
+        : [regId].filter(Boolean);
+      const res = await fetch(`${getApiUrl()}/api/wallet/pay`, {
+        method: 'POST',
+        headers: { ...getAuthHeaders() as any, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: isBookingPayment ? 'booking' : 'package',
+          ids: idsToPay,
+          totalAmount: totalPrice
+        })
       });
       if (!res.ok) {
         const err = await res.json();

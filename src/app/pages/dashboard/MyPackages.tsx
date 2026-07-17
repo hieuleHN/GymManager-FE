@@ -44,6 +44,8 @@ export function MyPackages() {
   const [registrations, setRegistrations] = useState<Registration[]>([]);
   const [customer, setCustomer] = useState<any>(null);
   const [fetching, setFetching] = useState<boolean>(true);
+  const [ptSessions, setPtSessions] = useState<any[]>([]);
+  const [loadingPtSessions, setLoadingPtSessions] = useState(true);
   const [otherPackages, setOtherPackages] = useState<any[]>([]);
 
   const [renewModalOpen, setRenewModalOpen] = useState<boolean>(false);
@@ -72,11 +74,14 @@ export function MyPackages() {
 
     const loadData = async () => {
       try {
-        const [infoRes, regRes] = await Promise.all([
+        const [infoRes, regRes, ptRes] = await Promise.all([
           fetch(`${getApiUrl()}/api/customers/my-info`, {
             headers: getAuthHeaders(),
           }),
           fetch(`${getApiUrl()}/api/user-packages/my`, {
+            headers: getAuthHeaders(),
+          }),
+          fetch(`${getApiUrl()}/api/user-packages/pt-sessions`, {
             headers: getAuthHeaders(),
           }),
         ]);
@@ -86,6 +91,7 @@ export function MyPackages() {
 
         if (infoData && !infoData.error) setCustomer(infoData);
         if (Array.isArray(regData)) setRegistrations(regData);
+        if (ptRes.ok) { const ptData = await ptRes.json(); setPtSessions(ptData); }
 
         if (infoData?.locationId) {
           const locId =
@@ -254,6 +260,56 @@ export function MyPackages() {
           </div>
         )}
 
+        {notification && (
+          <div
+            className={`rounded-2xl p-6 text-center border ${
+              notification.type === "success"
+                ? "bg-green-50 border-green-200"
+                : "bg-red-50 border-red-200"
+            }`}
+          >
+            {notification.type === "success" ? (
+              <Check className="w-12 h-12 text-green-600 mx-auto mb-2" />
+            ) : (
+              <AlertTriangle className="w-12 h-12 text-red-600 mx-auto mb-2" />
+            )}
+            <h2
+              className={`text-xl font-bold mb-1 ${
+                notification.type === "success" ? "text-green-900" : "text-red-900"
+              }`}
+            >
+              {notification.message}
+            </h2>
+          </div>
+        )}
+
+        {ptSessions.length > 0 && (
+          <div className="bg-gradient-to-r from-indigo-50 to-green-50 border border-indigo-200 rounded-2xl p-5">
+            <h3 className="font-semibold text-indigo-900 mb-3 flex items-center gap-2">
+              <Calendar className="w-5 h-5 text-indigo-600" />
+              Buổi tập Huấn luyện viên trong tháng
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {ptSessions.map((ps, i) => (
+                <div key={i} className="bg-white/80 rounded-xl p-3 border border-indigo-100">
+                  <p className="text-sm font-medium text-slate-800">{ps.packageName}</p>
+                  <p className="text-lg font-bold text-indigo-600">
+                    {ps.isFullMonth ? 'Không giới hạn' : `${ps.currentMonthRemaining} / ${ps.ptSessionsPerMonth} buổi`}
+                  </p>
+                  <div className="w-full bg-slate-200 rounded-full h-1.5 mt-1">
+                    {!ps.isFullMonth && ps.ptSessionsPerMonth > 0 && (
+                      <div
+                        className="bg-indigo-600 h-1.5 rounded-full transition-all"
+                        style={{ width: `${((ps.ptSessionsPerMonth - (ps.ptSessionsPerMonth - ps.currentMonthRemaining)) / ps.ptSessionsPerMonth) * 100}%` }}
+                      />
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div>
           <h1 className="text-3xl font-bold text-slate-900 mb-2">
             Gói tập của tôi
@@ -304,7 +360,7 @@ export function MyPackages() {
                       <div className="flex items-center gap-2 text-sm bg-amber-50 border border-amber-200 px-3 py-2 rounded-lg">
                         <AlertTriangle className="w-4 h-4 text-amber-600" />
                         <span className="text-amber-700">
-                          Đang có yêu cầu Gia hạn chờ duyệt
+                          Chờ thanh toán — vui lòng thanh toán để kích hoạt gói tập
                         </span>
                       </div>
                     )}
@@ -339,35 +395,50 @@ export function MyPackages() {
                     )}
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3 pt-4 border-t border-slate-100">
-                    <Button
-                      fullWidth
-                      variant="outlined"
-                      size="small"
-                      onClick={() => {
-                        const locId =
-                          typeof reg.locationId === "object"
-                            ? reg.locationId._id
-                            : reg.locationId;
-                        navigate(
-                          `/packages?minPrice=${reg.package_id?.unitPrice || 0}&locationId=${locId}&upgradeFrom=${reg._id}`,
-                        );
-                      }}
-                      sx={{ textTransform: "none", borderRadius: 2 }}
-                    >
-                      Nâng cấp
-                    </Button>
-                    <Button
-                      fullWidth
-                      variant="contained"
-                      size="small"
-                      onClick={() => handleOpenRenewModal(reg)}
-                      sx={{
-                        textTransform: "none",
-                        borderRadius: 2,
-                        bgcolor: "#4f46e5",
-                      }}
-                    >
+                  {reg.ptSessionsPerMonth > 0 && (
+                    <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-green-50 border border-green-200 mb-2">
+                      <Calendar className="w-4 h-4 text-green-600" />
+                      <span className="text-sm text-green-800 font-medium">
+                        {reg.isFullMonth
+                          ? 'Không giới hạn buổi tập HLV'
+                          : `${reg.ptSessionsPerMonth} buổi tập HLV / tháng`
+                        }
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-3">
+                    {(reg.payment_status === 'chờ thanh toán' || reg.payment_status === 'pending') ? (
+                      <Button fullWidth variant="contained" size="small"
+                        onClick={() => navigate('/payment', { state: { package: reg.package_id, registration: reg, customer, durationMonths: reg.duration_months, totalPrice: reg.total_price } })}
+                        sx={{ textTransform: 'none', borderRadius: 2, bgcolor: '#d97706', '&:hover': { bgcolor: '#b45309' } }}>
+                        Thanh toán ngay
+                      </Button>
+                    ) : reg.contract_pdf && reg.payment_status === 'paid' ? (
+                      <>
+                        {reg.status === 'chờ xác nhận' && (
+                          <div className="col-span-2 flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800 mb-1">
+                            <Clock className="w-4 h-4 shrink-0" />
+                            <span>Đang chờ quản lý xác nhận</span>
+                          </div>
+                        )}
+                        <a href={`${getApiUrl()}/api/user-packages/${reg._id}/contract-pdf?token=${encodeURIComponent(JSON.parse(localStorage.getItem('auth_user') || '{}').token || '')}`} target="_blank" rel="noopener noreferrer" className="block col-span-2">
+                          <Button fullWidth variant="outlined" size="small"
+                            sx={{ textTransform: 'none', borderRadius: 2, color: '#4f46e5', borderColor: '#4f46e5' }}>
+                            Xem hợp đồng (PDF)
+                          </Button>
+                        </a>
+                      </>
+                    ) : null}
+                    <Link to="/packages">
+                      <Button fullWidth variant="outlined" size="small"
+                        sx={{ textTransform: 'none', borderRadius: 2 }}>
+                        Đăng ký thêm
+                      </Button>
+                    </Link>
+                    <Button fullWidth variant="contained" size="small"
+                      onClick={() => navigate(`/packages/${reg.package_id?._id}`)}
+                      sx={{ textTransform: 'none', borderRadius: 2, bgcolor: '#4f46e5', '&:hover': { bgcolor: '#4338ca' } }}>
                       Gia hạn
                     </Button>
                   </div>
