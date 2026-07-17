@@ -34,7 +34,7 @@ export function PackageCheckout() {
   const [packages, setPackages] = useState<PackageItem[]>([]);
   const [selectedDiscipline, setSelectedDiscipline] = useState<string>('');
   const [selectedPkg, setSelectedPkg] = useState<PackageItem | null>(null);
-  const [selectedDuration, setSelectedDuration] = useState<{ months: number; discount: number } | null>(null);
+  const [billingType, setBillingType] = useState<'monthly' | 'yearly'>('monthly');
   const [customer, setCustomer] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
@@ -83,7 +83,7 @@ export function PackageCheckout() {
     if (found) {
       setSelectedPkg(found);
       setSelectedDiscipline(found.disciplineId?._id || '');
-      if (found.durations?.length > 0) setSelectedDuration(found.durations[0]);
+      if (found.durations?.some(d => d.months >= 12)) setBillingType('yearly');
     }
   }, [packageId, packages]);
 
@@ -107,41 +107,31 @@ export function PackageCheckout() {
     ? []
     : packages.filter(p => p.disciplineId?._id === selectedDiscipline);
 
-  // Auto-select first package + first duration when discipline changes
+  // Auto-select first package when discipline changes
   useEffect(() => {
     if (!selectedPkg || selectedPkg.disciplineId?._id !== selectedDiscipline) {
       if (filteredPackages.length > 0) {
         setSelectedPkg(filteredPackages[0]);
-
-        if (filteredPackages[0].durations?.length > 0) {
-          setSelectedDuration(filteredPackages[0].durations[0]);
+        if (filteredPackages[0].durations?.some(d => d.months >= 12)) {
+          setBillingType('yearly');
+        } else {
+          setBillingType('monthly');
         }
-
       }
     }
   }, [selectedDiscipline]);
-
-  // Auto-select first duration when package changes
-  useEffect(() => {
-    if (selectedPkg?.durations?.length > 0) {
-      const stillExists = selectedPkg.durations.some(
-        d => d.months === selectedDuration?.months && d.discount === selectedDuration?.discount
-      );
-      if (!stillExists) {
-        setSelectedDuration(selectedPkg.durations[0]);
-      }
-    } else if (selectedPkg) {
-      setSelectedDuration({ months: 1, discount: 0 });
-    }
-  }, [selectedPkg]);
 
   const selectedDiscName = selectedDiscipline
     ? disciplines.find(d => d._id === selectedDiscipline)?.name || 'Đã chọn'
     : '';
 
+  const monthlyDuration = selectedPkg?.durations?.find(d => d.months === 1) || selectedPkg?.durations?.[0];
+  const yearlyDuration = selectedPkg?.durations?.find(d => d.months >= 12) || null;
+  const activeDuration = billingType === 'yearly' && yearlyDuration ? yearlyDuration : monthlyDuration;
+
   const unitPrice = selectedPkg?.unitPrice || 0;
-  const months = selectedDuration?.months || 1;
-  const discount = selectedDuration?.discount || 0;
+  const months = activeDuration?.months || 1;
+  const discount = activeDuration?.discount || 0;
   const totalPrice = unitPrice * months * (1 - discount / 100);
 
   const handleProceedToContract = () => {
@@ -152,15 +142,13 @@ export function PackageCheckout() {
       .then(data => {
         if (data?.status === 'approved') {
           navigate(`/contract`, {
-
-              state: {
-                package: selectedPkg,
-                customer,
-                durationMonths: months,
-                totalPrice,
-                selectedDuration
-              }
-
+            state: {
+              package: selectedPkg,
+              customer,
+              durationMonths: months,
+              totalPrice,
+              selectedDuration: activeDuration
+            }
           });
         } else {
           navigate('/dashboard/settings');
@@ -206,6 +194,14 @@ export function PackageCheckout() {
                       exit={{ opacity: 0, y: -8 }}
                       className="absolute z-20 mt-2 w-full bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden"
                     >
+                      <button
+                        onClick={() => { setSelectedDiscipline(''); setOpenDiscipline(false); }}
+                        className={`w-full p-3 text-left hover:bg-slate-50 transition-colors text-sm ${
+                          !selectedDiscipline ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-slate-600'
+                        }`}
+                      >
+                        Tất cả
+                      </button>
                       {uniqueDisciplines.map(d => (
                         <button
                           key={d._id}
@@ -289,7 +285,7 @@ export function PackageCheckout() {
             </div>
 
             {/* 3. Chọn thời gian tập */}
-            {selectedPkg && selectedPkg.durations && selectedPkg.durations.length > 0 && (
+            {selectedPkg && (
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -297,30 +293,50 @@ export function PackageCheckout() {
               >
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
                   <h2 className="text-xl font-bold text-slate-900 mb-4">3. Chọn thời gian tập</h2>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                    {selectedPkg.durations.map((dur, idx) => {
-                      const isSelected = selectedDuration === dur;
-                      const price = unitPrice * dur.months * (1 - (dur.discount || 0) / 100);
-                      return (
-                        <button
-                          key={idx}
-                          onClick={() => setSelectedDuration(dur)}
-                          className={`p-4 rounded-xl border-2 transition-all text-center ${
-                            isSelected
-                              ? 'border-indigo-600 bg-indigo-50 ring-2 ring-indigo-200'
-                              : 'border-slate-200 hover:border-slate-300 bg-white'
-                          }`}
-                        >
-                          <div className="text-lg font-bold text-slate-900 mb-1">{dur.months} tháng</div>
-                          <div className="text-lg font-extrabold text-indigo-600 mb-1 break-all">{formatPrice(price)}</div>
-                          {dur.discount > 0 && (
-                            <div className="text-xs font-semibold text-green-600">-{dur.discount}%</div>
-                          )}
-                        </button>
-                      );
-                    })}
+                  <div className="flex gap-4">
+                    <button
+                      onClick={() => setBillingType('monthly')}
+                      className={`flex-1 p-6 rounded-xl border-2 transition-all text-center ${
+                        billingType === 'monthly'
+                          ? 'border-indigo-600 bg-indigo-50 ring-2 ring-indigo-200'
+                          : 'border-slate-200 hover:border-slate-300 bg-white'
+                      }`}
+                    >
+                      <div className="text-sm font-semibold text-slate-500 mb-2">Theo tháng</div>
+                      <div className="text-3xl font-extrabold text-indigo-600 mb-1">
+                        {monthlyDuration
+                          ? formatPrice(unitPrice * monthlyDuration.months * (1 - (monthlyDuration.discount || 0) / 100))
+                          : formatPrice(unitPrice)}
+                      </div>
+                      <div className="text-xs text-slate-400">
+                        {monthlyDuration?.months || 1} tháng
+                        {monthlyDuration?.discount ? <span className="text-green-600 ml-1 font-semibold">-{monthlyDuration.discount}%</span> : ''}
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => setBillingType('yearly')}
+                      className={`flex-1 p-6 rounded-xl border-2 transition-all text-center ${
+                        billingType === 'yearly'
+                          ? 'border-indigo-600 bg-indigo-50 ring-2 ring-indigo-200'
+                          : 'border-slate-200 hover:border-slate-300 bg-white'
+                      }`}
+                    >
+                      <div className="text-sm font-semibold text-slate-500 mb-2">Theo năm</div>
+                      {yearlyDuration ? (
+                        <>
+                          <div className="text-3xl font-extrabold text-indigo-600 mb-1">
+                            {formatPrice(unitPrice * yearlyDuration.months * (1 - (yearlyDuration.discount || 0) / 100))}
+                          </div>
+                          <div className="text-xs text-slate-400">
+                            {yearlyDuration.months} tháng
+                            {yearlyDuration.discount ? <span className="text-green-600 ml-1 font-semibold">-{yearlyDuration.discount}%</span> : ''}
+                          </div>
+                        </>
+                      ) : (
+                        <div className="text-lg text-slate-400 py-2">Không có</div>
+                      )}
+                    </button>
                   </div>
-
                 </div>
               </motion.div>
             )}
@@ -415,7 +431,7 @@ export function PackageCheckout() {
                       '&:hover': { bgcolor: '#4338ca' }
                     }}
                   >
-                    Xem chính sách
+                    Xem hợp đồng
                     <ArrowRight className="ml-2 w-5 h-5" />
                   </Button>
                 </>

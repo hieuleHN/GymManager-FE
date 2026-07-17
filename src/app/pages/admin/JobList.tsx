@@ -6,20 +6,12 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { getAuthHeaders, getApiUrl } from '../../context/AuthContext';
 
-const ROLE_LABELS: Record<string, string> = {
-  ke_toan: 'Kế toán',
-  huan_luyen_vien: 'Huấn luyện viên',
-  quan_ly: 'Quản lý',
-  le_tan: 'Lễ tân',
-};
-
 interface Job {
   _id: string;
   name: string;
   salary: number;
   description?: string;
   isAdmin?: boolean;
-  permissions?: string[];
 }
 
 const fallbackJobs: Job[] = [];
@@ -110,7 +102,6 @@ export function JobList() {
                     <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Mô tả</th>
                     <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Tiền lương</th>
                     <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Phân quyền</th>
-                    <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Quyền</th>
                     <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Thao tác</th>
                   </tr>
                 </thead>
@@ -127,18 +118,6 @@ export function JobList() {
                         </span>
                       </td>
                       <td className="px-6 py-4">
-                        <div className="flex flex-wrap gap-1">
-                          {(job.permissions?.length ? job.permissions : []).map(p => (
-                            <span key={p} className="inline-flex px-2 py-0.5 rounded-md text-xs font-medium bg-indigo-100 text-indigo-700">
-                              {ROLE_LABELS[p] || p}
-                            </span>
-                          ))}
-                          {(!job.permissions || job.permissions.length === 0) && (
-                            <span className="text-xs text-slate-400">-</span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
                         <div className="flex gap-2">
                           <button onClick={() => navigate(`/admin/jobs/${job._id}/edit`)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Sửa">
                             <Edit className="w-4 h-4" />
@@ -151,7 +130,7 @@ export function JobList() {
                     </tr>
                   ))}
                   {jobs.length === 0 && (
-                    <tr><td colSpan={7} className="px-6 py-12 text-center text-slate-500">Chưa có công việc nào. Hãy thêm công việc đầu tiên!</td></tr>
+                    <tr><td colSpan={6} className="px-6 py-12 text-center text-slate-500">Chưa có công việc nào. Hãy thêm công việc đầu tiên!</td></tr>
                   )}
                 </tbody>
               </table>

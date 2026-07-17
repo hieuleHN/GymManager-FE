@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { useForm } from 'react-hook-form';
 import { DollarSign, Plus, Edit2, Trash2, Wrench, Wifi, Droplet, Zap, Receipt, Calendar, Loader2 } from 'lucide-react';
 import { AdminLayout } from '../../components/AdminLayout';
 import { Pagination } from '../../components/Pagination';
@@ -16,13 +15,7 @@ interface Expense {
   note?: string;
 }
 
-interface ExpenseFormData {
-  category: 'equipment' | 'utilities' | 'tax' | 'other';
-  description: string;
-  amount: string;
-  date: string;
-  note: string;
-}
+const emptyForm = { category: 'equipment' as const, description: '', amount: '', date: '', note: '' };
 
 export function ExpenseManagement() {
   const headers = getAuthHeaders();
@@ -32,14 +25,12 @@ export function ExpenseManagement() {
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<Expense | null>(null);
+  const [formData, setFormData] = useState(emptyForm);
   const [submitting, setSubmitting] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
-
-  const { register, handleSubmit: onFormSubmit, formState: { errors }, reset } = useForm<ExpenseFormData>({
-    defaultValues: { category: 'equipment', description: '', amount: '', date: '', note: '' }
-  });
 
   const fetchExpenses = async (p = page) => {
     setLoading(true);
@@ -105,31 +96,53 @@ export function ExpenseManagement() {
 
   const openAdd = () => {
     setEditing(null);
-    reset();
+    setFormData(emptyForm);
+    setErrors({});
     setShowModal(true);
   };
 
   const openEdit = (exp: Expense) => {
     setEditing(exp);
-    reset({
+    setFormData({
       category: exp.category,
       description: exp.description,
       amount: exp.amount.toString(),
       date: exp.date ? exp.date.split('T')[0] : '',
       note: exp.note || '',
     });
+    setErrors({});
     setShowModal(true);
   };
 
-  const onSubmit = async (data: ExpenseFormData) => {
+  const handleBlur = (field: string) => {
+    let error = '';
+    if (field === 'description' && !formData.description.trim()) error = 'Vui lòng nhập mô tả';
+    else if (field === 'amount' && (!formData.amount || Number(formData.amount) <= 0)) error = 'Số tiền phải lớn hơn 0';
+    else if (field === 'date' && !formData.date) error = 'Vui lòng chọn ngày';
+    setErrors(prev => ({ ...prev, [field]: error }));
+  };
+
+  const validateAll = () => {
+    const newErrors: Record<string, string> = {};
+    if (!formData.description.trim()) newErrors.description = 'Vui lòng nhập mô tả';
+    if (!formData.amount || Number(formData.amount) <= 0) newErrors.amount = 'Số tiền phải lớn hơn 0';
+    if (!formData.date) newErrors.date = 'Vui lòng chọn ngày';
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!validateAll()) return;
+
     setSubmitting(true);
     try {
       const body: any = {
-        category: data.category,
-        description: data.description.trim(),
-        amount: Number(data.amount),
-        date: data.date,
-        note: data.note,
+        category: formData.category,
+        description: formData.description.trim(),
+        amount: Number(formData.amount),
+        date: formData.date,
+        note: formData.note,
       };
       if (!editing && selectedClub && selectedClub !== 'all') body.locationId = selectedClub;
       const url = editing ? `/api/expenses/${editing._id}` : '/api/expenses';
@@ -138,7 +151,6 @@ export function ExpenseManagement() {
       if (!res.ok) throw new Error('Failed');
       toast.success(editing ? 'Cập nhật chi phí thành công!' : 'Thêm chi phí thành công!');
       setShowModal(false);
-      reset();
       setPage(1); fetchExpenses(1);
     } catch {
       toast.error('Thao tác thất bại');
@@ -251,45 +263,46 @@ export function ExpenseManagement() {
             <div className="p-6 border-b border-slate-200">
               <h3 className="text-2xl font-bold text-slate-900">{editing ? 'Sửa chi phí' : 'Thêm chi phí mới'}</h3>
             </div>
-            <form onSubmit={onFormSubmit(onSubmit)}>
+            <form onSubmit={handleSubmit}>
               <div className="p-6 space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">Loại chi phí <span className="text-red-500">*</span></label>
-                  <select {...register('category')}
+                                      <select required value={formData.category} onChange={(e) => { setFormData({ ...formData, category: e.target.value as any }); setErrors(prev => ({ ...prev, category: '' })); }}
+                    onBlur={() => handleBlur('category')}
                     className={`w-full px-4 py-3 border ${errors.category ? 'border-red-400' : 'border-slate-300'} rounded-lg focus:ring-2 focus:ring-indigo-500`}>
                     <option value="equipment">Sửa thiết bị</option>
                     <option value="utilities">Điện, nước, internet</option>
                     <option value="tax">Thuế</option>
                     <option value="other">Khác</option>
                   </select>
-                  {errors.category && <span className="text-red-500 text-sm mt-1">{errors.category.message}</span>}
+                  {errors.category && <p className="text-red-500 text-sm mt-1">{errors.category}</p>}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">Mô tả <span className="text-red-500">*</span></label>
-                  <input type="text" {...register('description', { required: 'Vui lòng nhập mô tả' })}
+                    <input type="text" required value={formData.description} onChange={(e) => { setFormData({ ...formData, description: e.target.value }); setErrors(prev => ({ ...prev, description: '' })); }}
+                    onBlur={() => handleBlur('description')}
                     className={`w-full px-4 py-3 border ${errors.description ? 'border-red-400' : 'border-slate-300'} rounded-lg focus:ring-2 focus:ring-indigo-500`} />
-                  {errors.description && <span className="text-red-500 text-sm mt-1">{errors.description.message}</span>}
-                </div>
-                <div className="grid md:grid-cols-2 gap-4">
+                  {errors.description && <p className="text-red-500 text-sm mt-1">{errors.description}</p>}
+                  </div>
+                  <div className="grid md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-2">Số tiền (VNĐ) <span className="text-red-500">*</span></label>
-                    <input type="number" {...register('amount', {
-                      required: 'Vui lòng nhập số tiền',
-                      validate: (value) => Number(value) > 0 || 'Số tiền phải lớn hơn 0'
-                    })}
+                    <input type="number" required min="1" value={formData.amount} onChange={(e) => { setFormData({ ...formData, amount: e.target.value }); setErrors(prev => ({ ...prev, amount: '' })); }}
+                      onBlur={() => handleBlur('amount')}
                       className={`w-full px-4 py-3 border ${errors.amount ? 'border-red-400' : 'border-slate-300'} rounded-lg focus:ring-2 focus:ring-indigo-500`} />
-                    {errors.amount && <span className="text-red-500 text-sm mt-1">{errors.amount.message}</span>}
+                    {errors.amount && <p className="text-red-500 text-sm mt-1">{errors.amount}</p>}
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-2">Ngày <span className="text-red-500">*</span></label>
-                    <input type="date" {...register('date', { required: 'Vui lòng chọn ngày' })}
+                    <input type="date" required value={formData.date} onChange={(e) => { setFormData({ ...formData, date: e.target.value }); setErrors(prev => ({ ...prev, date: '' })); }}
+                      onBlur={() => handleBlur('date')}
                       className={`w-full px-4 py-3 border ${errors.date ? 'border-red-400' : 'border-slate-300'} rounded-lg focus:ring-2 focus:ring-indigo-500`} />
-                    {errors.date && <span className="text-red-500 text-sm mt-1">{errors.date.message}</span>}
+                    {errors.date && <p className="text-red-500 text-sm mt-1">{errors.date}</p>}
                   </div>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">Ghi chú</label>
-                  <textarea {...register('note')}
+                  <textarea value={formData.note} onChange={(e) => setFormData({ ...formData, note: e.target.value })}
                     className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 resize-none" rows={3} />
                 </div>
               </div>
