@@ -144,3 +144,10 @@ export function getAuthHeaders() {
     'Content-Type': 'application/json'
   };
 }
+
+export function getToken(): string | null {
+  const stored = localStorage.getItem('auth_user');
+  if (!stored) return null;
+  const user = JSON.parse(stored);
+  return user.token || null;
+}

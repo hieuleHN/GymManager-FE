@@ -36,6 +36,7 @@ import { ServiceHistory } from './pages/admin/ServiceHistory';
 import { Attendance } from './pages/admin/Attendance';
 import { AttendanceHistory } from './pages/admin/AttendanceHistory';
 import { StaffList } from './pages/admin/StaffList';
+import { StaffShift } from './pages/admin/StaffShift';
 import { StaffSalary } from './pages/admin/StaffSalary';
 import { StaffSalaryHistory } from './pages/admin/StaffSalaryHistory';
 import { AddStaff } from './pages/admin/AddStaff';
@@ -102,6 +103,8 @@ const routeFeatures: Record<string, string> = {
   '/admin/staff/salary-history': 'salary',
   '/admin/staff/add': 'staff',
   '/admin/staff/permissions': 'permissions',
+  '/admin/staff/:id/edit': 'staff',
+  '/admin/staff/shifts': 'staff',
   '/admin/jobs': 'tasks',
   '/admin/jobs/add': 'tasks',
   '/admin/jobs/:id/edit': 'tasks',
@@ -337,6 +340,14 @@ export const router = createBrowserRouter([
   {
     path: '/admin/staff/permissions',
     element: <ProtectedRoute role="staff"><StaffPermissions /></ProtectedRoute>
+  },
+  {
+    path: '/admin/staff/:id/edit',
+    element: <ProtectedRoute role="staff"><AddStaff /></ProtectedRoute>
+  },
+  {
+    path: '/admin/staff/shifts',
+    element: <ProtectedRoute role="staff"><StaffShift /></ProtectedRoute>
   },
   {
     path: '/admin/jobs',

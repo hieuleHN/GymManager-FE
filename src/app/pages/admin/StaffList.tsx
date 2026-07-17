@@ -2,6 +2,7 @@ import { AdminLayout } from '../../components/AdminLayout';
 import { Pagination } from '../../components/Pagination';
 import { Search, Edit, Trash2 } from 'lucide-react';
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router';
 import { getAuthHeaders, getApiUrl } from '../../context/AuthContext';
 import { useClub } from '../../context/ClubContext';
 
@@ -20,6 +21,7 @@ interface Staff {
 }
 
 export function StaffList() {
+  const navigate = useNavigate();
   const [staff, setStaff] = useState<Staff[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const { selectedClub } = useClub();
@@ -105,7 +107,7 @@ export function StaffList() {
                     <td className="px-6 py-4 text-sm text-slate-600 max-w-xs truncate">{person.address}</td>
                     <td className="px-6 py-4">
                       <div className="flex gap-2">
-                        <button className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg" title="Sửa">
+                        <button onClick={() => navigate(`/admin/staff/${person._id}/edit`)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg" title="Sửa">
                           <Edit className="w-4 h-4" />
                         </button>
                         <button onClick={() => handleDelete(person._id)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg" title="Xóa">

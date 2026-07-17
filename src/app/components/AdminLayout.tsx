@@ -146,7 +146,8 @@ export function AdminLayout({ children }: AdminLayoutProps) {
         { name: 'Chi tiết lương nhân viên', href: '/admin/staff/salary' },
         { name: 'Lịch sử trả lương', href: '/admin/staff/salary-history' },
         { name: 'Thêm nhân viên', href: '/admin/staff/add' },
-        { name: 'Phân quyền', href: '/admin/staff/permissions' }
+        { name: 'Phân quyền', href: '/admin/staff/permissions' },
+        { name: 'Phân công ca làm việc', href: '/admin/staff/shifts' }
       ]
     },
     {
