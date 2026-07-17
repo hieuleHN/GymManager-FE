@@ -3,7 +3,6 @@ import { Button } from "@mui/material";
 import { Plus, Trash2 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
-import { useForm } from "react-hook-form";
 import { useClub } from "../../context/ClubContext";
 import { getAuthHeaders } from "../../context/AuthContext";
 import { toast } from "sonner";
@@ -13,27 +12,20 @@ interface Discipline {
   name: string;
 }
 
-interface PackageFormData {
-  name: string;
-  disciplineId: string;
-  locationId: string;
-  unitPrice: string;
-}
-
 export function AddPackage() {
   const navigate = useNavigate();
   const { selectedClub } = useClub();
   const headers = getAuthHeaders();
 
-  const {
-    register,
-    handleSubmit,
-    setValue,
-    formState: { errors },
-  } = useForm<PackageFormData>();
-
   const [disciplines, setDisciplines] = useState<Discipline[]>([]);
   const [locations, setLocations] = useState<any[]>([]);
+  const [formData, setFormData] = useState({
+    name: "",
+    disciplineId: "",
+    locationId: "",
+    unitPrice: "",
+  });
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
   const [features, setFeatures] = useState<string[]>([""]);
   const [durations, setDurations] = useState<
@@ -51,8 +43,8 @@ export function AddPackage() {
         if (res.ok) {
           const data = await res.json();
           setLocations(data);
-          if (selectedClub && selectedClub !== "all") {
-            setValue("locationId", selectedClub);
+          if (selectedClub && selectedClub !== "all" && !formData.locationId) {
+            setFormData((prev) => ({ ...prev, locationId: selectedClub }));
           }
         }
       } catch {
@@ -78,6 +70,22 @@ export function AddPackage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const handleChange = (field: string, value: any) => {
+    setFormData({ ...formData, [field]: value });
+    if (errors[field]) setErrors((prev) => ({ ...prev, [field]: "" }));
+  };
+
+  const handleBlur = (field: string, value: any) => {
+    let msg = "";
+    if ((field === "name" || field === "unitPrice") && !value)
+      msg = "Vui lòng nhập " + (field === "name" ? "tên gói tập" : "đơn giá");
+    else if (field === "disciplineId" && !value) msg = "Vui lòng chọn bộ môn";
+    else if (field === "locationId" && !value) msg = "Vui lòng chọn cơ sở";
+    else if (field === "unitPrice" && value && Number(value) <= 0)
+      msg = "Đơn giá phải lớn hơn 0";
+    setErrors((prev) => ({ ...prev, [field]: msg }));
+  };
+
   const addFeature = () => setFeatures([...features, ""]);
   const removeFeature = (index: number) =>
     setFeatures(features.filter((_, i) => i !== index));
@@ -101,14 +109,27 @@ export function AddPackage() {
     setDurations(newDurations);
   };
 
-  const onSubmit = async (data: PackageFormData) => {
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const newErrors: Record<string, string> = {};
+    if (!formData.name) newErrors.name = "Vui lòng nhập tên gói tập";
+    if (!formData.disciplineId) newErrors.disciplineId = "Vui lòng chọn bộ môn";
+    if (!formData.locationId)
+      newErrors.locationId = "Vui lòng chọn cơ sở chi nhánh";
+    if (!formData.unitPrice || Number(formData.unitPrice) <= 0)
+      newErrors.unitPrice = !formData.unitPrice
+        ? "Vui lòng nhập đơn giá"
+        : "Đơn giá phải lớn hơn 0";
+    setErrors(newErrors);
+    if (Object.keys(newErrors).length > 0) return;
+
     setSubmitting(true);
     try {
       const body: any = {
-        name: data.name,
-        disciplineId: data.disciplineId,
-        locationId: data.locationId,
-        unitPrice: Number(data.unitPrice),
+        name: formData.name,
+        disciplineId: formData.disciplineId,
+        locationId: formData.locationId,
+        unitPrice: Number(formData.unitPrice),
         features: features.filter((f) => f.trim()),
         durations: durations
           .filter((d) => d.months)
@@ -146,7 +167,7 @@ export function AddPackage() {
           <p className="text-slate-600">Tạo gói tập mới cho hệ thống</p>
         </div>
 
-        <form onSubmit={handleSubmit(onSubmit)}>
+        <form onSubmit={handleSubmit}>
           <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-8 space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="md:col-span-2">
@@ -155,14 +176,15 @@ export function AddPackage() {
                 </label>
                 <input
                   type="text"
-                  {...register("name", {
-                    required: "Vui lòng nhập tên gói tập",
-                  })}
+                  required
+                  value={formData.name}
+                  onChange={(e) => handleChange("name", e.target.value)}
+                  onBlur={() => handleBlur("name", formData.name)}
                   className={`w-full p-3 border ${errors.name ? "border-red-400" : "border-slate-200"} rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500`}
                   placeholder="VD: PREMIUM"
                 />
                 {errors.name && (
-                  <span className="text-red-500 text-sm mt-1">{errors.name.message}</span>
+                  <p className="text-red-500 text-sm mt-1">{errors.name}</p>
                 )}
               </div>
 
@@ -171,9 +193,9 @@ export function AddPackage() {
                   Cơ sở (Chi nhánh) <span className="text-red-500">*</span>
                 </label>
                 <select
-                  {...register("locationId", {
-                    required: "Vui lòng chọn cơ sở chi nhánh",
-                  })}
+                  value={formData.locationId}
+                  onChange={(e) => handleChange("locationId", e.target.value)}
+                  onBlur={() => handleBlur("locationId", formData.locationId)}
                   className={`w-full p-3 border ${errors.locationId ? "border-red-400" : "border-slate-200"} rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500`}
                 >
                   <option value="">Chọn cơ sở</option>
@@ -184,9 +206,9 @@ export function AddPackage() {
                   ))}
                 </select>
                 {errors.locationId && (
-                  <span className="text-red-500 text-sm mt-1">
-                    {errors.locationId.message}
-                  </span>
+                  <p className="text-red-500 text-sm mt-1">
+                    {errors.locationId}
+                  </p>
                 )}
               </div>
 
@@ -195,9 +217,11 @@ export function AddPackage() {
                   Bộ môn <span className="text-red-500">*</span>
                 </label>
                 <select
-                  {...register("disciplineId", {
-                    required: "Vui lòng chọn bộ môn",
-                  })}
+                  value={formData.disciplineId}
+                  onChange={(e) => handleChange("disciplineId", e.target.value)}
+                  onBlur={() =>
+                    handleBlur("disciplineId", formData.disciplineId)
+                  }
                   className={`w-full p-3 border ${errors.disciplineId ? "border-red-400" : "border-slate-200"} rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500`}
                 >
                   <option value="">Chọn bộ môn</option>
@@ -208,9 +232,9 @@ export function AddPackage() {
                   ))}
                 </select>
                 {errors.disciplineId && (
-                  <span className="text-red-500 text-sm mt-1">
-                    {errors.disciplineId.message}
-                  </span>
+                  <p className="text-red-500 text-sm mt-1">
+                    {errors.disciplineId}
+                  </p>
                 )}
               </div>
 
@@ -220,18 +244,17 @@ export function AddPackage() {
                 </label>
                 <input
                   type="number"
-                  {...register("unitPrice", {
-                    required: "Vui lòng nhập đơn giá",
-                    validate: (value) =>
-                      Number(value) > 0 || "Đơn giá phải lớn hơn 0",
-                  })}
+                  required
+                  value={formData.unitPrice}
+                  onChange={(e) => handleChange("unitPrice", e.target.value)}
+                  onBlur={() => handleBlur("unitPrice", formData.unitPrice)}
                   className={`w-full p-3 border ${errors.unitPrice ? "border-red-400" : "border-slate-200"} rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500`}
                   placeholder="VD: 2000000"
                 />
                 {errors.unitPrice && (
-                  <span className="text-red-500 text-sm mt-1">
-                    {errors.unitPrice.message}
-                  </span>
+                  <p className="text-red-500 text-sm mt-1">
+                    {errors.unitPrice}
+                  </p>
                 )}
               </div>
             </div>

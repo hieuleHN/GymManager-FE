@@ -75,7 +75,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
         const clubList = Array.isArray(data) ? data : (data?.data || []);
         setClubs(clubList);
       })
-      .catch(() => { })
+      .catch(() => {})
       .finally(() => setIsLoadingClubs(false));
   }, [isAdminUser]);
 
@@ -91,6 +91,8 @@ export function AdminLayout({ children }: AdminLayoutProps) {
 
   const allMenuItems: MenuItem[] = [
     { name: 'Dashboard', href: '/admin/dashboard', icon: LayoutDashboard, feature: 'statistics' },
+    // ĐỒNG BỘ: Thêm menu "Báo cáo thống kê" (Biểu đồ nâng cao) vào ngay dưới Dashboard
+    { name: 'Báo cáo thống kê', href: '/admin/admin-stats', icon: BarChart3, feature: 'statistics' },
     {
       name: 'Quản lý khách hàng', icon: Users, feature: 'customers',
       submenu: [
@@ -124,7 +126,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
     {
       name: 'Quản lý điểm danh', icon: ClipboardCheck, feature: 'attendance',
       submenu: [
-        { name: 'Điểm danh hội viên', href: '/admin/attendance' },
+        { name: 'Danh sách điểm danh', href: '/admin/attendance' },
         { name: 'Lịch sử điểm danh', href: '/admin/attendance/history' }
       ]
     },
@@ -155,7 +157,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
         { name: 'Thêm công việc', href: '/admin/jobs/add' }
       ]
     },
-    { name: 'Quản lý thống kê', href: '/admin/statistics', icon: BarChart3, feature: 'statistics' },
+    { name: 'Quản lý thống kê (Cũ)', href: '/admin/statistics', icon: BarChart3, feature: 'statistics' },
     { name: 'Quản lý cơ sở', href: '/admin/clubs', icon: MapPin, feature: 'clubs' },
     { name: 'Quản lý chính sách', href: '/admin/policies', icon: FileText, feature: 'services' },
     { name: 'Giao diện Trang chủ', href: '/admin/homepage', icon: Globe, feature: 'services' },
@@ -166,8 +168,8 @@ export function AdminLayout({ children }: AdminLayoutProps) {
     { name: 'Lịch tập', href: '/admin/training-schedule', icon: Calendar, feature: 'training' },
     // Admin/quản lý (isAdmin) vào trang duyệt-xử lý đầy đủ; HLV/nhân viên khác chỉ vào trang báo cáo sự cố.
     user?.isAdmin
-      ? { name: 'Quản lý tủ đồ', href: '/admin/lockers', icon: Lock}
-      : { name: 'Báo cáo sự cố tủ đồ', href: '/dashboard/locker-issues', icon: Lock},
+      ? { name: 'Quản lý tủ đồ', href: '/admin/lockers', icon: Lock }
+      : { name: 'Báo cáo sự cố tủ đồ', href: '/dashboard/locker-issues', icon: Lock },
     { name: 'Xác nhận lịch tập', href: '/admin/schedule-confirmations', icon: CheckCircle, feature: 'schedule' }
   ];
 
@@ -193,8 +195,9 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   return (
     <div className="min-h-screen bg-slate-50 flex">
       <aside
-        className={`fixed inset-y-0 left-0 z-50 bg-white shadow-lg transition-transform duration-300 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
-          } w-72`}
+        className={`fixed inset-y-0 left-0 z-50 bg-white shadow-lg transition-transform duration-300 ${
+          isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
+        } w-72`}
       >
         <div className="flex flex-col h-full">
           <div className="p-6 border-b border-slate-200">
@@ -244,8 +247,9 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                               return (
                                 <li key={subItem.name}>
                                   <Link to={subItem.href}
-                                    className={`block px-4 py-2.5 rounded-lg text-sm transition-all ${isSubActive ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                                      }`}>
+                                    className={`block px-4 py-2.5 rounded-lg text-sm transition-all ${
+                                      isSubActive ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                                    }`}>
                                     {subItem.name}
                                   </Link>
                                 </li>
@@ -256,8 +260,9 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                       </>
                     ) : (
                       <Link to={item.href!}
-                        className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${isActive ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                          }`}>
+                        className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
+                          isActive ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                        }`}>
                         <Icon className="w-5 h-5" />
                         <span className="text-sm">{item.name}</span>
                       </Link>
@@ -302,8 +307,9 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                       <div className="p-2">
                         <button
                           onClick={() => { setSelectedClub('all'); setClubDropdownOpen(false); }}
-                          className={`w-full text-left px-4 py-3 rounded-lg text-sm transition-colors ${selectedClub === 'all' ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-slate-600 hover:bg-slate-50'
-                            }`}
+                          className={`w-full text-left px-4 py-3 rounded-lg text-sm transition-colors ${
+                            selectedClub === 'all' ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-slate-600 hover:bg-slate-50'
+                          }`}
                         >
                           Tất cả câu lạc bộ
                         </button>
@@ -312,8 +318,9 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                           <button
                             key={club._id}
                             onClick={() => { setSelectedClub(club._id); setClubDropdownOpen(false); }}
-                            className={`w-full text-left px-4 py-3 rounded-lg text-sm transition-colors ${selectedClub === club._id ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-slate-600 hover:bg-slate-50'
-                              }`}
+                            className={`w-full text-left px-4 py-3 rounded-lg text-sm transition-colors ${
+                              selectedClub === club._id ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-slate-600 hover:bg-slate-50'
+                            }`}
                           >
                             <div className="font-medium">{club.address}</div>
                             {club.phone && <div className="text-xs text-slate-400 mt-0.5">{club.phone}</div>}

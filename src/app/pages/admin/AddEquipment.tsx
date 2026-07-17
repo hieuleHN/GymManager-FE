@@ -6,56 +6,70 @@ import { useClub } from '../../context/ClubContext';
 import { toast } from 'sonner';
 import { getAuthHeaders } from '../../context/AuthContext';
 import { Loader2 } from 'lucide-react';
-import { useForm } from 'react-hook-form';
-
-interface EquipmentFormData {
-  name: string;
-  description: string;
-  unitPrice: string;
-  quantity: string;
-  supplier: string;
-  phone: string;
-  address: string;
-  purchaser: string;
-  warranty_period: string;
-  total: string;
-}
 
 export function AddEquipment() {
   const navigate = useNavigate();
   const { selectedClub } = useClub();
   const [submitting, setSubmitting] = useState(false);
-  const { register, handleSubmit, formState: { errors } } = useForm<EquipmentFormData>({
-    defaultValues: {
-      name: '',
-      description: '',
-      unitPrice: '',
-      quantity: '',
-      supplier: '',
-      phone: '',
-      address: '',
-      purchaser: '',
-      warranty_period: '12',
-      total: ''
-    }
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [formData, setFormData] = useState({
+    name: '',
+    description: '',
+    unitPrice: '',
+    quantity: '',
+    supplier: '',
+    phone: '',
+    address: '',
+    purchaser: '',
+    warranty_period: '12',
+    total: ''
   });
 
-  const onSubmit = async (data: EquipmentFormData) => {
+  const handleChange = (field: string, value: any) => {
+    setFormData({ ...formData, [field]: value });
+    if (errors[field]) setErrors(prev => ({ ...prev, [field]: '' }));
+  };
+
+  const handleBlur = (field: string, value: any) => {
+    let msg = '';
+    if (!value && (field === 'name' || field === 'supplier' || field === 'phone' || field === 'address' || field === 'purchaser')) {
+      const labels: Record<string, string> = { name: 'tên thiết bị', supplier: 'nhà cung cấp', phone: 'số điện thoại', address: 'địa chỉ', purchaser: 'người mua' };
+      msg = 'Vui lòng nhập ' + labels[field];
+    } else if ((field === 'unitPrice' || field === 'quantity') && (!value || Number(value) <= 0)) {
+      msg = !value ? 'Vui lòng nhập ' + (field === 'unitPrice' ? 'đơn giá' : 'số lượng') : (field === 'unitPrice' ? 'Đơn giá' : 'Số lượng') + ' phải lớn hơn 0';
+    }
+    setErrors(prev => ({ ...prev, [field]: msg }));
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    const newErrors: Record<string, string> = {};
+    if (!formData.name.trim()) newErrors.name = 'Vui lòng nhập tên thiết bị';
+    if (!formData.unitPrice || Number(formData.unitPrice) <= 0) newErrors.unitPrice = !formData.unitPrice ? 'Vui lòng nhập đơn giá' : 'Đơn giá phải lớn hơn 0';
+    if (!formData.quantity || Number(formData.quantity) <= 0) newErrors.quantity = !formData.quantity ? 'Vui lòng nhập số lượng' : 'Số lượng phải lớn hơn 0';
+    if (!formData.supplier.trim()) newErrors.supplier = 'Vui lòng nhập nhà cung cấp';
+    if (!formData.phone.trim()) newErrors.phone = 'Vui lòng nhập số điện thoại';
+    if (!formData.address.trim()) newErrors.address = 'Vui lòng nhập địa chỉ';
+    if (!formData.purchaser.trim()) newErrors.purchaser = 'Vui lòng nhập người mua';
+    setErrors(newErrors);
+    if (Object.keys(newErrors).length > 0) return;
+
     setSubmitting(true);
     try {
       const body: any = {
-        name: data.name.trim(),
-        description: data.description.trim(),
-        unitPrice: parseFloat(data.unitPrice),
-        quantity: parseInt(data.quantity),
-        supplier: data.supplier.trim(),
-        phone: data.phone.trim(),
-        address: data.address.trim(),
-        purchaser: data.purchaser.trim(),
-        warranty_period: parseInt(data.warranty_period) || 12
+        name: formData.name.trim(),
+        description: formData.description.trim(),
+        unitPrice: parseFloat(formData.unitPrice),
+        quantity: parseInt(formData.quantity),
+        supplier: formData.supplier.trim(),
+        phone: formData.phone.trim(),
+        address: formData.address.trim(),
+        purchaser: formData.purchaser.trim(),
+        warranty_period: parseInt(formData.warranty_period) || 12
       };
-      if (data.total) {
-        body.total = parseFloat(data.total);
+      if (formData.total) {
+        body.total = parseFloat(formData.total);
       }
       if (selectedClub !== 'all') {
         body.location_id = selectedClub;
@@ -67,8 +81,8 @@ export function AddEquipment() {
         body: JSON.stringify(body)
       });
 
-      const resData = await res.json();
-      if (!res.ok) throw new Error(resData.error || 'Thêm thiết bị thất bại!');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Thêm thiết bị thất bại!');
 
       toast.success('Thêm thiết bị thành công!');
       navigate('/admin/equipment');
@@ -87,7 +101,7 @@ export function AddEquipment() {
           <p className="text-slate-600">Thêm thiết bị mới vào hệ thống</p>
         </div>
 
-        <form onSubmit={handleSubmit(onSubmit)}>
+        <form onSubmit={handleSubmit}>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Left Column - Equipment Info */}
             <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-8">
@@ -99,10 +113,13 @@ export function AddEquipment() {
                   </label>
                   <input
                     type="text"
-                    {...register('name', { required: 'Vui lòng nhập tên thiết bị' })}
+                    required
+                    value={formData.name}
+                    onChange={(e) => handleChange('name', e.target.value)}
+                    onBlur={() => handleBlur('name', formData.name)}
                     className={`w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 ${errors.name ? 'border-red-500' : 'border-slate-200'}`}
                   />
-                  {errors.name && <span className="text-red-500 text-sm mt-1">{errors.name.message}</span>}
+                  {errors.name && <p className="text-red-500 text-sm mt-1">{errors.name}</p>}
                 </div>
 
                 <div>
@@ -110,7 +127,8 @@ export function AddEquipment() {
                     Mô tả
                   </label>
                   <textarea
-                    {...register('description')}
+                    value={formData.description}
+                    onChange={(e) => handleChange('description', e.target.value)}
                     rows={3}
                     className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   />
@@ -122,13 +140,13 @@ export function AddEquipment() {
                   </label>
                   <input
                     type="number"
-                    {...register('unitPrice', {
-                      required: 'Vui lòng nhập đơn giá',
-                      validate: (v) => Number(v) > 0 || 'Đơn giá phải lớn hơn 0'
-                    })}
+                    required
+                    value={formData.unitPrice}
+                    onChange={(e) => handleChange('unitPrice', e.target.value)}
+                    onBlur={() => handleBlur('unitPrice', formData.unitPrice)}
                     className={`w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 ${errors.unitPrice ? 'border-red-500' : 'border-slate-200'}`}
                   />
-                  {errors.unitPrice && <span className="text-red-500 text-sm mt-1">{errors.unitPrice.message}</span>}
+                  {errors.unitPrice && <p className="text-red-500 text-sm mt-1">{errors.unitPrice}</p>}
                 </div>
 
                 <div>
@@ -137,13 +155,13 @@ export function AddEquipment() {
                   </label>
                   <input
                     type="number"
-                    {...register('quantity', {
-                      required: 'Vui lòng nhập số lượng',
-                      validate: (v) => Number(v) > 0 || 'Số lượng phải lớn hơn 0'
-                    })}
+                    required
+                    value={formData.quantity}
+                    onChange={(e) => handleChange('quantity', e.target.value)}
+                    onBlur={() => handleBlur('quantity', formData.quantity)}
                     className={`w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 ${errors.quantity ? 'border-red-500' : 'border-slate-200'}`}
                   />
-                  {errors.quantity && <span className="text-red-500 text-sm mt-1">{errors.quantity.message}</span>}
+                  {errors.quantity && <p className="text-red-500 text-sm mt-1">{errors.quantity}</p>}
                 </div>
 
                 <div>
@@ -152,7 +170,8 @@ export function AddEquipment() {
                   </label>
                   <input
                     type="number"
-                    {...register('warranty_period')}
+                    value={formData.warranty_period}
+                    onChange={(e) => handleChange('warranty_period', e.target.value)}
                     className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   />
                 </div>
@@ -163,10 +182,13 @@ export function AddEquipment() {
                   </label>
                   <input
                     type="text"
-                    {...register('purchaser', { required: 'Vui lòng nhập người mua' })}
+                    required
+                    value={formData.purchaser}
+                    onChange={(e) => handleChange('purchaser', e.target.value)}
+                    onBlur={() => handleBlur('purchaser', formData.purchaser)}
                     className={`w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 ${errors.purchaser ? 'border-red-500' : 'border-slate-200'}`}
                   />
-                  {errors.purchaser && <span className="text-red-500 text-sm mt-1">{errors.purchaser.message}</span>}
+                  {errors.purchaser && <p className="text-red-500 text-sm mt-1">{errors.purchaser}</p>}
                 </div>
               </div>
             </div>
@@ -181,10 +203,13 @@ export function AddEquipment() {
                   </label>
                   <input
                     type="text"
-                    {...register('supplier', { required: 'Vui lòng nhập nhà cung cấp' })}
+                    required
+                    value={formData.supplier}
+                    onChange={(e) => handleChange('supplier', e.target.value)}
+                    onBlur={() => handleBlur('supplier', formData.supplier)}
                     className={`w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 ${errors.supplier ? 'border-red-500' : 'border-slate-200'}`}
                   />
-                  {errors.supplier && <span className="text-red-500 text-sm mt-1">{errors.supplier.message}</span>}
+                  {errors.supplier && <p className="text-red-500 text-sm mt-1">{errors.supplier}</p>}
                 </div>
 
                 <div>
@@ -192,11 +217,14 @@ export function AddEquipment() {
                     Địa chỉ <span className="text-red-500">*</span>
                   </label>
                   <textarea
-                    {...register('address', { required: 'Vui lòng nhập địa chỉ' })}
+                    required
+                    value={formData.address}
+                    onChange={(e) => handleChange('address', e.target.value)}
+                    onBlur={() => handleBlur('address', formData.address)}
                     rows={3}
                     className={`w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 ${errors.address ? 'border-red-500' : 'border-slate-200'}`}
                   />
-                  {errors.address && <span className="text-red-500 text-sm mt-1">{errors.address.message}</span>}
+                  {errors.address && <p className="text-red-500 text-sm mt-1">{errors.address}</p>}
                 </div>
 
                 <div>
@@ -205,10 +233,13 @@ export function AddEquipment() {
                   </label>
                   <input
                     type="tel"
-                    {...register('phone', { required: 'Vui lòng nhập số điện thoại' })}
+                    required
+                    value={formData.phone}
+                    onChange={(e) => handleChange('phone', e.target.value)}
+                    onBlur={() => handleBlur('phone', formData.phone)}
                     className={`w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 ${errors.phone ? 'border-red-500' : 'border-slate-200'}`}
                   />
-                  {errors.phone && <span className="text-red-500 text-sm mt-1">{errors.phone.message}</span>}
+                  {errors.phone && <p className="text-red-500 text-sm mt-1">{errors.phone}</p>}
                 </div>
 
                 <div className="pt-6 border-t border-slate-200">
@@ -217,7 +248,8 @@ export function AddEquipment() {
                   </label>
                   <input
                     type="number"
-                    {...register('total')}
+                    value={formData.total}
+                    onChange={(e) => handleChange('total', e.target.value)}
                     className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     placeholder="Nhập tổng tiền"
                   />

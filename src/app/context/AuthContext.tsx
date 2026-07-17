@@ -13,7 +13,6 @@ export interface User {
   locationId?: string | null;
   avatar?: string;
   permissions?: string[];
-  jobPermissions?: string[];
   status?: string;
 }
 
@@ -39,7 +38,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (stored) {
       try {
         setUser(JSON.parse(stored));
-      } catch {}
+      } catch { }
     }
     setLoading(false);
   }, []);
@@ -74,7 +73,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       locationId: data.user.locationId || null,
       avatar: data.user.avatar,
       permissions: data.user.permissions || [],
-      jobPermissions: data.user.jobPermissions || [],
       status: data.user.status
     };
 
@@ -102,7 +100,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         localStorage.setItem('auth_user', JSON.stringify(updated));
         setUser(updated);
       }
-    } catch {}
+    } catch { }
   };
 
   const logout = () => {

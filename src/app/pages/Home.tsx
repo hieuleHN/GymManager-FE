@@ -1,4 +1,4 @@
-import { ArrowRight, Users, Trophy, Target, ChevronRight, Zap, MapPin, Play, Quote, Check, QrCode } from 'lucide-react';
+import { ArrowRight, Users, Trophy, Target, ChevronRight, Zap, MapPin, Play, Quote, Check } from 'lucide-react';
 import { Link, useNavigate } from 'react-router';
 import { Button } from '@mui/material';
 import { motion, AnimatePresence } from 'motion/react';
@@ -60,13 +60,13 @@ export function Home() {
       .then(data => {
         if (data?.data) setAllDisciplines(data.data);
       })
-      .catch(() => { });
+      .catch(() => {});
     fetch(`${getApiUrl()}/api/packages?limit=100`)
       .then(res => res.json())
       .then(data => {
         if (data?.data) setPackages(data.data.filter((p: any) => p.is_active));
       })
-      .catch(() => { })
+      .catch(() => {})
       .finally(() => setLoadingPackages(false));
   }, []);
 
@@ -108,34 +108,10 @@ export function Home() {
                 Gia nhập ZENFITNESS và trải nghiệm môi trường tập luyện cao cấp với đội ngũ huấn luyện viên ưu tú,
                 công nghệ tiên tiến và cộng đồng tận tâm vì sự thành công của bạn.
               </p>
-
               <div className="flex flex-wrap gap-4">
-                {/* ĐOẠN TỐI ƯU: Nút Mã QR Điểm Danh hiển thị nhanh khi Hội viên đã đăng nhập */}
-                {user && (
-                  <Link to="/dashboard/qr">
-                    <Button
-                      variant="contained"
-                      size="large"
-                      sx={{
-                        bgcolor: '#ff5722',
-                        py: 1.5,
-                        px: 4,
-                        '&:hover': { bgcolor: '#e64a19' },
-                        textTransform: 'none',
-                        fontSize: '1.1rem',
-                        fontWeight: 'bold',
-                        boxShadow: '0 4px 12px rgba(255,87,34,0.3)'
-                      }}
-                      startIcon={<QrCode />}
-                    >
-                      QR Điểm Danh
-                    </Button>
-                  </Link>
-                )}
-
                 <Link to="/auth?mode=register">
-                  <Button
-                    variant="contained"
+                  <Button 
+                    variant="contained" 
                     size="large"
                     sx={{ bgcolor: '#4f46e5', py: 1.5, px: 4, '&:hover': { bgcolor: '#4338ca' }, textTransform: 'none', fontSize: '1.1rem' }}
                     endIcon={<ArrowRight />}
@@ -149,7 +125,7 @@ export function Home() {
                   </Button>
                 </Link>
               </div>
-
+              
               <div className="mt-12 flex items-center gap-8">
                 <div>
                   <p className="text-2xl font-bold text-slate-900">10k+</p>
@@ -167,7 +143,7 @@ export function Home() {
                 </div>
               </div>
             </motion.div>
-
+            
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
@@ -178,9 +154,9 @@ export function Home() {
                 <Slider {...bannerSettings} className="h-full w-full">
                   {bannerImages.map((img, idx) => (
                     <div key={idx} className="h-[600px] outline-none">
-                      <img
-                        src={img}
-                        alt="Phòng tập hiện đại"
+                      <img 
+                        src={img} 
+                        alt="Phòng tập hiện đại" 
                         className="w-full h-full object-cover"
                       />
                     </div>
@@ -188,7 +164,7 @@ export function Home() {
                 </Slider>
                 <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent pointer-events-none" />
               </div>
-
+              
               {/* Floating Badge */}
               <div className="absolute -bottom-6 -left-6 bg-white p-6 rounded-2xl shadow-xl flex items-center gap-4 z-20">
                 <div className="bg-green-100 p-3 rounded-full">
@@ -210,10 +186,10 @@ export function Home() {
           <div className="text-center mb-16">
             <h2 className="text-3xl font-bold text-slate-900 mb-4">Hệ Thống Câu Lạc Bộ ZENFITNESS</h2>
             <p className="text-slate-600 max-w-2xl mx-auto">
-              Không gian tập luyện sang trọng, đẳng cấp with vị trí đắc địa trải dài khắp cả nước.
+              Không gian tập luyện sang trọng, đẳng cấp với vị trí đắc địa trải dài khắp cả nước.
             </p>
           </div>
-
+          
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {clubsData.map((club) => (
               <motion.div
@@ -264,10 +240,11 @@ export function Home() {
                   <button
                     key={disc.id}
                     onClick={() => setActiveDiscipline(disc)}
-                    className={`px-5 py-2.5 rounded-full text-sm font-semibold transition-all ${activeDiscipline.id === disc.id
-                        ? 'bg-indigo-600 text-white shadow-md'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                      }`}
+                    className={`px-5 py-2.5 rounded-full text-sm font-semibold transition-all ${
+                      activeDiscipline.id === disc.id 
+                      ? 'bg-indigo-600 text-white shadow-md' 
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
                   >
                     {disc.name}
                   </button>
@@ -288,8 +265,8 @@ export function Home() {
                     {activeDiscipline.description}
                   </p>
                   <Link to={`/disciplines/${activeDiscipline.id}`}>
-                    <Button
-                      variant="contained"
+                    <Button 
+                      variant="contained" 
                       endIcon={<ArrowRight />}
                       sx={{ bgcolor: '#0f172a', '&:hover': { bgcolor: '#334155' }, textTransform: 'none' }}
                     >
@@ -306,9 +283,9 @@ export function Home() {
                 <Slider {...disciplineSliderSettings} key={activeDiscipline.id} className="h-full w-full">
                   {activeDiscipline.images.map((img, idx) => (
                     <div key={idx} className="h-[500px] outline-none relative group">
-                      <img
-                        src={img}
-                        alt={activeDiscipline.name}
+                      <img 
+                        src={img} 
+                        alt={activeDiscipline.name} 
                         className="w-full h-full object-cover"
                       />
                       <div className="absolute inset-0 bg-black/20 group-hover:bg-black/10 transition-colors" />
@@ -335,10 +312,11 @@ export function Home() {
           <div className="flex flex-wrap gap-3 justify-center mb-12">
             <button
               onClick={() => setSelectedDiscipline('all')}
-              className={`px-6 py-2.5 rounded-full text-sm font-semibold transition-all ${selectedDiscipline === 'all'
+              className={`px-6 py-2.5 rounded-full text-sm font-semibold transition-all ${
+                selectedDiscipline === 'all'
                   ? 'bg-indigo-600 text-white shadow-md'
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                }`}
+              }`}
             >
               Tất cả
             </button>
@@ -346,10 +324,11 @@ export function Home() {
               <button
                 key={name}
                 onClick={() => setSelectedDiscipline(name)}
-                className={`px-6 py-2.5 rounded-full text-sm font-semibold transition-all ${selectedDiscipline === name
+                className={`px-6 py-2.5 rounded-full text-sm font-semibold transition-all ${
+                  selectedDiscipline === name
                     ? 'bg-indigo-600 text-white shadow-md'
                     : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
+                }`}
               >
                 {name}
               </button>
@@ -406,10 +385,11 @@ export function Home() {
                               <button
                                 key={idx}
                                 onClick={() => setDurationSelections(prev => ({ ...prev, [plan._id]: idx }))}
-                                className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${isSelected
+                                className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                                  isSelected
                                     ? 'bg-indigo-600 text-white border-indigo-600'
                                     : 'bg-white text-slate-600 border-slate-300 hover:border-indigo-400'
-                                  }`}
+                                }`}
                               >
                                 {d.months} tháng{d.discount > 0 && ` (-${d.discount}%)`}
                               </button>
