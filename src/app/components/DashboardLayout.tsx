@@ -3,11 +3,12 @@ import { Link, useLocation, useNavigate } from 'react-router';
 import {
   LayoutDashboard, CreditCard, History, Calendar, UserCircle,
   Package, TrendingUp, Settings, LogOut, Menu, X, FileText,
-  Bell, Home, Users, MessageCircle, AlertTriangle, CheckCircle, XCircle, Clock
+  Bell, Home, Users, MessageCircle, AlertTriangle, CheckCircle, XCircle, Clock, ArrowRightLeft, Wallet
 } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
+import { useAuth, getApiUrl, getAuthHeaders } from '../context/AuthContext';
 import logo from '../../imports/ChatGPT_Image_May_14__2026__09_48_52_PM.png';
 import { ImageWithFallback } from './figma/ImageWithFallback';
+import { WalletBalance } from './WalletBalance';
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -20,6 +21,9 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [showNotifications, setShowNotifications] = useState(false);
   const [profileNotif, setProfileNotif] = useState<{ type: string; title: string; message: string } | null>(null);
+  const [apiNotifications, setApiNotifications] = useState<any[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const notifPollRef = useRef<ReturnType<typeof setInterval>>();
   const pollRef = useRef<ReturnType<typeof setInterval>>();
 
   const updateNotifFromStatus = (status: string | undefined) => {
@@ -77,12 +81,92 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     }
   }, [user]);
 
+  useEffect(() => {
+    if (user?.id && !user?.isStaff) {
+      fetchNotifications();
+      notifPollRef.current = setInterval(fetchNotifications, 30000);
+    }
+    return () => { if (notifPollRef.current) clearInterval(notifPollRef.current); };
+  }, [user]);
+
+  const fetchNotifications = async () => {
+    if (!user || user.isStaff) return;
+    try {
+      const res = await fetch(`${getApiUrl()}/api/notifications?recipientId=${user.id}&recipientRole=member&limit=50`, {
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setApiNotifications(data.data || []);
+      }
+      const countRes = await fetch(`${getApiUrl()}/api/notifications/unread-count?recipientId=${user.id}&recipientRole=member`, {
+        headers: getAuthHeaders()
+      });
+      if (countRes.ok) {
+        const data = await countRes.json();
+        setUnreadCount(data.count || 0);
+      }
+    } catch {}
+  };
+
+  const markAsRead = async (notifId: string) => {
+    try {
+      await fetch(`${getApiUrl()}/api/notifications/${notifId}/read`, {
+        method: 'PUT',
+        headers: getAuthHeaders()
+      });
+      fetchNotifications();
+    } catch {}
+  };
+
+  const markAllAsRead = async () => {
+    if (!user) return;
+    try {
+      await fetch(`${getApiUrl()}/api/notifications/read-all`, {
+        method: 'PUT',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ recipientId: user.id, recipientRole: 'member' })
+      });
+      fetchNotifications();
+    } catch {}
+  };
+
+  const handleNotificationClick = async (notif: any) => {
+    await markAsRead(notif._id);
+    setShowNotifications(false);
+    if (notif.type === 'booking_transferred') {
+      navigate('/dashboard/schedule');
+    } else if (notif.type === 'wallet_topup' || notif.type === 'wallet_payment') {
+      navigate('/dashboard/history');
+    } else if (notif.relatedBookingId?._id || notif.relatedBookingId) {
+      const bookingId = notif.relatedBookingId._id || notif.relatedBookingId;
+      navigate(`/dashboard/bookings/${bookingId}/status`);
+    }
+  };
+
+  const getNotifIcon = (type: string) => {
+    switch (type) {
+      case 'booking_request': return <Clock className="w-5 h-5 text-yellow-500 shrink-0 mt-0.5" />;
+      case 'booking_confirmed': return <CheckCircle className="w-5 h-5 text-green-500 shrink-0 mt-0.5" />;
+      case 'booking_rejected':
+      case 'booking_cancelled': return <XCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />;
+      case 'transfer_requested': return <ArrowRightLeft className="w-5 h-5 text-purple-500 shrink-0 mt-0.5" />;
+      case 'transfer_approved':
+      case 'booking_transferred': return <ArrowRightLeft className="w-5 h-5 text-green-500 shrink-0 mt-0.5" />;
+      case 'transfer_rejected': return <ArrowRightLeft className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />;
+      case 'wallet_topup':
+      case 'wallet_payment': return <Wallet className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" />;
+      default: return <Bell className="w-5 h-5 text-slate-500 shrink-0 mt-0.5" />;
+    }
+  };
+
   const handleBellClick = async () => {
     if (!user?.isStaff) await refreshUser();
     setShowNotifications(!showNotifications);
+    if (!showNotifications) fetchNotifications();
   };
 
-  const hasRedDot = user?.status && user.status !== 'approved' && user.status !== 'locked';
+  const hasRedDot = (user?.status && user.status !== 'approved' && user.status !== 'locked') || unreadCount > 0;
 
   const menuItems = [
     { name: 'Tổng quan', href: '/dashboard', icon: LayoutDashboard },
@@ -180,8 +264,14 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
                 {showNotifications && (
                   <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-xl border border-slate-200 z-50">
-                    <div className="p-4 border-b border-slate-200">
+                    <div className="p-4 border-b border-slate-200 flex items-center justify-between">
                       <h3 className="font-bold text-slate-900">Thông báo</h3>
+                      {unreadCount > 0 && (
+                        <button onClick={markAllAsRead}
+                          className="text-xs text-indigo-600 hover:text-indigo-700 font-medium">
+                          Đánh dấu đã đọc
+                        </button>
+                      )}
                     </div>
                     <div className="max-h-96 overflow-y-auto">
                       {profileNotif && (
@@ -200,22 +290,34 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                           </div>
                         </Link>
                       )}
-                      {!profileNotif && (
+                      {apiNotifications.map((notif) => (
+                        <div key={notif._id}
+                          onClick={() => handleNotificationClick(notif)}
+                          className={`block p-4 hover:bg-slate-50 border-b border-slate-100 cursor-pointer ${!notif.read ? 'bg-indigo-50/50' : ''}`}>
+                          <div className="flex gap-3">
+                            {getNotifIcon(notif.type)}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <h4 className="font-semibold text-slate-900 text-sm mb-1">{notif.title}</h4>
+                                {!notif.read && <span className="w-2 h-2 rounded-full bg-indigo-500 shrink-0" />}
+                              </div>
+                              <p className="text-sm text-slate-600">{notif.message}</p>
+                              <p className="text-xs text-slate-400 mt-1">
+                                {new Date(notif.createdAt).toLocaleDateString('vi-VN')} {new Date(notif.createdAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                      {!profileNotif && apiNotifications.length === 0 && (
                         <div className="p-4 text-center text-sm text-slate-500">Không có thông báo</div>
                       )}
                     </div>
-                    {profileNotif && (user?.status === 'pending' || user?.status === 'rejected') && (
-                      <div className="p-3 border-t border-slate-200 text-center">
-                        <Link to="/dashboard/settings"
-                          onClick={() => setShowNotifications(false)}
-                          className="text-sm text-indigo-600 hover:text-indigo-700 font-medium">
-                          Cập nhật thông tin ngay
-                        </Link>
-                      </div>
-                    )}
                   </div>
                 )}
               </div>
+
+              <WalletBalance balance={(user as any)?.balance || 0} />
 
               <Link to="/"
                 className="flex items-center gap-2 text-sm text-slate-600 hover:text-indigo-600 transition-colors">

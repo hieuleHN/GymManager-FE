@@ -1,8 +1,46 @@
 import { DashboardLayout } from '../../components/DashboardLayout';
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { Button } from '@mui/material';
-import { ChevronLeft, ChevronRight, ArrowRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, CreditCard, ArrowLeft, User, MapPin, Phone, Mail, X, Trash2, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
+import { useAuth, getApiUrl, getAuthHeaders } from '../../context/AuthContext';
+
+interface Trainer {
+  _id: string;
+  fullName: string;
+  phone: string;
+  email?: string;
+  job?: { name: string };
+  locationId?: { _id: string; title: string };
+  avatar?: string;
+  experience?: string;
+  pricePerSession?: number;
+  disciplineId?: { _id: string; name: string } | null;
+  specialties?: string[];
+}
+
+const timeSlots = [
+  { start: '06:00', end: '07:30' },
+  { start: '07:30', end: '09:00' },
+  { start: '09:00', end: '10:30' },
+  { start: '10:30', end: '12:00' },
+  { start: '12:00', end: '13:30' },
+  { start: '13:30', end: '15:00' },
+  { start: '15:00', end: '16:30' },
+  { start: '16:30', end: '18:00' },
+  { start: '18:00', end: '19:30' },
+  { start: '19:30', end: '21:00' }
+];
+
+function formatDateKey(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function parseDateKey(key: string): { day: number; month: number; year: number } {
+  const [y, m, d] = key.split('-').map(Number);
+  return { day: d, month: m - 1, year: y };
+}
 
 export function BookTrainer() {
   const { trainerId } = useParams();
@@ -144,47 +182,214 @@ export function BookTrainer() {
     today.setHours(0, 0, 0, 0);
     if (clickedDate < today) return;
 
-  const timeSlots = [
-    '06:00', '07:00', '08:00', '09:00', '10:00', '11:00',
-    '14:00', '15:00', '16:00', '17:00', '18:00', '19:00', '20:00'
-  ];
+    const dateKey = formatDateKey(clickedDate);
 
-  const handleConfirm = () => {
-    if (!selectedDate || !selectedTime) {
-      alert('Vui lòng chọn ngày và giờ');
+    if (activeDate === dateKey) {
+      setActiveDate(null);
       return;
     }
-    navigate(`/dashboard/trainers/${trainerId}/confirm`, {
-      state: { date: selectedDate, time: selectedTime }
-    });
+
+    setActiveDate(dateKey);
   };
+
+  const handleTimeSelect = (slot: { start: string; end: string }) => {
+    if (!activeDate) return;
+    if (isSlotDisabled(slot)) return;
+
+    setSelections(prev => ({
+      ...prev,
+      [activeDate]: slot
+    }));
+    setActiveDate(null);
+  };
+
+  const handleRemoveDate = (dateKey: string) => {
+    setSelections(prev => {
+      const next = { ...prev };
+      delete next[dateKey];
+      return next;
+    });
+    if (activeDate === dateKey) {
+      setActiveDate(null);
+    }
+  };
+
+  const handlePayment = async () => {
+    if (!selectedDisciplineId) {
+      toast.error('Vui lòng chọn bộ môn tập!');
+      return;
+    }
+    const slotCount = Object.keys(selections).length;
+    if (slotCount === 0) {
+      toast.error('Vui lòng chọn ít nhất một ngày và giờ!');
+      return;
+    }
+    if (!trainer) return;
+
+    setCheckingConflict(true);
+    try {
+      const locId = trainer.locationId?._id || user?.locationId || null;
+      const price = trainer.pricePerSession || 500000;
+
+      const slots = Object.entries(selections).map(([date, time]) => ({
+        date,
+        time: time.start,
+        startTime: time.start,
+        endTime: time.end
+      }));
+
+      const bookingRes = await fetch(`${getApiUrl()}/api/bookings/bulk`, {
+        method: 'POST',
+        headers: { ...getAuthHeaders() as any, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          trainerId: trainer._id,
+          disciplineId: selectedDisciplineId,
+          slots,
+          locationId: locId,
+          price
+        })
+      });
+
+      const bookingData = await bookingRes.json();
+      if (!bookingRes.ok) throw new Error(bookingData.error || 'Đặt lịch thất bại');
+
+      const allBookings = bookingData.bookings || (bookingData.booking ? [bookingData.booking] : []);
+      const batchId = allBookings[0]?.batchId || '';
+      const totalPrice = price * (allBookings.length || 1);
+
+      navigate('/payment', {
+        state: {
+          type: 'trainer_booking',
+          bookings: allBookings,
+          batchId,
+          trainer,
+          totalPrice,
+          package: { name: `PT ${allBookings.length} buổi với ${trainer.fullName}`, price: totalPrice }
+        }
+      });
+    } catch (err: any) {
+      toast.error(err.message || 'Lỗi kết nối server!');
+    } finally {
+      setCheckingConflict(false);
+    }
+  };
+
+  const daysInMonth = getDaysInMonth(currentMonth);
+  const firstDay = getFirstDayOfMonth(currentMonth);
+  const price = trainer?.pricePerSession || 500000;
+  const selectionCount = Object.keys(selections).length;
+
+  if (loading) {
+    return (
+      <DashboardLayout>
+        <div className="h-[calc(100vh-8rem)] flex items-center justify-center">
+          <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  if (!trainer) {
+    return (
+      <DashboardLayout>
+        <div className="h-[calc(100vh-8rem)] flex items-center justify-center">
+          <p className="text-slate-500">Không tìm thấy HLV</p>
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout>
       <div className="max-w-5xl mx-auto space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-900 mb-2">Chọn thời gian</h1>
-          <p className="text-slate-600">Chọn ngày và giờ phù hợp với lịch của bạn</p>
+        <div className="flex items-center gap-4">
+          <button onClick={() => navigate('/dashboard/trainers')}
+            className="p-2 hover:bg-slate-100 rounded-lg transition-colors">
+            <ArrowLeft className="w-5 h-5 text-slate-600" />
+          </button>
+          <div>
+            <h1 className="text-3xl font-bold text-slate-900 mb-2">Chọn thời gian</h1>
+            <p className="text-slate-600">Đặt lịch tập với huấn luyện viên</p>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4">
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 bg-indigo-100 rounded-full flex items-center justify-center">
+              <User className="w-7 h-7 text-indigo-600" />
+            </div>
+            <div className="flex-1">
+              <h3 className="font-bold text-slate-900">{trainer.fullName}</h3>
+              <p className="text-sm text-slate-500">{trainer.job?.name || 'HLV'}</p>
+              {(trainer.disciplineId || (trainer.specialties && trainer.specialties.length > 0)) && (
+                <div className="flex flex-wrap gap-1 mt-2">
+                  {trainer.disciplineId && (
+                    <span className="px-2 py-0.5 text-xs font-semibold bg-indigo-100 text-indigo-700 rounded-full">
+                      {trainer.disciplineId.name}
+                    </span>
+                  )}
+                  {trainer.specialties?.map(s => (
+                    <span key={s} className="px-2 py-0.5 text-xs font-medium bg-slate-100 text-slate-600 rounded-full">
+                      {s}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+            {trainer.locationId && (
+              <div className="ml-auto flex items-center gap-1 text-sm text-slate-500">
+                <MapPin className="w-4 h-4" />
+                {trainer.locationId.title}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+          <h3 className="font-bold text-slate-900 mb-4">Chọn bộ môn tập</h3>
+          {(() => {
+            const items: { id: string; name: string; isMain: boolean }[] = [];
+            if (trainer.disciplineId) items.push({ id: trainer.disciplineId._id, name: trainer.disciplineId.name, isMain: true });
+            trainer.specialties?.forEach(s => {
+              if (!items.find(i => i.name === s)) items.push({ id: s, name: s, isMain: false });
+            });
+            return items.length > 0 ? (
+              <div className="flex flex-wrap gap-3">
+                {items.map(item => (
+                  <button key={item.id} onClick={() => setSelectedDisciplineId(item.id)}
+                    className={`px-5 py-2.5 rounded-xl border-2 font-semibold transition-all ${
+                      selectedDisciplineId === item.id
+                        ? 'border-indigo-600 bg-indigo-600 text-white shadow-md'
+                        : 'border-slate-200 hover:border-indigo-300 hover:bg-slate-50'
+                    }`}>
+                    {item.name}
+                    {item.isMain && <span className="ml-1.5 text-[10px] opacity-70">(Chính)</span>}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="text-slate-400 text-sm">HLV chưa có bộ môn nào</p>
+            );
+          })()}
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Calendar */}
           <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
             <div className="flex items-center justify-between mb-6">
-              <button className="p-2 hover:bg-slate-100 rounded-lg transition-colors">
+              <button onClick={handlePrevMonth} className="p-2 hover:bg-slate-100 rounded-lg transition-colors">
                 <ChevronLeft className="w-5 h-5 text-slate-600" />
               </button>
-              <h2 className="text-xl font-bold text-slate-900">Tháng 6/2024</h2>
-              <button className="p-2 hover:bg-slate-100 rounded-lg transition-colors">
+              <h2 className="text-xl font-bold text-slate-900">
+                Tháng {currentMonth.getMonth() + 1}/{currentMonth.getFullYear()}
+              </h2>
+              <button onClick={handleNextMonth} className="p-2 hover:bg-slate-100 rounded-lg transition-colors">
                 <ChevronRight className="w-5 h-5 text-slate-600" />
               </button>
             </div>
 
             <div className="grid grid-cols-7 gap-2 mb-2">
               {['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'].map((day, idx) => (
-                <div key={idx} className="text-center text-sm font-semibold text-slate-600 py-2">
-                  {day}
-                </div>
+                <div key={idx} className="text-center text-sm font-semibold text-slate-600 py-2">{day}</div>
               ))}
             </div>
 
@@ -215,10 +420,13 @@ export function BookTrainer() {
                         ? 'bg-orange-50 border-orange-200 cursor-not-allowed text-orange-300'
                         : isBooked
                         ? 'border-indigo-600 bg-indigo-600 text-white shadow-md'
+                        : isActive
+                        ? 'border-indigo-400 bg-indigo-100 text-indigo-700 ring-2 ring-indigo-300'
+                        : isToday
+                        ? 'border-green-400 bg-green-50 text-green-700'
                         : 'border-slate-200 hover:border-indigo-300 hover:bg-slate-50'
-                    }`}
-                  >
-                    {day >= 1 && day <= 30 && day}
+                    }`}>
+                    {isValid && day}
                   </button>
                 );
               })}
@@ -246,11 +454,15 @@ export function BookTrainer() {
             </div>
           </div>
 
-          {/* Time Slots */}
           <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
             <h3 className="font-bold text-slate-900 mb-4">
-              {selectedDate ? `Chọn giờ cho ngày ${selectedDate}/06` : 'Chọn ngày trước'}
+              {activeDate
+                ? `Chọn giờ cho ngày ${activeDate.split('-')[2]}/${activeDate.split('-')[1]}`
+                : selectionCount > 0
+                ? `Đã chọn ${selectionCount} buổi`
+                : 'Chọn ngày trước'}
             </h3>
+
             {activeDate ? (
               <>
                 {loadingSlots ? (
@@ -317,6 +529,9 @@ export function BookTrainer() {
                     </button>
                   </div>
                 ))}
+                <p className="text-sm text-slate-500 pt-1">
+                  Click vào ngày trên lịch để thêm buổi tập mới
+                </p>
               </div>
             ) : (
               <div className="text-center py-12">
@@ -356,13 +571,9 @@ export function BookTrainer() {
           );
         })()}
 
-        {/* Actions */}
         <div className="flex gap-4">
-          <Button
-            variant="outlined"
-            onClick={() => navigate(-1)}
-            sx={{ flex: 1, height: 56, borderRadius: 3, textTransform: 'none', fontSize: '1rem' }}
-          >
+          <Button variant="outlined" onClick={() => navigate(-1)}
+            sx={{ flex: 1, height: 56, borderRadius: 3, textTransform: 'none', fontSize: '1rem' }}>
             Quay lại
           </Button>
           <Button variant="outlined" onClick={() => setShowContact(true)} startIcon={<Phone className="w-5 h-5" />}
@@ -379,6 +590,41 @@ export function BookTrainer() {
           </Button>
         </div>
       </div>
+
+      {showContact && trainer && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowContact(false)}>
+          <div className="bg-white rounded-2xl max-w-sm w-full p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl font-bold text-slate-900">Liên hệ HLV</h3>
+              <button onClick={() => setShowContact(false)} className="p-2 hover:bg-slate-100 rounded-lg">
+                <X className="w-5 h-5 text-slate-600" />
+              </button>
+            </div>
+            <div className="flex items-center gap-4 mb-6">
+              <img src={trainer.avatar || 'https://images.unsplash.com/photo-1548690312-e3b507d17a4d?auto=format&fit=crop&q=80&w=100'} alt={trainer.fullName}
+                className="w-16 h-16 rounded-full object-cover" />
+              <div>
+                <h4 className="font-bold text-slate-900 text-lg">{trainer.fullName}</h4>
+                <p className="text-sm text-slate-500">{trainer.job?.name || 'HLV'}</p>
+              </div>
+            </div>
+            <div className="space-y-4">
+              {trainer.phone && (
+                <a href={`tel:${trainer.phone}`} className="flex items-center gap-3 p-3 bg-indigo-50 rounded-xl hover:bg-indigo-100 transition-colors">
+                  <Phone className="w-5 h-5 text-indigo-600" />
+                  <span className="font-medium text-indigo-900">{trainer.phone}</span>
+                </a>
+              )}
+              {trainer.email && (
+                <a href={`mailto:${trainer.email}`} className="flex items-center gap-3 p-3 bg-indigo-50 rounded-xl hover:bg-indigo-100 transition-colors">
+                  <Mail className="w-5 h-5 text-indigo-600" />
+                  <span className="font-medium text-indigo-900">{trainer.email}</span>
+                </a>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </DashboardLayout>
   );
 }

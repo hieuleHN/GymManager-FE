@@ -4,18 +4,31 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { getAuthHeaders, getApiUrl } from '../../context/AuthContext';
 import { toast } from 'sonner';
+import { useForm } from 'react-hook-form';
+
+interface EditCustomerFormData {
+  account: string;
+  fullName: string;
+  gender: string;
+  phone: string;
+  email: string;
+  address: string;
+  idNumber: string;
+}
 
 export function EditCustomer() {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
-  const [formData, setFormData] = useState({
-    account: '',
-    fullName: '',
-    gender: 'Nam',
-    phone: '',
-    email: '',
-    address: '',
-    idNumber: ''
+  const { register, handleSubmit, reset, formState: { errors } } = useForm<EditCustomerFormData>({
+    defaultValues: {
+      account: '',
+      fullName: '',
+      gender: 'Nam',
+      phone: '',
+      email: '',
+      address: '',
+      idNumber: ''
+    }
   });
   const [idCardFront, setIdCardFront] = useState<File | null>(null);
   const [idCardBack, setIdCardBack] = useState<File | null>(null);
@@ -25,27 +38,6 @@ export function EditCustomer() {
   const [currentIdCardBack, setCurrentIdCardBack] = useState('');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [errors, setErrors] = useState<Record<string, string>>({});
-
-  const handleChange = (field: string, value: any) => {
-    setFormData({ ...formData, [field]: value });
-    if (errors[field]) setErrors(prev => ({ ...prev, [field]: '' }));
-  };
-
-  const handleBlur = (field: string, value: any) => {
-    let msg = '';
-    if (!value && (field === 'account' || field === 'fullName' || field === 'phone' || field === 'email' || field === 'password')) {
-      const labels: Record<string, string> = { account: 'tài khoản', fullName: 'họ tên', phone: 'số điện thoại', email: 'email', password: 'mật khẩu' };
-      msg = 'Vui lòng nhập ' + labels[field];
-    } else if (field === 'phone' && value && !/(84|0[3|5|7|8|9])+([0-9]{8})\b/.test(value)) {
-      msg = 'Số điện thoại không hợp lệ';
-    } else if (field === 'email' && value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
-      msg = 'Email không hợp lệ';
-    } else if (field === 'password' && value && value.length < 6) {
-      msg = 'Mật khẩu phải có ít nhất 6 ký tự';
-    }
-    setErrors(prev => ({ ...prev, [field]: msg }));
-  };
 
   const fetchCustomer = async () => {
     setLoading(true);
@@ -53,7 +45,7 @@ export function EditCustomer() {
       const res = await fetch(`${getApiUrl()}/api/customers/${id}`, { headers: getAuthHeaders() });
       const data = await res.json();
       const customer = data.data || data;
-      setFormData({
+      reset({
         account: customer.account || '',
         fullName: customer.fullName || '',
         gender: customer.gender || 'Nam',
@@ -90,29 +82,17 @@ export function EditCustomer() {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const newErrors: Record<string, string> = {};
-    if (!formData.account) newErrors.account = 'Vui lòng nhập tài khoản';
-    if (!formData.fullName) newErrors.fullName = 'Vui lòng nhập họ tên';
-    if (!formData.phone) newErrors.phone = 'Vui lòng nhập số điện thoại';
-    else if (!/(84|0[3|5|7|8|9])+([0-9]{8})\b/.test(formData.phone)) newErrors.phone = 'Số điện thoại không hợp lệ';
-    if (!formData.email) newErrors.email = 'Vui lòng nhập email';
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) newErrors.email = 'Email không hợp lệ';
-    if ('password' in formData && !formData.password) newErrors.password = 'Vui lòng nhập mật khẩu';
-    else if ('password' in formData && formData.password && formData.password.length < 6) newErrors.password = 'Mật khẩu phải có ít nhất 6 ký tự';
-    setErrors(newErrors);
-    if (Object.keys(newErrors).length > 0) return;
+  const onSubmit = async (data: EditCustomerFormData) => {
     setSubmitting(true);
     try {
       const fd = new FormData();
-      fd.append('account', formData.account);
-      fd.append('fullName', formData.fullName);
-      fd.append('gender', formData.gender);
-      fd.append('phone', formData.phone);
-      fd.append('email', formData.email);
-      fd.append('address', formData.address);
-      fd.append('idNumber', formData.idNumber);
+      fd.append('account', data.account);
+      fd.append('fullName', data.fullName);
+      fd.append('gender', data.gender);
+      fd.append('phone', data.phone);
+      fd.append('email', data.email);
+      fd.append('address', data.address);
+      fd.append('idNumber', data.idNumber);
       if (idCardFront) fd.append('idCardFront', idCardFront);
       if (idCardBack) fd.append('idCardBack', idCardBack);
 
@@ -125,8 +105,8 @@ export function EditCustomer() {
         toast.success('Cập nhật khách hàng thành công!');
         navigate('/admin/customers');
       } else {
-        const data = await res.json();
-        toast.error(data.error || data.message || 'Cập nhật thất bại');
+        const err = await res.json();
+        toast.error(err.error || err.message || 'Cập nhật thất bại');
       }
     } catch {
       toast.error('Cập nhật thất bại');
@@ -153,7 +133,7 @@ export function EditCustomer() {
           <p className="text-slate-600">Cập nhật thông tin khách hàng</p>
         </div>
 
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit(onSubmit)}>
           <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-8 space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
@@ -162,14 +142,11 @@ export function EditCustomer() {
                 </label>
                 <input
                   type="text"
-                  required
-                  value={formData.account}
-                  onChange={(e) => handleChange('account', e.target.value)}
-                  onBlur={() => handleBlur('account', formData.account)}
+                  {...register('account', { required: 'Vui lòng nhập tài khoản' })}
                   className={`w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 ${errors.account ? 'border-red-500' : 'border-slate-200'}`}
                   placeholder="Nhập tài khoản"
                 />
-                {errors.account && <p className="text-red-500 text-sm mt-1">{errors.account}</p>}
+                {errors.account && <span className="text-red-500 text-sm mt-1">{errors.account.message}</span>}
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
@@ -177,22 +154,18 @@ export function EditCustomer() {
                 </label>
                 <input
                   type="text"
-                  required
-                  value={formData.fullName}
-                  onChange={(e) => handleChange('fullName', e.target.value)}
-                  onBlur={() => handleBlur('fullName', formData.fullName)}
+                  {...register('fullName', { required: 'Vui lòng nhập họ tên' })}
                   className={`w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 ${errors.fullName ? 'border-red-500' : 'border-slate-200'}`}
                   placeholder="Nguyễn Văn A"
                 />
-                {errors.fullName && <p className="text-red-500 text-sm mt-1">{errors.fullName}</p>}
+                {errors.fullName && <span className="text-red-500 text-sm mt-1">{errors.fullName.message}</span>}
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
                   Giới tính
                 </label>
                 <select
-                  value={formData.gender}
-                  onChange={(e) => handleChange('gender', e.target.value)}
+                  {...register('gender')}
                   className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 >
                   <option value="Nam">Nam</option>
@@ -206,14 +179,17 @@ export function EditCustomer() {
                 </label>
                 <input
                   type="tel"
-                  required
-                  value={formData.phone}
-                  onChange={(e) => handleChange('phone', e.target.value)}
-                  onBlur={() => handleBlur('phone', formData.phone)}
+                  {...register('phone', {
+                    required: 'Vui lòng nhập số điện thoại',
+                    pattern: {
+                      value: /(84|0[3|5|7|8|9])+([0-9]{8})\b/,
+                      message: 'Số điện thoại không hợp lệ'
+                    }
+                  })}
                   className={`w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 ${errors.phone ? 'border-red-500' : 'border-slate-200'}`}
                   placeholder="0901234567"
                 />
-                {errors.phone && <p className="text-red-500 text-sm mt-1">{errors.phone}</p>}
+                {errors.phone && <span className="text-red-500 text-sm mt-1">{errors.phone.message}</span>}
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
@@ -221,14 +197,17 @@ export function EditCustomer() {
                 </label>
                 <input
                   type="email"
-                  required
-                  value={formData.email}
-                  onChange={(e) => handleChange('email', e.target.value)}
-                  onBlur={() => handleBlur('email', formData.email)}
+                  {...register('email', {
+                    required: 'Vui lòng nhập email',
+                    pattern: {
+                      value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
+                      message: 'Email không hợp lệ'
+                    }
+                  })}
                   className={`w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 ${errors.email ? 'border-red-500' : 'border-slate-200'}`}
                   placeholder="email@example.com"
                 />
-                {errors.email && <p className="text-red-500 text-sm mt-1">{errors.email}</p>}
+                {errors.email && <span className="text-red-500 text-sm mt-1">{errors.email.message}</span>}
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
@@ -236,8 +215,7 @@ export function EditCustomer() {
                 </label>
                 <input
                   type="text"
-                  value={formData.idNumber}
-                  onChange={(e) => handleChange('idNumber', e.target.value)}
+                  {...register('idNumber')}
                   className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   placeholder="001234567890"
                 />
@@ -249,8 +227,7 @@ export function EditCustomer() {
                 Địa chỉ
               </label>
               <textarea
-                value={formData.address}
-                onChange={(e) => handleChange('address', e.target.value)}
+                {...register('address')}
                 rows={2}
                 className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 placeholder="Nhập địa chỉ"

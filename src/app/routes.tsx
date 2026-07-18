@@ -1,4 +1,7 @@
+import MemberQR from './pages/MemberQR'; // Nhúng màn hình QR vào route
+import { AttendanceScanner } from './pages/admin/AttendanceScanner';
 import { createBrowserRouter, Navigate, useLocation } from 'react-router';
+import { RouteErrorBoundary } from '../lib/ErrorBoundary';
 import { Layout } from './components/Layout';
 import { Home } from './pages/Home';
 import { Learn } from './pages/Learn';
@@ -20,7 +23,9 @@ import { BookSchedule } from './pages/dashboard/BookSchedule';
 import { Trainers } from './pages/dashboard/Trainers';
 import { BookTrainer } from './pages/dashboard/BookTrainer';
 import { ConfirmTrainerBooking } from './pages/dashboard/ConfirmTrainerBooking';
+import { TrainerDetail } from './pages/dashboard/TrainerDetail';
 import { Progress } from './pages/dashboard/Progress';
+import { BookingStatus } from './pages/dashboard/BookingStatus';
 import { Services as MemberServices } from './pages/dashboard/Services';
 import { Settings } from './pages/dashboard/Settings';
 import { AdminDashboard } from './pages/admin/Dashboard';
@@ -33,7 +38,6 @@ import { AddEquipment } from './pages/admin/AddEquipment';
 import { EditEquipment } from './pages/admin/EditEquipment';
 import { Services } from './pages/admin/Services';
 import { ServiceHistory } from './pages/admin/ServiceHistory';
-import { Attendance } from './pages/admin/Attendance';
 import { AttendanceHistory } from './pages/admin/AttendanceHistory';
 import { StaffList } from './pages/admin/StaffList';
 import { StaffShift } from './pages/admin/StaffShift';
@@ -68,12 +72,12 @@ import { ScheduleConfirmations } from './pages/admin/ScheduleConfirmations';
 import { Community } from './pages/dashboard/Community';
 import { Messages } from './pages/dashboard/Messages';
 import { Tasks } from './pages/admin/Tasks';
-
-// IMPORT TRANG THỐNG KÊ BIỂU ĐỒ ADMIN
+import { Invoices } from './pages/admin/Invoices';
+import { BookingManagement } from './pages/admin/BookingManagement';
+import { PostManagement } from './pages/admin/PostManagement';
+import { AdminCommunity } from './pages/admin/AdminCommunity';
+import { AdminMessages } from './pages/admin/AdminMessages';
 import { AdminStats } from './pages/dashboard/AdminStats';
-
-// CÁCH NHANH NHẤT: Định nghĩa trực tiếp RouteErrorBoundary giả lập để sửa lỗi import
-const RouteErrorBoundary = ({ children }: { children?: React.ReactNode }) => <>{children}</>;
 
 const routeFeatures: Record<string, string> = {
   '/admin/dashboard': 'statistics',
@@ -120,7 +124,12 @@ const routeFeatures: Record<string, string> = {
   '/admin/training-schedule': 'training',
   '/admin/lockers': 'equipment',
   '/admin/schedule-confirmations': 'schedule',
-  '/admin/tasks': 'tasks'
+  '/admin/tasks': 'tasks',
+  '/admin/bookings': 'schedule',
+  '/admin/invoices': 'payment',
+  '/admin/posts': 'services',
+  '/admin/community': 'services',
+  '/admin/messages': 'services'
 };
 
 function ProtectedRoute({ children, role }: { children: React.ReactNode, role?: 'member' | 'staff' }) {
@@ -159,6 +168,7 @@ export const router = createBrowserRouter([
   {
     path: '/',
     Component: Layout,
+    errorElement: <RouteErrorBoundary />,
     children: [
       { index: true, Component: Home },
       { path: 'learn', Component: Learn },
@@ -171,6 +181,9 @@ export const router = createBrowserRouter([
       { path: 'clubs/:id', Component: ClubDetail },
       { path: 'disciplines/:id', Component: DisciplineDetail },
       { path: 'auth', Component: Auth },
+
+      // ĐÃ TỐI ƯU TẠI ĐÂY: Đưa trang QR vào làm con của Layout 
+      // để khi mở trang này, thanh menu Navbar màu trắng ở trên vẫn giữ cố định!
       {
         path: 'dashboard/qr',
         element: <ProtectedRoute role="member"><MemberQR /></ProtectedRoute>
@@ -202,6 +215,10 @@ export const router = createBrowserRouter([
     element: <ProtectedRoute role="member"><Trainers /></ProtectedRoute>
   },
   {
+    path: '/dashboard/trainers/:trainerId',
+    element: <ProtectedRoute role="member"><TrainerDetail /></ProtectedRoute>
+  },
+  {
     path: '/dashboard/trainers/:trainerId/book',
     element: <ProtectedRoute role="member"><BookTrainer /></ProtectedRoute>
   },
@@ -228,6 +245,10 @@ export const router = createBrowserRouter([
   {
     path: '/dashboard/services',
     element: <ProtectedRoute role="member"><MemberServices /></ProtectedRoute>
+  },
+  {
+    path: '/admin/attendance',
+    element: <ProtectedRoute role="staff"><AttendanceScanner /></ProtectedRoute>
   },
   {
     path: '/dashboard/settings',
@@ -296,10 +317,6 @@ export const router = createBrowserRouter([
   {
     path: '/admin/services/history',
     element: <ProtectedRoute role="staff"><ServiceHistory /></ProtectedRoute>
-  },
-  {
-    path: '/admin/attendance',
-    element: <ProtectedRoute role="staff"><Attendance /></ProtectedRoute>
   },
   {
     path: '/admin/attendance/history',
@@ -411,5 +428,25 @@ export const router = createBrowserRouter([
   {
     path: '/admin/tasks',
     element: <ProtectedRoute role="staff"><Tasks /></ProtectedRoute>
+  },
+  {
+    path: '/admin/bookings',
+    element: <ProtectedRoute role="staff"><BookingManagement /></ProtectedRoute>
+  },
+  {
+    path: '/admin/invoices',
+    element: <ProtectedRoute role="staff"><Invoices /></ProtectedRoute>
+  },
+  {
+    path: '/admin/posts',
+    element: <ProtectedRoute role="staff"><PostManagement /></ProtectedRoute>
+  },
+  {
+    path: '/admin/community',
+    element: <ProtectedRoute role="staff"><AdminCommunity /></ProtectedRoute>
+  },
+  {
+    path: '/admin/messages',
+    element: <ProtectedRoute role="staff"><AdminMessages /></ProtectedRoute>
   },
 ]);

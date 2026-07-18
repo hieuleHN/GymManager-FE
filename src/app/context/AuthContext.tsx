@@ -13,12 +13,13 @@ export interface User {
   locationId?: string | null;
   avatar?: string;
   permissions?: string[];
+  jobPermissions?: string[];
   status?: string;
 }
 
 interface AuthContextType {
   user: User | null;
-  login: (role: 'member' | 'staff', account: string, password: string) => Promise<void>;
+  login: (account: string, password: string) => Promise<void>;
   logout: () => void;
   loading: boolean;
   hasPermission: (feature: string) => boolean;
@@ -38,17 +39,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (stored) {
       try {
         setUser(JSON.parse(stored));
-      } catch { }
+      } catch {}
     }
     setLoading(false);
   }, []);
 
-  const login = async (role: 'member' | 'staff', account: string, password: string) => {
-    const endpoint = role === 'staff'
-      ? `${API_URL}/api/staff/login`
-      : `${API_URL}/api/customers/login`;
-
-    const res = await fetch(endpoint, {
+  const login = async (account: string, password: string) => {
+    const res = await fetch(`${API_URL}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ account, password })
@@ -73,6 +70,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       locationId: data.user.locationId || null,
       avatar: data.user.avatar,
       permissions: data.user.permissions || [],
+      jobPermissions: data.user.jobPermissions || [],
       status: data.user.status
     };
 
@@ -100,7 +98,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         localStorage.setItem('auth_user', JSON.stringify(updated));
         setUser(updated);
       }
-    } catch { }
+    } catch {}
   };
 
   const logout = () => {

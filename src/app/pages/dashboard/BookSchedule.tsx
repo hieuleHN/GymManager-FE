@@ -7,6 +7,7 @@ import { useAuth, getApiUrl, getAuthHeaders } from '../../context/AuthContext';
 import { toast } from 'sonner';
 
 export function BookSchedule() {
+  const { user } = useAuth();
   const navigate = useNavigate();
   const today = new Date();
   const [currentMonth, setCurrentMonth] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
@@ -90,7 +91,6 @@ export function BookSchedule() {
   return (
     <DashboardLayout>
       <div className="h-[calc(100vh-8rem)] flex flex-col">
-        {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-4">
             <button onClick={() => navigate('/dashboard/schedule')}

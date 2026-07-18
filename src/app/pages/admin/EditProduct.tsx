@@ -5,36 +5,26 @@ import { useNavigate, useParams } from 'react-router';
 import { getAuthHeaders } from '../../context/AuthContext';
 import { useClub } from '../../context/ClubContext';
 import { toast } from 'sonner';
+import { useForm } from 'react-hook-form';
+
+interface ProductFormData {
+  name: string;
+  price: string;
+  quantity: string;
+  description: string;
+  importDate: string;
+  expiryDate: string;
+}
 
 export function EditProduct() {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const { selectedClub } = useClub();
-  const [formData, setFormData] = useState({
-    name: '',
-    price: '',
-    quantity: '',
-    description: '',
-    importDate: '',
-    expiryDate: ''
-  });
+  const { register, handleSubmit, formState: { errors }, reset } = useForm<ProductFormData>();
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [currentImage, setCurrentImage] = useState('');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [errors, setErrors] = useState<Record<string, string>>({});
-
-  const handleChange = (field: string, value: string) => {
-    setFormData({ ...formData, [field]: value });
-    if (errors[field]) setErrors(prev => ({ ...prev, [field]: '' }));
-  };
-
-  const handleBlur = (field: string, value: any) => {
-    let msg = '';
-    if ((field === 'name' || field === 'importDate' || field === 'expiryDate') && !value) msg = 'Vui lòng nhập ' + (field === 'name' ? 'tên sản phẩm' : field === 'importDate' ? 'ngày nhập' : 'ngày hết hạn');
-    else if ((field === 'price' || field === 'quantity') && (!value || Number(value) <= 0)) msg = !value ? 'Vui lòng nhập ' + (field === 'price' ? 'đơn giá' : 'số lượng') : (field === 'price' ? 'Đơn giá' : 'Số lượng') + ' phải lớn hơn 0';
-    setErrors(prev => ({ ...prev, [field]: msg }));
-  };
 
   const fetchProduct = async () => {
     setLoading(true);
@@ -42,7 +32,7 @@ export function EditProduct() {
       const res = await fetch(`/api/products/${id}`, { headers: getAuthHeaders() });
       const data = await res.json();
       const product = data.data || data;
-      setFormData({
+      reset({
         name: product.name || '',
         price: String(product.price ?? ''),
         quantity: String(product.quantity ?? ''),
@@ -61,25 +51,16 @@ export function EditProduct() {
 
   useEffect(() => { if (id) fetchProduct(); }, [id]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const newErrors: Record<string, string> = {};
-    if (!formData.name) newErrors.name = 'Vui lòng nhập tên sản phẩm';
-    if (!formData.price || Number(formData.price) <= 0) newErrors.price = !formData.price ? 'Vui lòng nhập đơn giá' : 'Đơn giá phải lớn hơn 0';
-    if (!formData.quantity || Number(formData.quantity) <= 0) newErrors.quantity = !formData.quantity ? 'Vui lòng nhập số lượng' : 'Số lượng phải lớn hơn 0';
-    if (!formData.importDate) newErrors.importDate = 'Vui lòng nhập ngày nhập';
-    if (!formData.expiryDate) newErrors.expiryDate = 'Vui lòng nhập ngày hết hạn';
-    setErrors(newErrors);
-    if (Object.keys(newErrors).length > 0) return;
+  const onSubmit = async (data: ProductFormData) => {
     setSubmitting(true);
     try {
       const fd = new FormData();
-      fd.append('name', formData.name);
-      fd.append('price', String(Number(formData.price)));
-      fd.append('quantity', String(Number(formData.quantity)));
-      fd.append('description', formData.description);
-      fd.append('importDate', formData.importDate);
-      fd.append('expiryDate', formData.expiryDate);
+      fd.append('name', data.name);
+      fd.append('price', String(Number(data.price)));
+      fd.append('quantity', String(Number(data.quantity)));
+      fd.append('description', data.description);
+      fd.append('importDate', data.importDate);
+      fd.append('expiryDate', data.expiryDate);
       if (selectedClub !== 'all') fd.append('location_id', selectedClub);
       if (imageFile) fd.append('image', imageFile);
 
@@ -120,7 +101,7 @@ export function EditProduct() {
           <p className="text-slate-600">Cập nhật thông tin sản phẩm</p>
         </div>
 
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit(onSubmit)}>
           <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-8 space-y-6">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">
@@ -146,14 +127,11 @@ export function EditProduct() {
               </label>
               <input
                 type="text"
-                required
-                value={formData.name}
-                onChange={(e) => handleChange('name', e.target.value)}
-                onBlur={(e) => handleBlur('name', e.target.value)}
+                {...register('name', { required: 'Vui lòng nhập tên sản phẩm' })}
                 className={"w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 " + (errors.name ? 'border-red-500' : 'border-slate-200')}
                 placeholder="VD: Nước tăng lực Red Bull"
               />
-              {errors.name && <p className="text-red-500 text-sm mt-1">{errors.name}</p>}
+              {errors.name && <span className="text-red-500 text-sm mt-1">{errors.name.message}</span>}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -163,15 +141,14 @@ export function EditProduct() {
                 </label>
                 <input
                   type="number"
-                  required
-                  min="0"
-                  value={formData.price}
-                  onChange={(e) => handleChange('price', e.target.value)}
-                  onBlur={(e) => handleBlur('price', e.target.value)}
+                  {...register('price', {
+                    required: 'Vui lòng nhập đơn giá',
+                    validate: (value) => Number(value) > 0 || 'Đơn giá phải lớn hơn 0'
+                  })}
                   className={"w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 " + (errors.price ? 'border-red-500' : 'border-slate-200')}
                   placeholder="VD: 15000"
                 />
-                {errors.price && <p className="text-red-500 text-sm mt-1">{errors.price}</p>}
+                {errors.price && <span className="text-red-500 text-sm mt-1">{errors.price.message}</span>}
               </div>
 
               <div>
@@ -180,15 +157,14 @@ export function EditProduct() {
                 </label>
                 <input
                   type="number"
-                  required
-                  min="0"
-                  value={formData.quantity}
-                  onChange={(e) => handleChange('quantity', e.target.value)}
-                  onBlur={(e) => handleBlur('quantity', e.target.value)}
+                  {...register('quantity', {
+                    required: 'Vui lòng nhập số lượng',
+                    validate: (value) => Number(value) > 0 || 'Số lượng phải lớn hơn 0'
+                  })}
                   className={"w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 " + (errors.quantity ? 'border-red-500' : 'border-slate-200')}
                   placeholder="VD: 100"
                 />
-                {errors.quantity && <p className="text-red-500 text-sm mt-1">{errors.quantity}</p>}
+                {errors.quantity && <span className="text-red-500 text-sm mt-1">{errors.quantity.message}</span>}
               </div>
             </div>
 
@@ -197,8 +173,7 @@ export function EditProduct() {
                 Mô tả
               </label>
               <textarea
-                value={formData.description}
-                onChange={(e) => handleChange('description', e.target.value)}
+                {...register('description')}
                 rows={3}
                 className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 placeholder="Mô tả sản phẩm (không bắt buộc)"
@@ -212,13 +187,10 @@ export function EditProduct() {
                 </label>
                 <input
                   type="date"
-                  required
-                  value={formData.importDate}
-                  onChange={(e) => handleChange('importDate', e.target.value)}
-                  onBlur={(e) => handleBlur('importDate', e.target.value)}
+                  {...register('importDate', { required: 'Vui lòng nhập ngày nhập' })}
                   className={"w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 " + (errors.importDate ? 'border-red-500' : 'border-slate-200')}
                 />
-                {errors.importDate && <p className="text-red-500 text-sm mt-1">{errors.importDate}</p>}
+                {errors.importDate && <span className="text-red-500 text-sm mt-1">{errors.importDate.message}</span>}
               </div>
 
               <div>
@@ -227,13 +199,10 @@ export function EditProduct() {
                 </label>
                 <input
                   type="date"
-                  required
-                  value={formData.expiryDate}
-                  onChange={(e) => handleChange('expiryDate', e.target.value)}
-                  onBlur={(e) => handleBlur('expiryDate', e.target.value)}
+                  {...register('expiryDate', { required: 'Vui lòng nhập ngày hết hạn' })}
                   className={"w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 " + (errors.expiryDate ? 'border-red-500' : 'border-slate-200')}
                 />
-                {errors.expiryDate && <p className="text-red-500 text-sm mt-1">{errors.expiryDate}</p>}
+                {errors.expiryDate && <span className="text-red-500 text-sm mt-1">{errors.expiryDate.message}</span>}
               </div>
             </div>
 
