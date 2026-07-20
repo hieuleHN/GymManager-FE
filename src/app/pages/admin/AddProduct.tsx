@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 interface AddProductFormData {
   name: string;
   price: string;
+  costPrice: string;
   quantity: string;
   description: string;
   importDate: string;
@@ -40,6 +41,7 @@ export function AddProduct() {
       const fd = new FormData();
       fd.append('name', formData.name);
       fd.append('price', String(Number(formData.price)));
+      fd.append('costPrice', String(Number(formData.costPrice || 0)));
       fd.append('quantity', String(Number(formData.quantity)));
       fd.append('description', formData.description);
       fd.append('importDate', formData.importDate);
@@ -101,7 +103,22 @@ export function AddProduct() {
               {errors.name && <p className="text-red-500 text-sm mt-1">{errors.name.message}</p>}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Giá nhập
+                </label>
+                <input
+                  type="number"
+                  {...register('costPrice', {
+                    validate: (value) => !value || Number(value) >= 0 || 'Giá nhập phải >= 0'
+                  })}
+                  className={"w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 " + (errors.costPrice ? 'border-red-500' : 'border-slate-200')}
+                  placeholder="VD: 10000"
+                />
+                {errors.costPrice && <p className="text-red-500 text-sm mt-1">{errors.costPrice.message}</p>}
+              </div>
+
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
                   Đơn giá <span className="text-red-500">*</span>
