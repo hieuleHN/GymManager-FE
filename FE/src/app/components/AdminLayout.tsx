@@ -196,6 +196,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
     { name: 'Lịch tập', href: '/admin/training-schedule', icon: Calendar, feature: 'training' },
     { name: 'Quản lý tủ đồ', href: '/admin/lockers', icon: Lock, feature: 'equipment' },
     { name: 'Xác nhận lịch tập', href: '/admin/schedule-confirmations', icon: CheckCircle, feature: 'schedule' },
+    { name: 'Quản lý bài viết', href: '/admin/articles', icon: FileText, feature: 'services' },
     { name: 'Cộng đồng', href: '/admin/community', icon: Users, feature: 'services' },
     { name: 'Quản lý báo cáo', href: '/admin/reports', icon: Flag, feature: 'services' },
     { name: 'Tin nhắn', href: '/admin/messages', icon: MessageCircle, feature: 'services' }
@@ -389,7 +390,16 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                       {notifications.map((notif) => (
                         <button
                           key={notif._id}
-                          onClick={() => { if (!notif.read) markAsRead(notif._id); }}
+                          onClick={() => {
+                            if (!notif.read) markAsRead(notif._id);
+                            if (notif.type === 'new_article' && notif.relatedArticleId) {
+                              const articleId = typeof notif.relatedArticleId === 'object' ? notif.relatedArticleId._id : notif.relatedArticleId;
+                              navigate(`/articles/${articleId}`);
+                            } else if (notif.type === 'new_community_post' && notif.relatedPostId) {
+                              navigate('/admin/community');
+                            }
+                            setShowNotifications(false);
+                          }}
                           className={`w-full text-left block p-4 hover:bg-slate-50 border-b border-slate-100 transition-colors ${!notif.read ? 'bg-indigo-50/40' : ''}`}
                         >
                           <div className="flex gap-3">

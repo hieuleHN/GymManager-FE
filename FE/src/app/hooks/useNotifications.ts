@@ -10,6 +10,7 @@ export interface NotificationItem {
   type: string;
   relatedBookingId?: any;
   relatedPostId?: any;
+  relatedArticleId?: any;
   read: boolean;
   createdAt: string;
 }
@@ -28,9 +29,15 @@ export function useNotifications(recipientId: string | undefined, recipientRole:
         `${getApiUrl()}/api/notifications?recipientId=${recipientId}&recipientRole=${recipientRole}&limit=50`,
         { headers: getAuthHeaders() }
       );
+      if (!res.ok) {
+        console.error('Lỗi lấy thông báo:', await res.text());
+        return;
+      }
       const data = await res.json();
       if (data?.data) setNotifications(data.data);
-    } catch {}
+    } catch (err) {
+      console.error('Lỗi fetchNotifications:', err);
+    }
     setLoading(false);
   }, [recipientId, recipientRole]);
 
@@ -41,9 +48,15 @@ export function useNotifications(recipientId: string | undefined, recipientRole:
         `${getApiUrl()}/api/notifications/unread-count?recipientId=${recipientId}&recipientRole=${recipientRole}`,
         { headers: getAuthHeaders() }
       );
+      if (!res.ok) {
+        console.error('Lỗi lấy unread count:', await res.text());
+        return;
+      }
       const data = await res.json();
       if (typeof data?.count === 'number') setUnreadCount(data.count);
-    } catch {}
+    } catch (err) {
+      console.error('Lỗi fetchUnreadCount:', err);
+    }
   }, [recipientId, recipientRole]);
 
   useEffect(() => {
@@ -51,6 +64,7 @@ export function useNotifications(recipientId: string | undefined, recipientRole:
     fetchUnreadCount();
     intervalRef.current = setInterval(() => {
       fetchUnreadCount();
+      fetchNotifications();
     }, 15000);
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);

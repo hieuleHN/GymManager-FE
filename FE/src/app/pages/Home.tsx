@@ -1,4 +1,4 @@
-import { ArrowRight, Users, Trophy, Target, ChevronRight, Zap, MapPin, Play, Quote, Check, QrCode } from 'lucide-react';
+import { ArrowRight, Users, Trophy, Target, ChevronRight, Zap, MapPin, Play, Quote, Check, QrCode, Newspaper } from 'lucide-react';
 import { Link, useNavigate } from 'react-router';
 import { Button } from '@mui/material';
 import { motion, AnimatePresence } from 'motion/react';
@@ -132,6 +132,25 @@ export function Home() {
                     </Button>
                   </Link>
                 )}
+                <Link to="/articles">
+                  <Button
+                    variant="contained"
+                    size="large"
+                    sx={{
+                      bgcolor: '#0f172a',
+                      py: 1.5,
+                      px: 4,
+                      '&:hover': { bgcolor: '#334155' },
+                      textTransform: 'none',
+                      fontSize: '1.1rem',
+                      fontWeight: 'bold',
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.2)'
+                    }}
+                    startIcon={<Newspaper />}
+                  >
+                    Bài viết
+                  </Button>
+                </Link>
 
                 <Link to="/auth?mode=register">
                   <Button

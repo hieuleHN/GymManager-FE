@@ -251,7 +251,16 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                       {notifications.map((notif) => (
                         <button
                           key={notif._id}
-                          onClick={() => { if (!notif.read) markAsRead(notif._id); }}
+                          onClick={() => {
+                            if (!notif.read) markAsRead(notif._id);
+                            if (notif.type === 'new_article' && notif.relatedArticleId) {
+                              const articleId = typeof notif.relatedArticleId === 'object' ? notif.relatedArticleId._id : notif.relatedArticleId;
+                              navigate(`/articles/${articleId}`);
+                            } else if (notif.type === 'new_community_post' && notif.relatedPostId) {
+                              navigate('/dashboard/community');
+                            }
+                            setShowNotifications(false);
+                          }}
                           className={`w-full text-left block p-4 hover:bg-slate-50 border-b border-slate-100 transition-colors ${!notif.read ? 'bg-indigo-50/40' : ''}`}
                         >
                           <div className="flex gap-3">

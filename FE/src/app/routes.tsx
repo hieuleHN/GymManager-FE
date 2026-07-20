@@ -72,9 +72,12 @@ import { Tasks } from './pages/admin/Tasks';
 import { Invoices } from './pages/admin/Invoices';
 import { BookingManagement } from './pages/admin/BookingManagement';
 import { PostManagement } from './pages/admin/PostManagement';
+import { ArticleManagement } from './pages/admin/ArticleManagement';
 import { AdminCommunity } from './pages/admin/AdminCommunity';
 import { AdminMessages } from './pages/admin/AdminMessages';
 import { MemberProfile } from './pages/dashboard/MemberProfile';
+import { Articles } from './pages/Articles';
+import { ArticleDetail } from './pages/ArticleDetail';
 import { ReportManagement } from './pages/admin/ReportManagement';
 
 const routeFeatures: Record<string, string> = {
@@ -122,6 +125,7 @@ const routeFeatures: Record<string, string> = {
   '/admin/tasks': 'tasks',
   '/admin/bookings': 'schedule',
   '/admin/invoices': 'payment',
+  '/admin/articles': 'services',
   '/admin/posts': 'services',
   '/admin/community': 'services',
   '/admin/messages': 'services',
@@ -177,6 +181,8 @@ export const router = createBrowserRouter([
       { path: 'clubs/:id', Component: ClubDetail },
       { path: 'disciplines/:id', Component: DisciplineDetail },
       { path: 'auth', Component: Auth },
+      { path: 'articles', Component: Articles },
+      { path: 'articles/:id', Component: ArticleDetail },
 
       // ĐÃ TỐI ƯU TẠI ĐÂY: Đưa trang QR vào làm con của Layout 
       // để khi mở trang này, thanh menu Navbar màu trắng ở trên vẫn giữ cố định!
@@ -420,6 +426,10 @@ export const router = createBrowserRouter([
   {
     path: '/admin/invoices',
     element: <ProtectedRoute role="staff"><Invoices /></ProtectedRoute>
+  },
+  {
+    path: '/admin/articles',
+    element: <ProtectedRoute role="staff"><ArticleManagement /></ProtectedRoute>
   },
   {
     path: '/admin/posts',
