@@ -1,0 +1,17 @@
+# Loại bỏ thư mục build
+/build/
+/dist/
+
+# Loại bỏ thư mục node_modules
+/node_modules/
+
+# Loại bỏ file tạm
+*.log
+*.tmp
+
+# Loại bỏ file hệ thống
+.DS_Store
+Thumbs.db
+
+pnpm-lock.yaml
+pnpm-workspace.yaml
