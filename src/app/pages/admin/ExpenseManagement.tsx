@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
-import { DollarSign, Plus, Edit2, Trash2, Wrench, Wifi, Droplet, Zap, Receipt, Calendar, Loader2 } from 'lucide-react';
+import { DollarSign, Plus, Edit2, Trash2, Wrench, Wifi, Droplet, Zap, Receipt, Calendar, Loader2, Package } from 'lucide-react';
 import { AdminLayout } from '../../components/AdminLayout';
 import { Pagination } from '../../components/Pagination';
 import { getAuthHeaders } from '../../context/AuthContext';
@@ -36,6 +36,7 @@ export function ExpenseManagement() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
+  const [importCost, setImportCost] = useState(0);
 
   const { register, handleSubmit: onFormSubmit, formState: { errors }, reset } = useForm<ExpenseFormData>({
     defaultValues: { category: 'equipment', description: '', amount: '', date: '', note: '' }
@@ -62,6 +63,23 @@ export function ExpenseManagement() {
   };
 
   useEffect(() => { setPage(1); fetchExpenses(1); }, [selectedClub]);
+
+  useEffect(() => {
+    const fetchImportCost = async () => {
+      try {
+        const base = selectedClub && selectedClub !== 'all'
+          ? `/api/products?locationId=${selectedClub}`
+          : '/api/products';
+        const res = await fetch(base, { headers });
+        if (!res.ok) return;
+        const data = await res.json();
+        const products = data.data || [];
+        const total = products.reduce((sum: number, p: any) => sum + (p.costPrice || 0) * (p.sold || 0), 0);
+        setImportCost(total);
+      } catch {}
+    };
+    fetchImportCost();
+  }, [selectedClub]);
 
   const getCategoryIcon = (category: Expense['category']) => {
     switch (category) {
@@ -99,7 +117,7 @@ export function ExpenseManagement() {
     tax: expenses.filter(e => e.category === 'tax').reduce((sum, e) => sum + e.amount, 0),
     other: expenses.filter(e => e.category === 'other').reduce((sum, e) => sum + e.amount, 0),
   };
-  const totalExpenses = Object.values(totalByCategory).reduce((sum, v) => sum + v, 0);
+  const totalExpenses = Object.values(totalByCategory).reduce((sum, v) => sum + v, 0) + importCost;
 
   const formatCurrency = (amount: number) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
 
@@ -175,10 +193,16 @@ export function ExpenseManagement() {
           </button>
         </div>
 
-        <div className="grid md:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="grid md:grid-cols-2 lg:grid-cols-6 gap-4">
           <div className="bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-2xl p-6 text-white">
             <div className="flex items-center gap-3 mb-2"><DollarSign className="w-6 h-6" /><h3 className="font-semibold">Tổng chi phí</h3></div>
             <p className="text-3xl font-bold">{formatCurrency(totalExpenses)}</p>
+          </div>
+          <div className="bg-white rounded-2xl p-6 border border-slate-200">
+            <div className="flex items-center gap-3 mb-2 text-amber-600">
+              <Package className="w-6 h-6" /><h3 className="font-semibold text-slate-900">Tiền nhập hàng</h3>
+            </div>
+            <p className="text-2xl font-bold text-slate-900">{formatCurrency(importCost)}</p>
           </div>
           {(['equipment', 'utilities', 'tax', 'other'] as const).map(cat => (
             <div key={cat} className="bg-white rounded-2xl p-6 border border-slate-200">
