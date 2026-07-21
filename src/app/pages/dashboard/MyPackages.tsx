@@ -513,7 +513,7 @@ export function MyPackages() {
                         sx={{ textTransform: 'none', borderRadius: 2, bgcolor: '#d97706', '&:hover': { bgcolor: '#b45309' } }}>
                         Thanh toán ngay
                       </Button>
-                    ) : reg.contract_pdf && reg.payment_status === 'paid' ? (
+                    ) : reg.payment_status !== 'chờ thanh toán' ? (
                       <>
                         {reg.status === 'chờ xác nhận' && (
                           <div className="col-span-2 flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800 mb-1">
@@ -580,14 +580,12 @@ export function MyPackages() {
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-3">
-                      {reg.contract_pdf && (
-                        <a href={`${getApiUrl()}/api/user-packages/${reg._id}/contract-pdf?token=${encodeURIComponent(JSON.parse(localStorage.getItem('auth_user') || '{}').token || '')}`} target="_blank" rel="noopener noreferrer" className="block col-span-2">
-                          <Button fullWidth variant="outlined" size="small"
-                            sx={{ textTransform: 'none', borderRadius: 2, color: '#4f46e5', borderColor: '#4f46e5' }}>
-                            Xem hợp đồng (PDF)
-                          </Button>
-                        </a>
-                      )}
+                      <a href={`${getApiUrl()}/api/user-packages/${reg._id}/contract-pdf?token=${encodeURIComponent(JSON.parse(localStorage.getItem('auth_user') || '{}').token || '')}`} target="_blank" rel="noopener noreferrer" className="block col-span-2">
+                        <Button fullWidth variant="outlined" size="small"
+                          sx={{ textTransform: 'none', borderRadius: 2, color: '#4f46e5', borderColor: '#4f46e5' }}>
+                          Xem hợp đồng (PDF)
+                        </Button>
+                      </a>
                       <Link to="/packages">
                         <Button fullWidth variant="outlined" size="small"
                           sx={{ textTransform: 'none', borderRadius: 2 }}>
