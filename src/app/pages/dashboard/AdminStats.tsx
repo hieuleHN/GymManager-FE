@@ -34,14 +34,14 @@ export function AdminStats() {
     const [loading, setLoading] = useState<boolean>(true);
     const [error, setError] = useState<string | null>(null);
 
-    // KHỞI TẠO STATE TRỐNG - ĐỢI DỮ LIỆU THẬT TỪ DATABASE
+    // BẮT BUỘC KHỞI TẠO RỖNG - ĐỢI 100% DỮ LIỆU TỪ DATABASE
     const [bookingStats, setBookingStats] = useState<BookingStats>({ today: 0, month: 0, year: 0 });
     const [customerGrowth, setCustomerGrowth] = useState<GrowthItem[]>([]);
     const [sportDistribution, setSportDistribution] = useState<SportDistribution[]>([]);
     const [checkInOfWeek, setCheckInOfWeek] = useState<CheckInOfWeek[]>([]);
     const [trainerPerformance, setTrainerPerformance] = useState<TrainerPerformance[]>([]);
 
-    const fetchStats = async () => {
+    const fetchStatsFromDB = async () => {
         setLoading(true);
         setError(null);
         try {
@@ -52,19 +52,19 @@ export function AdminStats() {
             }
 
             if (!userToken) {
-                setError("Không tìm thấy mã xác thực (Token). Vui lòng đăng nhập lại.");
+                setError("Không tìm thấy Token đăng nhập. Vui lòng đăng nhập lại!");
                 setLoading(false);
                 return;
             }
 
-            // GỌI API THẬT TỪ DATABASE
+            // GỌI API TRUY VẤN TỪ DATABASE
             const response = await axios.get(`${getApiUrl()}/api/dashboard/admin-stats`, {
                 headers: { Authorization: `Bearer ${userToken}` }
             });
 
             if (response.data) {
                 const data = response.data;
-                // ĐỒNG BỘ 100% VỚI DATABASE TRẢ VỀ
+                // CẬP NHẬT TRỰC TIẾP TỪ DB
                 setBookingStats(data.bookingStats || { today: 0, month: 0, year: 0 });
                 setCustomerGrowth(data.customerGrowth || []);
                 setSportDistribution(data.sportDistribution || []);
@@ -72,15 +72,15 @@ export function AdminStats() {
                 setTrainerPerformance(data.trainerPerformance || []);
             }
         } catch (err: any) {
-            console.error("Lỗi kết nối API:", err);
-            setError("Không thể đồng bộ dữ liệu từ hệ thống. Hãy chắc chắn rằng Backend và Database đang hoạt động.");
+            console.error("Lỗi kết nối API Thống kê DB:", err);
+            setError("Không thể kết nối đến Backend hoặc Database đang gặp sự cố.");
         } finally {
             setLoading(false);
         }
     };
 
     useEffect(() => {
-        fetchStats();
+        fetchStatsFromDB();
     }, []);
 
     const maxGrowth = customerGrowth.length > 0 ? Math.max(...customerGrowth.map(d => d.count), 1) : 1;
@@ -90,22 +90,23 @@ export function AdminStats() {
     return (
         <AdminLayout>
             <div className="max-w-7xl mx-auto space-y-8 pb-12">
-                {/* Tiêu đề */}
+                {/* Header */}
                 <div className="flex justify-between items-center">
                     <div>
                         <h1 className="text-3xl font-black text-slate-900 tracking-tight">Trung tâm Phân tích & Báo cáo</h1>
-                        <p className="text-slate-500 text-sm mt-1">Dữ liệu liên kết trực tiếp từ hệ thống quản lý phòng tập thời gian thực</p>
+                        <p className="text-slate-500 text-sm mt-1">Dữ liệu liên kết trực tiếp từ Database thời gian thực</p>
                     </div>
                     <button
-                        onClick={fetchStats}
+                        onClick={fetchStatsFromDB}
                         disabled={loading}
                         className="p-3 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-2xl shadow-sm transition-all disabled:opacity-50"
+                        title="Đồng bộ dữ liệu DB"
                     >
                         <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
                     </button>
                 </div>
 
-                {/* Thông báo lỗi kết nối nếu có */}
+                {/* Thông báo lỗi kết nối */}
                 {error && (
                     <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-2xl flex items-center gap-3 text-sm">
                         <AlertCircle className="w-5 h-5 flex-shrink-0" />
@@ -113,37 +114,37 @@ export function AdminStats() {
                     </div>
                 )}
 
-                {/* 1. THỐNG KÊ ĐẶT LỊCH HLV */}
+                {/* 1. THỐNG KÊ ĐẶT LỊCH HLV TỪ DB */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <div className="bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-3xl p-6 text-white shadow-sm">
                         <p className="text-indigo-100 text-xs font-black uppercase tracking-widest">Buổi Đặt Lịch Hôm Nay</p>
                         <h3 className="text-5xl font-black mt-4">{bookingStats.today}</h3>
-                        <p className="text-indigo-200 text-xs mt-3">Truy vấn từ bảng Bookings</p>
+                        <p className="text-indigo-200 text-xs mt-3">Dữ liệu thực tế từ DB</p>
                     </div>
 
                     <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-3xl p-6 text-white shadow-sm">
                         <p className="text-purple-100 text-xs font-black uppercase tracking-widest">Buổi Đặt Lịch Tháng Này</p>
                         <h3 className="text-5xl font-black mt-4">{bookingStats.month}</h3>
-                        <p className="text-purple-200 text-xs mt-3">Tích lũy tháng hiện tại</p>
+                        <p className="text-purple-200 text-xs mt-3">Dữ liệu thực tế từ DB</p>
                     </div>
 
                     <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-3xl p-6 text-white shadow-sm">
                         <p className="text-emerald-100 text-xs font-black uppercase tracking-widest">Buổi Đặt Lịch Trong Năm</p>
                         <h3 className="text-5xl font-black mt-4">{bookingStats.year}</h3>
-                        <p className="text-emerald-200 text-xs mt-3">Tích lũy năm hiện tại</p>
+                        <p className="text-emerald-200 text-xs mt-3">Dữ liệu thực tế từ DB</p>
                     </div>
                 </div>
 
                 {/* Biểu đồ Hàng 1 */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    {/* 2. BIỂU ĐỒ HỘI VIÊN ĐĂNG KÝ (TĂNG TRƯỞNG) */}
+                    {/* 2. BIỂU ĐỒ TĂNG TRƯỜNG HỘI VIÊN */}
                     <div className="bg-white rounded-3xl border border-slate-100 p-6 shadow-sm">
                         <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-6">
                             <TrendingUp className="w-5 h-5 text-indigo-500" /> Tốc độ Tăng trưởng Hội viên mới
                         </h3>
                         {customerGrowth.length === 0 ? (
                             <div className="h-64 flex items-center justify-center text-slate-400 text-sm border-2 border-dashed border-slate-100 rounded-2xl">
-                                Không có dữ liệu tăng trưởng hội viên trong database
+                                Chưa có bản ghi tăng trưởng trong Database
                             </div>
                         ) : (
                             <div className="h-64 flex items-end justify-between gap-2 px-2 pt-6">
@@ -166,14 +167,14 @@ export function AdminStats() {
                         )}
                     </div>
 
-                    {/* 3. BIỂU ĐỒ HỘI VIÊN ĐANG HOẠT ĐỘNG THEO MÔN */}
+                    {/* 3. BIỂU ĐỒ PHÂN BỐ THEO MÔN */}
                     <div className="bg-white rounded-3xl border border-slate-100 p-6 shadow-sm">
                         <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-6">
                             <Activity className="w-5 h-5 text-emerald-500" /> Phân bổ Hội viên theo Gói môn tập
                         </h3>
                         {sportDistribution.length === 0 ? (
                             <div className="h-64 flex items-center justify-center text-slate-400 text-sm border-2 border-dashed border-slate-100 rounded-2xl">
-                                Chưa có dữ liệu phân bổ lớp học trong database
+                                Chưa có thông tin môn tập trong Database
                             </div>
                         ) : (
                             <div className="space-y-4 pt-4">
@@ -202,14 +203,14 @@ export function AdminStats() {
 
                 {/* Biểu đồ Hàng 2 */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    {/* 4. BIỂU ĐỒ ĐIỂM DANH THEO NGÀY TRONG TUẦN */}
+                    {/* 4. ĐIỂM DANH THEO NGÀY TRONG TUẦN */}
                     <div className="bg-white rounded-3xl border border-slate-100 p-6 shadow-sm">
                         <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-6">
                             <BarChart3 className="w-5 h-5 text-purple-500" /> Tần suất Điểm danh theo ngày trong Tuần
                         </h3>
                         {checkInOfWeek.length === 0 ? (
                             <div className="h-64 flex items-center justify-center text-slate-400 text-sm border-2 border-dashed border-slate-100 rounded-2xl">
-                                Chưa có dữ liệu điểm danh tuần này trong database
+                                Chưa có bản ghi điểm danh tuần này trong Database
                             </div>
                         ) : (
                             <div className="h-64 flex items-end justify-between gap-6 px-4 pt-6">
@@ -232,14 +233,14 @@ export function AdminStats() {
                         )}
                     </div>
 
-                    {/* 5. HIỆU SUẤT HLV TRUNG BÌNH */}
+                    {/* 5. HIỆU SUẤT HLV */}
                     <div className="bg-white rounded-3xl border border-slate-100 p-6 shadow-sm">
                         <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-6">
                             <Award className="w-5 h-5 text-amber-500" /> Xếp hạng Hiệu suất Huấn luyện viên (PT)
                         </h3>
                         {trainerPerformance.length === 0 ? (
                             <div className="h-64 flex items-center justify-center text-slate-400 text-sm border-2 border-dashed border-slate-100 rounded-2xl">
-                                Chưa xếp hạng vì HLV chưa có lịch dạy trong database
+                                Chưa có lịch dạy HLV hoàn thành trong Database
                             </div>
                         ) : (
                             <div className="space-y-4">
@@ -250,7 +251,7 @@ export function AdminStats() {
                                         </div>
                                         <div className="flex-1">
                                             <h4 className="text-sm font-black text-slate-800">{trainer.name}</h4>
-                                            <p className="text-[11px] text-slate-400 font-bold">Huấn luyện viên của trung tâm</p>
+                                            <p className="text-[11px] text-slate-400 font-bold">Huấn luyện viên trung tâm</p>
                                         </div>
                                         <div className="text-right">
                                             <span className="text-sm font-black text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full">
