@@ -13,12 +13,13 @@ export interface User {
   locationId?: string | null;
   avatar?: string;
   permissions?: string[];
+  jobPermissions?: string[];
   status?: string;
 }
 
 interface AuthContextType {
   user: User | null;
-  login: (role: 'member' | 'staff', account: string, password: string) => Promise<void>;
+  login: (account: string, password: string) => Promise<void>;
   logout: () => void;
   loading: boolean;
   hasPermission: (feature: string) => boolean;
@@ -43,12 +44,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLoading(false);
   }, []);
 
-  const login = async (role: 'member' | 'staff', account: string, password: string) => {
-    const endpoint = role === 'staff'
-      ? `${API_URL}/api/staff/login`
-      : `${API_URL}/api/customers/login`;
-
-    const res = await fetch(endpoint, {
+  const login = async (account: string, password: string) => {
+    const res = await fetch(`${API_URL}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ account, password })
@@ -73,6 +70,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       locationId: data.user.locationId || null,
       avatar: data.user.avatar,
       permissions: data.user.permissions || [],
+      jobPermissions: data.user.jobPermissions || [],
       status: data.user.status
     };
 
@@ -143,4 +141,11 @@ export function getAuthHeaders() {
     'Authorization': `Bearer ${user.token}`,
     'Content-Type': 'application/json'
   };
+}
+
+export function getToken(): string | null {
+  const stored = localStorage.getItem('auth_user');
+  if (!stored) return null;
+  const user = JSON.parse(stored);
+  return user.token || null;
 }

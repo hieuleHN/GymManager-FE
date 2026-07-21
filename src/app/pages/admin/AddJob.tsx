@@ -3,51 +3,42 @@ import { Button } from '@mui/material';
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { getAuthHeaders, getApiUrl } from '../../context/AuthContext';
+import { useForm } from 'react-hook-form';
+
+const ROLE_OPTIONS = [
+  { value: 'ke_toan', label: 'Kế toán' },
+  { value: 'huan_luyen_vien', label: 'Huấn luyện viên' },
+  { value: 'quan_ly', label: 'Quản lý' },
+  { value: 'le_tan', label: 'Lễ tân' },
+];
+
+interface JobFormData {
+  name: string;
+  salary: string;
+  description: string;
+  isAdmin: boolean;
+  permissions: string[];
+}
 
 export function AddJob() {
   const navigate = useNavigate();
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [errors, setErrors] = useState<Record<string, string>>({});
-  const [formData, setFormData] = useState({
-    name: '',
-    salary: '',
-    description: '',
-    isAdmin: false
-  });
+  const [selectedPermission, setSelectedPermission] = useState<string>('');
 
-  const handleChange = (field: string, value: string | boolean) => {
-    setFormData({ ...formData, [field]: value });
-    if (errors[field]) setErrors(prev => ({ ...prev, [field]: '' }));
-  };
+  const { register, handleSubmit, formState: { errors } } = useForm<JobFormData>();
 
-  const handleBlur = (field: string, value: any) => {
-    const msg = !value || (field === 'salary' && Number(value) <= 0)
-      ? field === 'name' ? 'Vui lòng nhập tên công việc'
-      : field === 'salary' ? (!value ? 'Vui lòng nhập tiền lương' : 'Tiền lương phải lớn hơn 0')
-      : ''
-      : '';
-    setErrors(prev => ({ ...prev, [field]: msg }));
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const onSubmit = async (data: JobFormData) => {
     setError('');
-    const newErrors: Record<string, string> = {};
-    if (!formData.name) newErrors.name = 'Vui lòng nhập tên công việc';
-    if (!formData.salary) newErrors.salary = 'Vui lòng nhập tiền lương';
-    else if (Number(formData.salary) <= 0) newErrors.salary = 'Tiền lương phải lớn hơn 0';
-    setErrors(newErrors);
-    if (Object.keys(newErrors).length > 0) return;
     setLoading(true);
     try {
       const res = await fetch(`${getApiUrl()}/api/jobs`, {
         method: 'POST',
         headers: getAuthHeaders(),
-        body: JSON.stringify({ ...formData, salary: Number(formData.salary) })
+        body: JSON.stringify({ ...data, salary: Number(data.salary), permissions: selectedPermission ? [selectedPermission] : [] })
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Lỗi thêm công việc!');
+      const resData = await res.json();
+      if (!res.ok) throw new Error(resData.error || 'Lỗi thêm công việc!');
       alert('Thêm công việc thành công!');
       navigate('/admin/jobs');
     } catch (err: any) {
@@ -65,37 +56,45 @@ export function AddJob() {
           <p className="text-slate-600">Tạo vị trí công việc mới</p>
         </div>
 
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit(onSubmit)}>
           <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-8 space-y-6">
             {error && <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm">{error}</div>}
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">
                 Tên công việc <span className="text-red-500">*</span>
               </label>
-              <input type="text" required value={formData.name} onChange={(e) => handleChange('name', e.target.value)} onBlur={(e) => handleBlur('name', e.target.value)}
+              <input type="text" {...register('name', { required: 'Vui lòng nhập tên công việc' })}
                 className={`w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 ${errors.name ? 'border-red-400' : 'border-slate-200'}`} placeholder="VD: Huấn luyện viên" />
-              {errors.name && <p className="text-red-500 text-xs mt-1">{errors.name}</p>}
+              {errors.name && <span className="text-red-500 text-sm mt-1">{errors.name.message}</span>}
             </div>
 
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">
                 Tiền lương <span className="text-red-500">*</span>
               </label>
-              <input type="number" required value={formData.salary} onChange={(e) => handleChange('salary', e.target.value)} onBlur={(e) => handleBlur('salary', e.target.value)}
-                className={`w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 ${errors.salary ? 'border-red-400' : 'border-slate-200'}`} placeholder="VD: 10000000" min="0" />
-              {errors.salary && <p className="text-red-500 text-xs mt-1">{errors.salary}</p>}
+              <input type="number" {...register('salary', {
+                required: 'Vui lòng nhập tiền lương',
+                validate: (value) => Number(value) > 0 || 'Tiền lương phải lớn hơn 0'
+              })}
+                className={`w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 ${errors.salary ? 'border-red-400' : 'border-slate-200'}`} placeholder="VD: 10000000" />
+              {errors.salary && <span className="text-red-500 text-sm mt-1">{errors.salary.message}</span>}
             </div>
 
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">Mô tả</label>
-              <textarea value={formData.description} onChange={(e) => handleChange('description', e.target.value)} rows={3}
+              <textarea {...register('description')} rows={3}
                 className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Mô tả công việc..." />
             </div>
 
-            <div className="flex items-center gap-3">
-              <input type="checkbox" id="isAdmin" checked={formData.isAdmin} onChange={(e) => handleChange('isAdmin', e.target.checked)}
-                className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
-              <label htmlFor="isAdmin" className="text-sm font-medium text-slate-700">Công việc này có quyền quản trị (phân quyền)</label>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Quyền</label>
+              <select value={selectedPermission} onChange={e => setSelectedPermission(e.target.value)}
+                className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
+                <option value="">-- Chọn quyền --</option>
+                {ROLE_OPTIONS.map(role => (
+                  <option key={role.value} value={role.value}>{role.label}</option>
+                ))}
+              </select>
             </div>
 
             <div className="flex justify-end gap-3 pt-6 border-t border-slate-200">

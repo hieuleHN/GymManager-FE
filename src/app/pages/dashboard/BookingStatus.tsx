@@ -2,20 +2,25 @@ import { DashboardLayout } from '../../components/DashboardLayout';
 import { useParams, useNavigate, useSearchParams } from 'react-router';
 import { Button } from '@mui/material';
 import { Calendar, Clock, Check, MapPin, XCircle, AlertCircle, Loader2, Eye, User } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth, getApiUrl, getAuthHeaders } from '../../context/AuthContext';
 import { toast } from 'sonner';
 
 interface BookingDetail {
   _id: string;
   customerId: { _id: string; fullName: string; phone: string; email: string };
-  trainerId: { _id: string; fullName: string; phone?: string };
+  trainerId: { _id: string; fullName: string; phone?: string } | null;
   date: string;
   time: string;
+  startTime?: string;
+  endTime?: string;
   status: 'pending' | 'confirmed' | 'rejected' | 'cancelled';
   rejectionReason?: string;
   locationId?: { _id: string; title: string; address?: string };
+  disciplineId?: { _id: string; name: string } | null;
+  disciplineName?: string;
   createdAt: string;
+  batchId?: string;
 }
 
 export function BookingStatus() {
@@ -23,8 +28,12 @@ export function BookingStatus() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const [booking, setBooking] = useState<BookingDetail | null>(null);
+  const [bookings, setBookings] = useState<BookingDetail[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const batchIdParam = searchParams.get('batchId');
+
+  const fetchByBatch = useRef(false);
 
   useEffect(() => {
     const showSuccess = searchParams.get('success') === 'true';
@@ -34,25 +43,47 @@ export function BookingStatus() {
   }, []);
 
   useEffect(() => {
-    if (!bookingId) return;
-    fetchBooking();
-    const interval = setInterval(fetchBooking, 15000);
+    if (!batchIdParam) { setLoading(false); return; }
+    fetchByBatch.current = true;
+    fetchBatchBookings();
+    const interval = setInterval(fetchBatchBookings, 15000);
+    return () => { fetchByBatch.current = false; clearInterval(interval); };
+  }, [batchIdParam]);
+
+  const fetchBatchBookings = async () => {
+    try {
+      const res = await fetch(`${getApiUrl()}/api/bookings/my?batchId=${batchIdParam}`, {
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) {
+          setBookings(data);
+        }
+      }
+    } catch {} finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (batchIdParam || fetchByBatch.current) return;
+    if (!bookingId) { setLoading(false); return; }
+    fetchSingleBooking();
+    const interval = setInterval(fetchSingleBooking, 15000);
     return () => clearInterval(interval);
   }, [bookingId]);
 
-  const fetchBooking = async () => {
-    if (!bookingId) return;
+  const fetchSingleBooking = async () => {
     try {
       const res = await fetch(`${getApiUrl()}/api/bookings/${bookingId}`, {
         headers: getAuthHeaders()
       });
       if (res.ok) {
         const data = await res.json();
-        setBooking(data);
+        setBookings([data]);
       }
-    } catch {
-      toast.error('Lỗi tải thông tin lịch đặt!');
-    } finally {
+    } catch {} finally {
       setLoading(false);
     }
   };
@@ -61,51 +92,55 @@ export function BookingStatus() {
     switch (status) {
       case 'pending':
         return {
-          icon: <Loader2 className="w-10 h-10 text-amber-500 animate-spin" />,
-          title: 'Đang chờ xác nhận',
-          description: isPersonal ? 'Lịch tập cá nhân đã được ghi nhận.' : 'Yêu cầu đặt lịch đã được gửi. HLV sẽ xác nhận sớm nhất.',
+          icon: <Loader2 className="w-5 h-5 text-amber-500 animate-spin" />,
+          title: 'Chờ xác nhận',
           bgColor: 'bg-amber-50',
           borderColor: 'border-amber-200',
-          textColor: 'text-amber-800'
+          textColor: 'text-amber-800',
+          label: 'Chờ duyệt'
         };
       case 'confirmed':
         return {
-          icon: <Check className="w-10 h-10 text-green-500" />,
-          title: isPersonal ? 'Lịch tập cá nhân' : 'Đã xác nhận',
-          description: isPersonal ? 'Lịch tập cá nhân đã được ghi nhận.' : 'HLV đã xác nhận lịch tập. Vui lòng đến đúng giờ.',
+          icon: <Check className="w-5 h-5 text-green-500" />,
+          title: isPersonal ? 'Lịch cá nhân' : 'Đã xác nhận',
           bgColor: 'bg-green-50',
           borderColor: 'border-green-200',
-          textColor: 'text-green-800'
+          textColor: 'text-green-800',
+          label: 'Đã xác nhận'
         };
       case 'rejected':
         return {
-          icon: <XCircle className="w-10 h-10 text-red-500" />,
-          title: 'Đã bị từ chối',
-          description: 'Yêu cầu đặt lịch đã bị từ chối. Vui lòng chọn thời gian khác.',
+          icon: <XCircle className="w-5 h-5 text-red-500" />,
+          title: 'Bị từ chối',
           bgColor: 'bg-red-50',
           borderColor: 'border-red-200',
-          textColor: 'text-red-800'
+          textColor: 'text-red-800',
+          label: 'Từ chối'
         };
       case 'cancelled':
         return {
-          icon: <XCircle className="w-10 h-10 text-slate-500" />,
-          title: 'Đã bị hủy',
-          description: 'Lịch tập đã bị hủy.',
+          icon: <XCircle className="w-5 h-5 text-slate-500" />,
+          title: 'Đã hủy',
           bgColor: 'bg-slate-50',
           borderColor: 'border-slate-200',
-          textColor: 'text-slate-800'
+          textColor: 'text-slate-800',
+          label: 'Đã hủy'
         };
       default:
         return {
-          icon: <AlertCircle className="w-10 h-10 text-slate-500" />,
+          icon: <AlertCircle className="w-5 h-5 text-slate-500" />,
           title: 'Không xác định',
-          description: '',
           bgColor: 'bg-slate-50',
           borderColor: 'border-slate-200',
-          textColor: 'text-slate-800'
+          textColor: 'text-slate-800',
+          label: 'Không xác định'
         };
     }
   };
+
+  const allPending = bookings.every(b => b.status === 'pending');
+  const allConfirmed = bookings.every(b => b.status === 'confirmed');
+  const anyRejected = bookings.some(b => b.status === 'rejected' || b.status === 'cancelled');
 
   if (loading) {
     return (
@@ -117,11 +152,15 @@ export function BookingStatus() {
     );
   }
 
-  if (!booking) {
+  if (bookings.length === 0) {
     return (
       <DashboardLayout>
-        <div className="h-[calc(100vh-8rem)] flex items-center justify-center">
-          <div className="text-center">
+        <div className="max-w-4xl mx-auto space-y-6">
+          <div>
+            <h1 className="text-3xl font-bold text-slate-900 mb-2">Chi tiết đặt lịch</h1>
+            <p className="text-slate-600">Thông tin chi tiết về lịch tập của bạn</p>
+          </div>
+          <div className="text-center py-16">
             <AlertCircle className="w-16 h-16 text-slate-300 mx-auto mb-4" />
             <h2 className="text-xl font-bold text-slate-900 mb-2">Không tìm thấy lịch đặt</h2>
             <p className="text-slate-500 mb-6">Lịch đặt không tồn tại hoặc đã bị xóa.</p>
@@ -135,31 +174,53 @@ export function BookingStatus() {
     );
   }
 
-  const isPersonal = !booking.trainerId;
-  const statusConfig = getStatusConfig(booking.status, isPersonal);
+  const firstBooking = bookings[0];
+  const isPersonal = !firstBooking.trainerId;
 
   return (
     <DashboardLayout>
       <div className="max-w-4xl mx-auto space-y-6">
         <div>
           <h1 className="text-3xl font-bold text-slate-900 mb-2">Chi tiết đặt lịch</h1>
-          <p className="text-slate-600">Thông tin chi tiết về lịch tập của bạn</p>
+          <p className="text-slate-600">
+            Đã đặt <strong>{bookings.length}</strong> buổi tập với huấn luyện viên
+          </p>
         </div>
 
-        <div className={`${statusConfig.bgColor} border ${statusConfig.borderColor} rounded-2xl p-6`}>
+        <div className={`rounded-2xl p-6 ${
+          allConfirmed ? 'bg-green-50 border border-green-200' :
+          anyRejected ? 'bg-red-50 border border-red-200' :
+          'bg-amber-50 border border-amber-200'
+        }`}>
           <div className="flex items-center gap-4">
-            {statusConfig.icon}
+            {allConfirmed ? (
+              <Check className="w-10 h-10 text-green-500" />
+            ) : anyRejected ? (
+              <XCircle className="w-10 h-10 text-red-500" />
+            ) : (
+              <Loader2 className="w-10 h-10 text-amber-500 animate-spin" />
+            )}
             <div>
-              <h2 className={`text-xl font-bold ${statusConfig.textColor}`}>{statusConfig.title}</h2>
-              <p className={statusConfig.textColor}>{statusConfig.description}</p>
+              <h2 className={`text-xl font-bold ${
+                allConfirmed ? 'text-green-800' :
+                anyRejected ? 'text-red-800' :
+                'text-amber-800'
+              }`}>
+                {allConfirmed ? 'Tất cả lịch đã được xác nhận!' :
+                 anyRejected ? 'Có lịch bị từ chối' :
+                 'Đang chờ xác nhận'}
+              </h2>
+              <p className={`${
+                allConfirmed ? 'text-green-700' :
+                anyRejected ? 'text-red-700' :
+                'text-amber-700'
+              }`}>
+                {allConfirmed ? 'HLV đã xác nhận tất cả các buổi tập. Vui lòng đến đúng giờ.' :
+                 anyRejected ? 'Một số buổi tập đã bị từ chối. Vui lòng kiểm tra chi tiết bên dưới.' :
+                 `Yêu cầu đặt ${bookings.length} buổi đã được gửi. HLV sẽ xác nhận sớm nhất.`}
+              </p>
             </div>
           </div>
-          {(booking.status === 'rejected' || booking.status === 'cancelled') && booking.rejectionReason && (
-            <div className="mt-4 p-4 bg-white rounded-xl border border-red-100">
-              <p className="text-sm font-semibold text-red-700 mb-1">Lý do:</p>
-              <p className="text-sm text-red-600">{booking.rejectionReason}</p>
-            </div>
-          )}
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -182,30 +243,66 @@ export function BookingStatus() {
               <div className="flex gap-6 mb-6">
                 <div className="w-32 h-32 bg-indigo-100 rounded-2xl flex items-center justify-center">
                   <span className="text-4xl font-bold text-indigo-600">
-                    {booking.trainerId?.fullName?.charAt(0) || 'H'}
+                    {firstBooking.trainerId?.fullName?.charAt(0) || 'H'}
                   </span>
                 </div>
                 <div className="flex-1">
-                  <h3 className="text-2xl font-bold text-slate-900 mb-1">{booking.trainerId?.fullName || 'N/A'}</h3>
+                  <h3 className="text-2xl font-bold text-slate-900 mb-1">{firstBooking.trainerId?.fullName || 'N/A'}</h3>
                   <p className="text-indigo-600 font-medium mb-2">Huấn luyện viên</p>
-                  {booking.trainerId?.phone && (
-                    <p className="text-sm text-slate-600">SĐT: {booking.trainerId.phone}</p>
+                  {firstBooking.trainerId?.phone && (
+                    <p className="text-sm text-slate-600">SĐT: {firstBooking.trainerId.phone}</p>
                   )}
                 </div>
               </div>
             )}
 
-            {booking.locationId && (
+            {firstBooking.locationId && (
               <div className="pt-4 border-t border-slate-200">
                 <div className="flex items-center gap-2 text-slate-600">
                   <MapPin className="w-4 h-4" />
-                  <span className="text-sm">{booking.locationId.title}</span>
-                  {booking.locationId.address && (
-                    <span className="text-sm text-slate-400">- {booking.locationId.address}</span>
+                  <span className="text-sm">{firstBooking.locationId.title}</span>
+                  {firstBooking.locationId.address && (
+                    <span className="text-sm text-slate-400">- {firstBooking.locationId.address}</span>
                   )}
                 </div>
               </div>
             )}
+
+            <div className="pt-4 border-t border-slate-200">
+              <h3 className="font-bold text-slate-900 mb-3">Danh sách buổi tập ({bookings.length})</h3>
+              <div className="space-y-3">
+                {bookings.map((b, idx) => {
+                  const sc = getStatusConfig(b.status, !b.trainerId);
+                  return (
+                    <div key={b._id} className={`rounded-xl border p-4 ${sc.bgColor} ${sc.borderColor}`}>
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-xs font-bold">
+                            {idx + 1}
+                          </span>
+                          <div>
+                            <p className="font-semibold text-slate-900">
+                              {new Date(b.date).toLocaleDateString('vi-VN', {
+                                weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+                              })}
+                            </p>
+                            <p className="text-sm text-slate-600">
+                              {b.startTime ? `${b.startTime} - ${b.endTime}` : b.time}
+                            </p>
+                          </div>
+                        </div>
+                        <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${sc.bgColor} ${sc.textColor} border ${sc.borderColor}`}>
+                          {sc.label}
+                        </span>
+                      </div>
+                      {(b.status === 'rejected' || b.status === 'cancelled') && b.rejectionReason && (
+                        <p className="mt-2 text-sm text-red-600 ml-9">Lý do: {b.rejectionReason}</p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </div>
 
           <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
@@ -217,36 +314,40 @@ export function BookingStatus() {
                   <Calendar className="w-5 h-5 text-indigo-600" />
                 </div>
                 <div>
-                  <p className="text-xs text-slate-500">Ngày tập</p>
+                  <p className="text-xs text-slate-500">Ngày tạo</p>
                   <p className="font-semibold text-slate-900">
-                    {new Date(booking.date).toLocaleDateString('vi-VN', {
-                      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
-                    })}
+                    {new Date(firstBooking.createdAt).toLocaleDateString('vi-VN')}
                   </p>
                 </div>
               </div>
 
-              <div className="flex items-center gap-3">
-                <div className="bg-green-100 p-2 rounded-lg">
-                  <Clock className="w-5 h-5 text-green-600" />
+              {(firstBooking.disciplineId || firstBooking.disciplineName) && (
+                <div className="flex items-center gap-3">
+                  <div className="bg-purple-100 p-2 rounded-lg">
+                    <span className="w-5 h-5 text-purple-600 flex items-center justify-center font-bold text-sm">M</span>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500">Bộ môn</p>
+                    <p className="font-semibold text-slate-900">{firstBooking.disciplineId?.name || firstBooking.disciplineName}</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-xs text-slate-500">Giờ tập</p>
-                  <p className="font-semibold text-slate-900">
-                    {booking.startTime ? `${booking.startTime} - ${booking.endTime}` : booking.time}
-                  </p>
-                </div>
-              </div>
-            </div>
+              )}
 
-            <div className="pt-4 border-t border-slate-200 mb-6">
-              <div className="text-sm text-slate-500">
-                Ngày đặt: {new Date(booking.createdAt).toLocaleDateString('vi-VN')}
-              </div>
+              {bookings.length > 1 && (
+                <div className="flex items-center gap-3">
+                  <div className="bg-amber-100 p-2 rounded-lg">
+                    <span className="w-5 h-5 text-amber-600 flex items-center justify-center font-bold text-sm">#</span>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500">Tổng số buổi</p>
+                    <p className="font-semibold text-slate-900">{bookings.length} buổi</p>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="space-y-3">
-              {(booking.status === 'confirmed') && (
+              {allConfirmed && (
                 <Button fullWidth variant="contained"
                   startIcon={<Eye className="w-4 h-4" />}
                   onClick={() => navigate('/dashboard/schedule')}
@@ -255,7 +356,7 @@ export function BookingStatus() {
                   Xem lịch tập
                 </Button>
               )}
-              {((booking.status === 'rejected' || booking.status === 'cancelled') && !isPersonal) && (
+              {anyRejected && !isPersonal && (
                 <Button fullWidth variant="contained"
                   onClick={() => navigate('/dashboard/trainers')}
                   sx={{ height: 48, borderRadius: 3, textTransform: 'none', fontSize: '1rem',
@@ -263,7 +364,7 @@ export function BookingStatus() {
                   Đặt lịch mới
                 </Button>
               )}
-              {(booking.status === 'pending') && (
+              {allPending && (
                 <Button fullWidth variant="outlined"
                   onClick={() => navigate('/dashboard/trainers')}
                   sx={{ height: 48, borderRadius: 3, textTransform: 'none', fontSize: '1rem', fontWeight: 700 }}>

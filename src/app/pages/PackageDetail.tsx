@@ -13,6 +13,8 @@ interface PackageDetailData {
   features: string[];
   durations: { months: number; discount: number }[];
   description?: string;
+  ptSessionsPerMonth?: number;
+  isFullMonth?: boolean;
   contractA?: string;
   contractB?: string;
   contractTerms?: string;
@@ -176,8 +178,24 @@ export function PackageDetail() {
                 )}
               </div>
 
+              {/* PT Sessions Info */}
+              {(pkg.ptSessionsPerMonth > 0 || pkg.isFullMonth) && (
+                <div className="mb-8 p-4 bg-indigo-50 rounded-xl border border-indigo-200">
+                  <h3 className="text-sm font-semibold text-indigo-700 uppercase mb-2">Huấn luyện viên</h3>
+                  <p className="text-indigo-900 font-medium">
+                    {pkg.isFullMonth
+                      ? 'Không giới hạn buổi tập với HLV'
+                      : `${pkg.ptSessionsPerMonth} buổi tập với HLV / tháng`
+                    }
+                  </p>
+                  <p className="text-xs text-indigo-600 mt-1">
+                    Khi đăng ký gói, số buổi sẽ được chia đều theo các tháng
+                  </p>
+                </div>
+              )}
+
               {/* Features */}
-              <div className="mb-8">
+                <div className="mb-8">
                 <h3 className="text-sm font-semibold text-slate-500 uppercase mb-3">Quyền lợi bao gồm</h3>
                 <ul className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {(pkg.features || []).map((feature, idx) => (

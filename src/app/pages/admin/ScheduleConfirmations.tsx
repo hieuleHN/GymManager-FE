@@ -15,6 +15,8 @@ interface Booking {
   status: "pending" | "confirmed" | "rejected" | "cancelled";
   note?: string;
   rejectionReason?: string;
+  disciplineId?: { _id: string; name: string } | null;
+  disciplineName?: string;
   createdAt: string;
 }
 
@@ -326,6 +328,12 @@ export function ScheduleConfirmations() {
                   <div className="p-4 bg-slate-50 rounded-lg">
                     <label className="text-sm font-medium text-slate-700">Huấn luyện viên</label>
                     <p className="text-lg font-semibold text-slate-900 mt-1">{selectedBooking.trainerId?.fullName || 'Chưa có'}</p>
+                  </div>
+                  <div className="p-4 bg-slate-50 rounded-lg">
+                    <label className="text-sm font-medium text-slate-700">Bộ môn</label>
+                    <p className="text-lg font-semibold text-slate-900 mt-1">
+                      {selectedBooking.disciplineId?.name || selectedBooking.disciplineName || 'Chưa có'}
+                    </p>
                   </div>
                   <div className="p-4 bg-slate-50 rounded-lg">
                     <label className="text-sm font-medium text-slate-700">Trạng thái</label>

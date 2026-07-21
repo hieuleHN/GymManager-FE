@@ -16,6 +16,8 @@ interface PackageItem {
   disciplineId?: { _id: string; name: string };
   locationId?: { _id: string; title: string };
   is_active: boolean;
+  ptSessionsPerMonth?: number;
+  isFullMonth?: boolean;
 }
 
 interface Discipline {
@@ -230,6 +232,13 @@ export function Packages() {
                   </span>
                 </div>
                 <span className="text-sm text-slate-300">/ tháng</span>
+                {(plan.ptSessionsPerMonth > 0 || plan.isFullMonth) && (
+                  <div className="mt-3 flex items-center gap-2">
+                    <span className="px-3 py-1 text-xs font-semibold bg-indigo-500/20 text-indigo-300 rounded-full border border-indigo-500/30">
+                      {plan.isFullMonth ? 'Không giới hạn buổi HLV' : `${plan.ptSessionsPerMonth} buổi HLV / tháng`}
+                    </span>
+                  </div>
+                )}
               </div>
 
               <ul className="space-y-3 mb-8 flex-1">

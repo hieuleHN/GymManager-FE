@@ -6,12 +6,20 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { getAuthHeaders, getApiUrl } from '../../context/AuthContext';
 
+const ROLE_LABELS: Record<string, string> = {
+  ke_toan: 'Kế toán',
+  huan_luyen_vien: 'Huấn luyện viên',
+  quan_ly: 'Quản lý',
+  le_tan: 'Lễ tân',
+};
+
 interface Task {
   _id: string;
   name: string;
   salary: number;
   description?: string;
   isAdmin?: boolean;
+  permissions?: string[];
 }
 
 export function Tasks() {
@@ -68,6 +76,7 @@ export function Tasks() {
                   <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Mô tả</th>
                   <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Tiền lương</th>
                   <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Admin</th>
+                  <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Quyền</th>
                   <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Thao tác</th>
                 </tr>
               </thead>
@@ -84,6 +93,18 @@ export function Tasks() {
                       </span>
                     </td>
                     <td className="px-6 py-4">
+                      <div className="flex flex-wrap gap-1">
+                        {(task.permissions?.length ? task.permissions : []).map(p => (
+                          <span key={p} className="inline-flex px-2 py-0.5 rounded-md text-xs font-medium bg-indigo-100 text-indigo-700">
+                            {ROLE_LABELS[p] || p}
+                          </span>
+                        ))}
+                        {(!task.permissions || task.permissions.length === 0) && (
+                          <span className="text-xs text-slate-400">-</span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
                       <div className="flex gap-2">
                         <button className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg" title="Sửa">
                           <Edit className="w-4 h-4" />
@@ -96,7 +117,7 @@ export function Tasks() {
                   </tr>
                 ))}
                 {tasks.length === 0 && (
-                  <tr><td colSpan={6} className="px-6 py-8 text-center text-slate-500">Chưa có công việc nào</td></tr>
+                  <tr><td colSpan={7} className="px-6 py-8 text-center text-slate-500">Chưa có công việc nào</td></tr>
                 )}
               </tbody>
             </table>

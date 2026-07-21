@@ -5,6 +5,12 @@ import { Plus, Edit, Trash2, Loader2 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { getAuthHeaders } from '../../context/AuthContext';
 import { toast } from 'sonner';
+import { useForm } from 'react-hook-form';
+
+interface PolicyFormData {
+  title: string;
+  description: string;
+}
 
 interface Policy {
   _id: string;
@@ -19,9 +25,8 @@ export function PolicyManagement() {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<Policy | null>(null);
-  const [formData, setFormData] = useState({ title: '', description: '' });
+  const { register, handleSubmit: formSubmit, reset, formState: { errors, isSubmitting } } = useForm<PolicyFormData>({ defaultValues: { title: '', description: '' } });
   const [submitting, setSubmitting] = useState(false);
-  const [errors, setErrors] = useState<Record<string, string>>({});
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
@@ -46,42 +51,22 @@ export function PolicyManagement() {
 
   const openAdd = () => {
     setEditing(null);
-    setFormData({ title: '', description: '' });
-    setErrors({});
+    reset({ title: '', description: '' });
     setShowModal(true);
   };
 
   const openEdit = (p: Policy) => {
     setEditing(p);
-    setFormData({ title: p.title, description: p.description });
-    setErrors({});
+    reset({ title: p.title, description: p.description });
     setShowModal(true);
   };
 
-  const handleBlur = (field: string) => {
-    let error = '';
-    if (field === 'title' && !formData.title.trim()) error = 'Vui lòng nhập tiêu đề';
-    else if (field === 'description' && !formData.description.trim()) error = 'Vui lòng nhập mô tả';
-    setErrors(prev => ({ ...prev, [field]: error }));
-  };
-
-  const validateAll = () => {
-    const newErrors: Record<string, string> = {};
-    if (!formData.title.trim()) newErrors.title = 'Vui lòng nhập tiêu đề';
-    if (!formData.description.trim()) newErrors.description = 'Vui lòng nhập mô tả';
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!validateAll()) return;
-
+  const onFormSubmit = async (data: PolicyFormData) => {
     setSubmitting(true);
     try {
       const url = editing ? `/api/policies/${editing._id}` : '/api/policies';
       const method = editing ? 'PUT' : 'POST';
-      const res = await fetch(url, { method, headers, body: JSON.stringify(formData) });
+      const res = await fetch(url, { method, headers, body: JSON.stringify(data) });
       if (!res.ok) throw new Error('Failed');
       toast.success(editing ? 'Cập nhật chính sách thành công!' : 'Thêm chính sách thành công!');
       setShowModal(false);
@@ -168,20 +153,18 @@ export function PolicyManagement() {
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center" onClick={() => setShowModal(false)}>
           <div className="bg-white rounded-2xl p-6 max-w-md w-full mx-4" onClick={e => e.stopPropagation()}>
             <h3 className="text-xl font-bold text-slate-900 mb-6">{editing ? 'Sửa chính sách' : 'Thêm chính sách'}</h3>
-            <form onSubmit={handleSubmit} className="space-y-4 mb-6">
+            <form onSubmit={formSubmit(onFormSubmit)} className="space-y-4 mb-6">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">Tiêu đề <span className="text-red-500">*</span></label>
-                <input type="text" required value={formData.title} onChange={(e) => { setFormData({ ...formData, title: e.target.value }); setErrors(prev => ({ ...prev, title: '' })); }}
-                  onBlur={() => handleBlur('title')}
+                <input type="text" {...register('title', { required: 'Vui lòng nhập tiêu đề' })}
                   className={`w-full p-3 border ${errors.title ? 'border-red-400' : 'border-slate-200'} rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500`} />
-                {errors.title && <p className="text-red-500 text-sm mt-1">{errors.title}</p>}
+                {errors.title && <span className="text-red-500 text-sm mt-1">{errors.title.message}</span>}
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">Mô tả <span className="text-red-500">*</span></label>
-                <textarea required value={formData.description} onChange={(e) => { setFormData({ ...formData, description: e.target.value }); setErrors(prev => ({ ...prev, description: '' })); }}
-                  onBlur={() => handleBlur('description')}
+                <textarea {...register('description', { required: 'Vui lòng nhập mô tả' })}
                   rows={4} className={`w-full p-3 border ${errors.description ? 'border-red-400' : 'border-slate-200'} rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500`} />
-                {errors.description && <p className="text-red-500 text-sm mt-1">{errors.description}</p>}
+                {errors.description && <span className="text-red-500 text-sm mt-1">{errors.description.message}</span>}
               </div>
               <div className="flex gap-3 pt-4">
                 <Button type="button" variant="outlined" onClick={() => setShowModal(false)}

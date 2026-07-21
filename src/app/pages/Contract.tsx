@@ -205,6 +205,17 @@ export function Contract() {
                     <p className="text-slate-600 mb-1">Cơ sở tập luyện:</p>
                     <p className="font-semibold text-slate-900">{customer?.locationId?.title || 'ZenFitness'}</p>
                   </div>
+                  {(pkg.ptSessionsPerMonth > 0 || pkg.isFullMonth) && (
+                    <div>
+                      <p className="text-slate-600 mb-1">Tập với HLV:</p>
+                      <p className="font-semibold text-indigo-600">
+                        {pkg.isFullMonth
+                          ? 'Không giới hạn'
+                          : `${pkg.ptSessionsPerMonth} buổi/tháng (Tổng: ${pkg.ptSessionsPerMonth * durationMonths} buổi)`
+                        }
+                      </p>
+                    </div>
+                  )}
                   <div>
                     <p className="text-slate-600 mb-1">Tổng giá trị:</p>
                     <p className="font-bold text-indigo-600 text-2xl">{formatPrice(totalPrice)}</p>

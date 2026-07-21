@@ -19,6 +19,8 @@ interface PackageItem {
   disciplineId: Discipline | string;
   features: string[];
   durations: { months: number; discount: number }[];
+  ptSessionsPerMonth?: number;
+  isFullMonth?: boolean;
   is_active: boolean;
 }
 
@@ -211,6 +213,11 @@ export function PackageList() {
                       </p>
                       <span className="text-slate-500">đ/tháng</span>
                     </div>
+                    {(pkg.ptSessionsPerMonth > 0 || pkg.isFullMonth) && (
+                      <p className="text-xs text-indigo-600 font-semibold mt-1">
+                        {pkg.isFullMonth ? 'PT: Full tháng' : `PT: ${pkg.ptSessionsPerMonth} buổi/tháng`}
+                      </p>
+                    )}
                   </div>
 
                   <div className="space-y-2 mb-6">

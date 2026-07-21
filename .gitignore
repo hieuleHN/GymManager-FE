@@ -1,5 +1,6 @@
 # Loại bỏ thư mục build
 /build/
+/dist/
 
 # Loại bỏ thư mục node_modules
 /node_modules/
