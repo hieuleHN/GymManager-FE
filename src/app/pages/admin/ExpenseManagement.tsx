@@ -74,7 +74,7 @@ export function ExpenseManagement() {
         if (!res.ok) return;
         const data = await res.json();
         const products = data.data || [];
-        const total = products.reduce((sum: number, p: any) => sum + (p.costPrice || 0) * (p.sold || 0), 0);
+        const total = products.reduce((sum: number, p: any) => sum + (p.costPrice || 0) * (p.importQuantity || p.quantity || 0), 0);
         setImportCost(total);
       } catch {}
     };
