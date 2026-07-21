@@ -1,5 +1,5 @@
 import { DashboardLayout } from '../../components/DashboardLayout';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@mui/material';
 import { useNavigate } from 'react-router';
 import { ChevronLeft, ChevronRight, Save, ArrowLeft } from 'lucide-react';
@@ -14,6 +14,7 @@ export function BookSchedule() {
   const [selectedDates, setSelectedDates] = useState<Record<string, string>>({});
   const [activeDate, setActiveDate] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
+  const [bookedTimes, setBookedTimes] = useState<Record<string, string[]>>({});
 
   const year = currentMonth.getFullYear();
   const month = currentMonth.getMonth();
@@ -26,6 +27,33 @@ export function BookSchedule() {
     '14:00', '14:30', '15:00', '15:30', '16:00', '16:30', '17:00', '17:30',
     '18:00', '18:30', '19:00', '19:30', '20:00', '20:30'
   ];
+
+  const fetchBookedTimes = async (y: number, m: number) => {
+    try {
+      const dateFrom = `${y}-${String(m + 1).padStart(2, '0')}-01`;
+      const dateTo = `${y}-${String(m + 1).padStart(2, '0')}-${new Date(y, m + 1, 0).getDate()}`;
+      const res = await fetch(`${getApiUrl()}/api/bookings/my-date-range?dateFrom=${dateFrom}&dateTo=${dateTo}`, {
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        const bookings = await res.json();
+        const map: Record<string, string[]> = {};
+        bookings.forEach((b: any) => {
+          const d = b.date ? new Date(b.date).toISOString().split('T')[0] : '';
+          const t = b.time || b.startTime || '';
+          if (d && t) {
+            if (!map[d]) map[d] = [];
+            if (!map[d].includes(t)) map[d].push(t);
+          }
+        });
+        setBookedTimes(map);
+      }
+    } catch {}
+  };
+
+  useEffect(() => {
+    fetchBookedTimes(year, month);
+  }, [year, month]);
 
   const handleDateClick = (day: number) => {
     if (day < 1 || day > daysInMonth) return;
@@ -70,8 +98,15 @@ export function BookSchedule() {
             locationId: user?.locationId || null
           })
         });
-        if (res.ok) success++;
-        else fail++;
+        if (res.ok) {
+          success++;
+        } else {
+          const data = await res.json();
+          if (res.status === 409) {
+            toast.error(data.error || 'Bạn đã có lịch vào thời gian này!');
+          }
+          fail++;
+        }
       } catch { fail++; }
     }
 
@@ -79,7 +114,8 @@ export function BookSchedule() {
 
     if (success > 0) {
       toast.success(`Đã lưu ${success} lịch tập thành công!`);
-      if (fail > 0) toast.warning(`${fail} lịch thất bại`);
+      fetchBookedTimes(year, month);
+      if (fail > 0) toast.warning(`${fail} lịch bị trùng hoặc thất bại`);
       setTimeout(() => navigate('/dashboard/schedule'), 1500);
     } else {
       toast.error('Đặt lịch thất bại. Vui lòng thử lại.');
@@ -138,6 +174,7 @@ export function BookSchedule() {
                     const isValid = day >= 1 && day <= daysInMonth;
                     const dateStr = isValid ? `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}` : '';
                     const hasTime = dateStr ? selectedDates[dateStr] : undefined;
+                    const hasExistingBooking = dateStr ? (bookedTimes[dateStr]?.length || 0) > 0 : false;
                     const isActive = activeDate === day;
                     const isPast = isValid ? new Date(year, month, day) <= today : false;
 
@@ -147,6 +184,7 @@ export function BookSchedule() {
                           : isPast ? 'bg-slate-50 border-slate-200 cursor-not-allowed opacity-60'
                           : isActive ? 'border-indigo-600 bg-indigo-100 shadow-md cursor-pointer'
                           : hasTime ? 'border-green-400 bg-green-50 hover:bg-green-100 cursor-pointer'
+                          : hasExistingBooking ? 'border-amber-300 bg-amber-50 hover:bg-amber-100 cursor-pointer'
                           : 'border-slate-200 hover:border-indigo-300 hover:bg-slate-50 cursor-pointer'}`}>
                         {isValid && (
                           <div className="h-full flex flex-col">
@@ -155,6 +193,9 @@ export function BookSchedule() {
                             </div>
                             {hasTime && (
                               <div className="text-xs bg-green-600 text-white px-1.5 py-0.5 rounded font-semibold">{hasTime}</div>
+                            )}
+                            {!hasTime && hasExistingBooking && (
+                              <div className="text-[10px] bg-amber-500 text-white px-1 py-0.5 rounded font-semibold">Đã có lịch</div>
                             )}
                           </div>
                         )}
@@ -173,12 +214,25 @@ export function BookSchedule() {
 
             {activeDate ? (
               <div className="space-y-2 max-h-[500px] overflow-y-auto pr-2">
-                {timeSlots.map((time) => (
-                  <button key={time} onClick={() => handleTimeSelect(time)}
-                    className="w-full px-4 py-3 rounded-lg border-2 border-slate-200 hover:border-indigo-500 hover:bg-indigo-50 transition-all text-slate-900 font-semibold">
-                    {time}
-                  </button>
-                ))}
+                {timeSlots.map((time) => {
+                  const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(activeDate).padStart(2, '0')}`;
+                  const isBooked = bookedTimes[dateStr]?.includes(time) || false;
+                  const isSelected = selectedDates[dateStr] === time;
+                  return (
+                    <button key={time} onClick={() => !isBooked && handleTimeSelect(time)}
+                      disabled={isBooked}
+                      className={`w-full px-4 py-3 rounded-lg border-2 font-semibold transition-all ${
+                        isBooked
+                          ? 'border-red-200 bg-red-50 text-red-400 cursor-not-allowed'
+                          : isSelected
+                          ? 'border-green-500 bg-green-50 text-green-700'
+                          : 'border-slate-200 hover:border-indigo-500 hover:bg-indigo-50 text-slate-900'
+                      }`}>
+                      {time}
+                      {isBooked && <span className="text-xs ml-2 text-red-400">(Đã đặt)</span>}
+                    </button>
+                  );
+                })}
               </div>
             ) : (
               <div className="text-center py-12">

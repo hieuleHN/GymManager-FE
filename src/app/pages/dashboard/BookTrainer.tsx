@@ -55,6 +55,7 @@ export function BookTrainer() {
   const [checkingConflict, setCheckingConflict] = useState(false);
   const [showContact, setShowContact] = useState(false);
   const [bookedTimes, setBookedTimes] = useState<Set<string>>(new Set());
+  const [customerBookedTimes, setCustomerBookedTimes] = useState<Set<string>>(new Set());
   const [selectedDisciplineId, setSelectedDisciplineId] = useState<string | null>(null);
   const [trainerShifts, setTrainerShifts] = useState<Record<string, string[]>>({});
   const [loadingShifts, setLoadingShifts] = useState(false);
@@ -120,6 +121,31 @@ export function BookTrainer() {
     fetchBookingsForDate(activeDate);
   }, [activeDate, trainerId]);
 
+  const fetchCustomerBookedTimes = async (dateStr: string) => {
+    try {
+      const res = await fetch(
+        `${getApiUrl()}/api/bookings/my-date-range?dateFrom=${dateStr}&dateTo=${dateStr}`,
+        { headers: getAuthHeaders() }
+      );
+      if (res.ok) {
+        const bookings = await res.json();
+        const times = new Set<string>();
+        if (Array.isArray(bookings)) {
+          bookings.forEach((b: any) => { if (b.time) times.add(b.time); });
+        }
+        setCustomerBookedTimes(times);
+      }
+    } catch {}
+  };
+
+  useEffect(() => {
+    if (!activeDate) {
+      setCustomerBookedTimes(new Set());
+      return;
+    }
+    fetchCustomerBookedTimes(activeDate);
+  }, [activeDate]);
+
   const fetchBookingsForDate = async (dateStr: string) => {
     setLoadingSlots(true);
     try {
@@ -151,6 +177,9 @@ export function BookTrainer() {
     for (const t of bookedTimes) {
       if (t >= slot.start && t < slot.end) return true;
     }
+    for (const t of customerBookedTimes) {
+      if (t === slot.start) return true;
+    }
     const shifts = getDateShifts(activeDate);
     if (shifts.length === 0) return true;
     const slotIndex = timeSlots.findIndex(s => s.start === slot.start);
@@ -158,6 +187,22 @@ export function BookTrainer() {
     if (isMorning && !shifts.includes('morning-noon')) return true;
     if (!isMorning && !shifts.includes('afternoon-evening')) return true;
     return false;
+  };
+
+  const getSlotDisabledReason = (slot: { start: string; end: string }): string => {
+    if (!activeDate) return '';
+    for (const t of bookedTimes) {
+      if (t >= slot.start && t < slot.end) return 'HLV đã có lịch';
+    }
+    for (const t of customerBookedTimes) {
+      if (t === slot.start) return 'Bạn đã có lịch';
+    }
+    const shifts = getDateShifts(activeDate);
+    const slotIndex = timeSlots.findIndex(s => s.start === slot.start);
+    const isMorning = slotIndex >= 0 && slotIndex < 5;
+    if (shifts.length > 0 && isMorning && !shifts.includes('morning-noon')) return 'HLV không làm ca sáng';
+    if (shifts.length > 0 && !isMorning && !shifts.includes('afternoon-evening')) return 'HLV không làm ca chiều';
+    return '';
   };
 
   const getDaysInMonth = (date: Date) => {
@@ -251,11 +296,33 @@ export function BookTrainer() {
       });
 
       const bookingData = await bookingRes.json();
-      if (!bookingRes.ok) throw new Error(bookingData.error || 'Đặt lịch thất bại');
+      if (!bookingRes.ok) {
+        if (bookingRes.status === 409) {
+          toast.error(bookingData.error || 'Bạn đã có lịch vào thời gian này!');
+          return;
+        }
+        throw new Error(bookingData.error || 'Đặt lịch thất bại');
+      }
 
       const allBookings = bookingData.bookings || (bookingData.booking ? [bookingData.booking] : []);
       const batchId = allBookings[0]?.batchId || '';
       const totalPrice = price * (allBookings.length || 1);
+
+      if (bookingData.errors && bookingData.errors.length > 0) {
+        const conflictErrors = bookingData.errors.filter((e: any) => e.error?.includes('bạn đã có lịch') || e.error?.includes('Bạn đã có lịch'));
+        if (conflictErrors.length > 0) {
+          toast.warning(`${conflictErrors.length} buổi bị trùng lịch của bạn!`);
+        }
+        const trainerErrors = bookingData.errors.filter((e: any) => e.error?.includes('HLV'));
+        if (trainerErrors.length > 0) {
+          toast.warning(`${trainerErrors.length} buổi HLV đã có lịch!`);
+        }
+      }
+
+      if (allBookings.length === 0) {
+        toast.error('Không đặt được buổi nào. Vui lòng chọn thời gian khác.');
+        return;
+      }
 
       navigate('/payment', {
         state: {
@@ -486,14 +553,7 @@ export function BookTrainer() {
                           {slot.start} - {slot.end}
                           {disabled && (
                             <span className="block text-[10px] text-slate-400 mt-0.5">
-                              {(() => {
-                                const shifts = getDateShifts(activeDate);
-                                const slotIndex = timeSlots.findIndex(s => s.start === slot.start);
-                                const isMorning = slotIndex >= 0 && slotIndex < 5;
-                                if (shifts.length > 0 && isMorning && !shifts.includes('morning-noon')) return 'HLV không làm ca sáng';
-                                if (shifts.length > 0 && !isMorning && !shifts.includes('afternoon-evening')) return 'HLV không làm ca chiều';
-                                return 'HLV đã có lịch';
-                              })()}
+                              {getSlotDisabledReason(slot) || 'Không khả dụng'}
                             </span>
                           )}
                         </button>
