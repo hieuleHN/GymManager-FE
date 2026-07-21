@@ -17,6 +17,7 @@ import { PackageCheckout } from './pages/PackageCheckout';
 import { Contract } from './pages/Contract';
 import { Payment } from './pages/Payment';
 import { MyPackages } from './pages/dashboard/MyPackages';
+import { PackageUpgrade } from './pages/dashboard/PackageUpgrade';
 import { TransactionHistory } from './pages/dashboard/TransactionHistory';
 import { Schedule } from './pages/dashboard/Schedule';
 import { BookSchedule } from './pages/dashboard/BookSchedule';
@@ -198,6 +199,10 @@ export const router = createBrowserRouter([
   {
     path: '/dashboard/my-packages',
     element: <ProtectedRoute role="member"><MyPackages /></ProtectedRoute>
+  },
+  {
+    path: '/dashboard/upgrade/:registrationId',
+    element: <ProtectedRoute role="member"><PackageUpgrade /></ProtectedRoute>
   },
   {
     path: '/dashboard/history',
