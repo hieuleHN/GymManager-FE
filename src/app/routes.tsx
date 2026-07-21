@@ -1,4 +1,5 @@
-import MemberQR from './pages/MemberQR'; // Nhúng màn hình QR vào route
+import MemberQR from './pages/MemberQR';
+import { StaffQR } from './pages/StaffQR';
 import { AttendanceScanner } from './pages/admin/AttendanceScanner';
 import { createBrowserRouter, Navigate, useLocation } from 'react-router';
 import { Layout } from './components/Layout';
@@ -44,6 +45,8 @@ import { StaffSalary } from './pages/admin/StaffSalary';
 import { StaffSalaryHistory } from './pages/admin/StaffSalaryHistory';
 import { AddStaff } from './pages/admin/AddStaff';
 import { StaffPermissions } from './pages/admin/StaffPermissions';
+import { StaffWallet } from './pages/admin/StaffWallet';
+import { StaffCheckIn } from './pages/admin/StaffCheckIn';
 import { JobList } from './pages/admin/JobList';
 import { AddJob } from './pages/admin/AddJob';
 import { EditJob } from './pages/admin/EditJob';
@@ -200,6 +203,10 @@ export const router = createBrowserRouter([
       {
         path: 'dashboard/qr',
         element: <ProtectedRoute role="member"><MemberQR /></ProtectedRoute>
+      },
+      {
+        path: 'staff-qr',
+        element: <ProtectedRoute role="staff"><StaffQR /></ProtectedRoute>
       }
     ],
   },
@@ -344,6 +351,10 @@ export const router = createBrowserRouter([
     element: <ProtectedRoute role="staff"><AttendanceHistory /></ProtectedRoute>
   },
   {
+    path: '/admin/staff-attendance',
+    element: <ProtectedRoute role="staff"><StaffCheckIn /></ProtectedRoute>
+  },
+  {
     path: '/admin/products',
     element: <ProtectedRoute role="staff"><ProductList /></ProtectedRoute>
   },
@@ -378,6 +389,10 @@ export const router = createBrowserRouter([
   {
     path: '/admin/staff/permissions',
     element: <ProtectedRoute role="staff"><StaffPermissions /></ProtectedRoute>
+  },
+  {
+    path: '/admin/wallet',
+    element: <ProtectedRoute role="staff"><StaffWallet /></ProtectedRoute>
   },
   {
     path: '/admin/jobs',

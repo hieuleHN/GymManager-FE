@@ -60,10 +60,25 @@ export function BookTrainer() {
   const [loadingShifts, setLoadingShifts] = useState(false);
   const activeDateRef = useRef(activeDate);
   useEffect(() => { activeDateRef.current = activeDate; }, [activeDate]);
+  const [freePtSessions, setFreePtSessions] = useState(0);
 
   useEffect(() => {
     fetchTrainer();
+    fetchFreePtSessions();
   }, [trainerId]);
+
+  const fetchFreePtSessions = async () => {
+    try {
+      const res = await fetch(`${getApiUrl()}/api/user-packages/pt-sessions`, {
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const total = data.reduce((sum: number, p: any) => sum + (p.currentMonthRemaining || 0), 0);
+        setFreePtSessions(total);
+      }
+    } catch {}
+  };
 
   const fetchTrainer = async () => {
     try {
@@ -219,7 +234,7 @@ export function BookTrainer() {
       toast.error('Vui lòng chọn bộ môn tập!');
       return;
     }
-    const slotCount = Object.keys(selections).length;
+      const slotCount = Object.keys(selections).length;
     if (slotCount === 0) {
       toast.error('Vui lòng chọn ít nhất một ngày và giờ!');
       return;
@@ -238,6 +253,8 @@ export function BookTrainer() {
         endTime: time.end
       }));
 
+      const freeToUse = Math.min(freePtSessions, slotCount);
+
       const bookingRes = await fetch(`${getApiUrl()}/api/bookings/bulk`, {
         method: 'POST',
         headers: { ...getAuthHeaders() as any, 'Content-Type': 'application/json' },
@@ -246,7 +263,8 @@ export function BookTrainer() {
           disciplineId: selectedDisciplineId,
           slots,
           locationId: locId,
-          price
+          price,
+          freeToUse
         })
       });
 
@@ -255,7 +273,13 @@ export function BookTrainer() {
 
       const allBookings = bookingData.bookings || (bookingData.booking ? [bookingData.booking] : []);
       const batchId = allBookings[0]?.batchId || '';
-      const totalPrice = price * (allBookings.length || 1);
+      const actualPrice = allBookings.reduce((sum: number, b: any) => sum + (b.price || 0), 0);
+
+      if (actualPrice === 0) {
+        toast.success(`Đặt lịch thành công! (${allBookings.length} buổi tập miễn phí)`);
+        navigate('/dashboard/my-packages');
+        return;
+      }
 
       navigate('/payment', {
         state: {
@@ -263,8 +287,8 @@ export function BookTrainer() {
           bookings: allBookings,
           batchId,
           trainer,
-          totalPrice,
-          package: { name: `PT ${allBookings.length} buổi với ${trainer.fullName}`, price: totalPrice }
+          totalPrice: actualPrice,
+          package: { name: `PT ${allBookings.length} buổi với ${trainer.fullName}`, price: actualPrice }
         }
       });
     } catch (err: any) {
@@ -545,12 +569,20 @@ export function BookTrainer() {
         </div>
 
         {selectionCount > 0 && (() => {
+          const paidCount = Math.max(0, selectionCount - freePtSessions);
+          const freeCount = Math.min(freePtSessions, selectionCount);
           return (
             <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-6">
               <h4 className="font-semibold text-indigo-900 mb-2">Thông tin đặt lịch:</h4>
               <p className="text-indigo-700 mb-3">
                 Tổng số buổi: <span className="font-bold">{selectionCount}</span>
               </p>
+              {freePtSessions > 0 && (
+                <div className="mb-3 px-3 py-2 bg-green-100 text-green-800 rounded-lg text-sm font-medium">
+                  Bạn còn <span className="font-bold">{freePtSessions}</span> buổi tập miễn phí trong tháng này
+                  {freeCount > 0 && ` → ${freeCount} buổi miễn phí, ${paidCount} buổi tính phí`}
+                </div>
+              )}
               <div className="flex flex-wrap gap-1.5 mb-3">
                 {Object.entries(selections).map(([dateKey, time]) => {
                   const { day, month, year } = parseDateKey(dateKey);
@@ -564,7 +596,9 @@ export function BookTrainer() {
               <div className="flex justify-between items-center pt-3 border-t border-indigo-200">
                 <span className="text-indigo-800 font-medium">Tổng phí HLV ({selectionCount} buổi):</span>
                 <span className="text-xl font-bold text-indigo-900">
-                  {(price * selectionCount).toLocaleString('vi-VN')}đ
+                  {paidCount > 0
+                    ? `${(price * paidCount).toLocaleString('vi-VN')}đ`
+                    : 'Miễn phí'}
                 </span>
               </div>
             </div>

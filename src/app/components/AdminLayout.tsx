@@ -32,9 +32,11 @@ import {
   Shield,
   Plus,
   Building2,
-  MessageCircle
+  MessageCircle,
+  Wallet,
+  Clock
 } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
+import { useAuth, getApiUrl, getAuthHeaders } from '../context/AuthContext';
 import { useClub } from '../context/ClubContext';
 import { AddClubModal } from './AddClubModal';
 import logo from '../../imports/ChatGPT_Image_May_14__2026__09_48_52_PM.png';
@@ -63,6 +65,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   const clubDropdownRef = useRef<HTMLDivElement>(null);
   const [isLoadingClubs, setIsLoadingClubs] = useState(false);
   const [showAddClubModal, setShowAddClubModal] = useState(false);
+  const [walletBalance, setWalletBalance] = useState(0);
 
   const isAdminUser = user?.isAdmin === true;
 
@@ -78,6 +81,14 @@ export function AdminLayout({ children }: AdminLayoutProps) {
       .catch(() => { })
       .finally(() => setIsLoadingClubs(false));
   }, [isAdminUser]);
+
+  useEffect(() => {
+    if (!hasPermission('wallet')) return;
+    fetch(`${getApiUrl()}/api/staff-wallet/balance`, { headers: getAuthHeaders() })
+      .then(res => res.json())
+      .then(data => setWalletBalance(data.balance || 0))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -128,6 +139,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
         { name: 'Lịch sử điểm danh', href: '/admin/attendance/history' }
       ]
     },
+    { name: 'Chấm công nhân viên', href: '/admin/staff-attendance', icon: Clock, feature: 'attendance' },
     {
       name: 'Quản lý sản phẩm', icon: ShoppingBag, feature: 'products',
       submenu: [
@@ -145,7 +157,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
         { name: 'Lịch sử trả lương', href: '/admin/staff/salary-history' },
         { name: 'Thêm nhân viên', href: '/admin/staff/add' },
         { name: 'Phân quyền', href: '/admin/staff/permissions' },
-        { name: 'Phân công ca làm việc', href: '/admin/staff/shifts' }
+        { name: 'Phân công ca làm việc', href: '/admin/staff/shifts' },
       ]
     },
     {
@@ -161,6 +173,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
     { name: 'Quản lý chính sách', href: '/admin/policies', icon: FileText, feature: 'services' },
     { name: 'Giao diện Trang chủ', href: '/admin/homepage', icon: Globe, feature: 'services' },
     { name: 'Quản lý thanh toán', href: '/admin/payment', icon: CreditCard, feature: 'payment' },
+    { name: 'Ví điện tử', href: '/admin/wallet', icon: Wallet, feature: 'wallet' },
     { name: 'Quản lý tuyển dụng', href: '/admin/recruitment', icon: BriefcaseIcon, feature: 'staff' },
     { name: 'Quản lý chi phí', href: '/admin/expenses', icon: DollarSign, feature: 'statistics' },
     { name: 'Hồ sơ HLV', href: '/admin/trainer-profile', icon: UserCircle, feature: 'training' },
@@ -286,6 +299,12 @@ export function AdminLayout({ children }: AdminLayoutProps) {
               {isSidebarOpen ? <X className="w-6 h-6 text-slate-600" /> : <Menu className="w-6 h-6 text-slate-600" />}
             </button>
             <div className="flex items-center gap-4">
+              {hasPermission('wallet') && (
+                <Link to="/admin/wallet" className="flex items-center gap-2 px-4 py-2 bg-emerald-50 border border-emerald-200 rounded-xl hover:bg-emerald-100 transition-colors text-sm">
+                  <Wallet className="w-4 h-4 text-emerald-600" />
+                  <span className="text-emerald-700 font-semibold">{walletBalance.toLocaleString('vi-VN')}₫</span>
+                </Link>
+              )}
               {isAdminUser && (
                 <div className="relative" ref={clubDropdownRef}>
                   <button

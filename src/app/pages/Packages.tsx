@@ -14,6 +14,8 @@ interface PackageItem {
   features: string[];
   durations: { months: number; discount: number }[];
   disciplineId?: { _id: string; name: string };
+  disciplines?: { _id: string; name: string }[];
+  combo?: boolean;
   locationId?: { _id: string; title: string };
   is_active: boolean;
   ptSessionsPerMonth?: number;
@@ -246,9 +248,11 @@ export function Packages() {
   const filteredPackages =
     selectedDiscipline === "all"
       ? activePackages
-      : activePackages.filter(
-          (p) => p.disciplineId?._id === selectedDiscipline,
-        );
+      : selectedDiscipline === "combo"
+        ? activePackages.filter((p) => p.combo)
+        : activePackages.filter(
+            (p) => p.disciplineId?._id === selectedDiscipline,
+          );
 
   if (loading || !registrationsLoaded) {
     return (
@@ -283,6 +287,16 @@ export function Packages() {
             }`}
           >
             Tất cả
+          </button>
+          <button
+            onClick={() => setSelectedDiscipline("combo")}
+            className={`px-6 py-2.5 rounded-full text-sm font-semibold transition-all ${
+              selectedDiscipline === "combo"
+                ? "bg-indigo-600 text-white shadow-md"
+                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+            }`}
+          >
+            Combo
           </button>
           {uniqueDisciplines.map((d) => (
             <button
@@ -353,10 +367,23 @@ export function Packages() {
                 )}
 
                 <div className="mb-6">
-                  {plan.disciplineId && (
+                  {plan.combo ? (
+                    <p className="text-sm text-amber-400 font-semibold mb-1">
+                      Combo
+                    </p>
+                  ) : plan.disciplineId ? (
                     <p className="text-sm text-indigo-400 font-semibold mb-1">
                       {plan.disciplineId.name}
                     </p>
+                  ) : null}
+                  {plan.combo && plan.disciplines && plan.disciplines.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mb-3">
+                      {plan.disciplines.map((d) => (
+                        <span key={d._id} className="px-2 py-0.5 text-xs bg-indigo-500/20 text-indigo-300 rounded-full border border-indigo-500/30">
+                          {d.name}
+                        </span>
+                      ))}
+                    </div>
                   )}
                   <h3 className="text-2xl font-bold mb-4 tracking-wide">
                     {plan.name}
