@@ -78,6 +78,7 @@ import { PostManagement } from './pages/admin/PostManagement';
 import { AdminCommunity } from './pages/admin/AdminCommunity';
 import { AdminMessages } from './pages/admin/AdminMessages';
 import { AdminStats } from './pages/dashboard/AdminStats';
+import { LockerIssues } from './pages/dashboard/LockerIssues';
 
 const routeFeatures: Record<string, string> = {
   '/admin/dashboard': 'statistics',
@@ -253,6 +254,10 @@ export const router = createBrowserRouter([
   {
     path: '/dashboard/settings',
     element: <ProtectedRoute role="member"><Settings /></ProtectedRoute>
+  },
+  {
+    path: '/dashboard/locker-issues',
+    element: <ProtectedRoute role="staff"><LockerIssues /></ProtectedRoute>
   },
   {
     path: '/admin/dashboard',
