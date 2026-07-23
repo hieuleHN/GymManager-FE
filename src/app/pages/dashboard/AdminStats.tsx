@@ -1,7 +1,7 @@
 import { AdminLayout } from '../../components/AdminLayout';
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { TrendingUp, Award, BarChart3, RefreshCw, Activity, AlertCircle } from 'lucide-react';
+import { TrendingUp, Award, BarChart3, RefreshCw, Activity, AlertCircle, Calendar } from 'lucide-react';
 import { getApiUrl } from '../../context/AuthContext';
 
 interface BookingStats {
@@ -87,6 +87,14 @@ export function AdminStats() {
     const maxCheckIn = checkInOfWeek.length > 0 ? Math.max(...checkInOfWeek.map(d => d.count), 1) : 1;
     const totalActiveMembers = sportDistribution.reduce((acc, curr) => acc + curr.value, 0);
 
+    // Dữ liệu và tính toán chiều cao cột cho Biểu đồ Thống kê Đặt lịch HLV
+    const bookingChartData = [
+        { label: 'Buổi hôm nay', count: bookingStats.today, color: 'bg-indigo-500 hover:bg-indigo-600' },
+        { label: 'Buổi tháng này', count: bookingStats.month, color: 'bg-purple-500 hover:bg-purple-600' },
+        { label: 'Buổi trong năm', count: bookingStats.year, color: 'bg-emerald-500 hover:bg-emerald-600' }
+    ];
+    const maxBooking = Math.max(bookingStats.today, bookingStats.month, bookingStats.year, 1);
+
     return (
         <AdminLayout>
             <div className="max-w-7xl mx-auto space-y-8 pb-12">
@@ -114,24 +122,45 @@ export function AdminStats() {
                     </div>
                 )}
 
-                {/* 1. THỐNG KÊ ĐẶT LỊCH HLV TỪ DB */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div className="bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-3xl p-6 text-white shadow-sm">
-                        <p className="text-indigo-100 text-xs font-black uppercase tracking-widest">Buổi Đặt Lịch Hôm Nay</p>
-                        <h3 className="text-5xl font-black mt-4">{bookingStats.today}</h3>
-                        <p className="text-indigo-200 text-xs mt-3">Dữ liệu thực tế từ DB</p>
+                {/* 1. BIỂU ĐỒ THỐNG KÊ ĐẶT LỊCH HLV */}
+                <div className="bg-white rounded-3xl border border-slate-100 p-6 shadow-sm">
+                    <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-6">
+                        <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                            <Calendar className="w-5 h-5 text-indigo-600" />
+                            Biểu đồ So sánh Lượng Đặt lịch HLV (PT) theo Mốc thời gian
+                        </h3>
+                        <span className="text-xs font-bold text-slate-400 bg-slate-50 px-3 py-1.5 rounded-full border border-slate-100 self-start sm:self-auto">
+                            Dữ liệu thực tế từ DB
+                        </span>
                     </div>
 
-                    <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-3xl p-6 text-white shadow-sm">
-                        <p className="text-purple-100 text-xs font-black uppercase tracking-widest">Buổi Đặt Lịch Tháng Này</p>
-                        <h3 className="text-5xl font-black mt-4">{bookingStats.month}</h3>
-                        <p className="text-purple-200 text-xs mt-3">Dữ liệu thực tế từ DB</p>
-                    </div>
+                    <div className="h-64 flex items-end justify-around gap-6 px-8 pt-8 border-b border-slate-100 pb-2">
+                        {bookingChartData.map((item, idx) => {
+                            const heightVal = Math.max(Math.round((item.count / maxBooking) * 180), 12);
+                            return (
+                                <div key={idx} className="flex-1 max-w-[140px] flex flex-col items-center group relative">
+                                    {/* Tooltip khi hover */}
+                                    <div className="absolute -top-10 bg-slate-900 text-white text-xs font-bold px-3 py-1.5 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 whitespace-nowrap shadow-md">
+                                        {item.count} Buổi đặt
+                                    </div>
 
-                    <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-3xl p-6 text-white shadow-sm">
-                        <p className="text-emerald-100 text-xs font-black uppercase tracking-widest">Buổi Đặt Lịch Trong Năm</p>
-                        <h3 className="text-5xl font-black mt-4">{bookingStats.year}</h3>
-                        <p className="text-emerald-200 text-xs mt-3">Dữ liệu thực tế từ DB</p>
+                                    {/* Cột biểu đồ */}
+                                    <div
+                                        style={{ height: `${heightVal}px` }}
+                                        className={`w-full ${item.color} rounded-t-2xl transition-all duration-500 shadow-sm flex items-center justify-center`}
+                                    >
+                                        <span className="text-white text-xs font-black drop-shadow">
+                                            {item.count}
+                                        </span>
+                                    </div>
+
+                                    {/* Nhãn dưới chân cột */}
+                                    <span className="text-xs text-slate-600 font-black mt-3 text-center">
+                                        {item.label}
+                                    </span>
+                                </div>
+                            );
+                        })}
                     </div>
                 </div>
 
@@ -233,33 +262,72 @@ export function AdminStats() {
                         )}
                     </div>
 
-                    {/* 5. HIỆU SUẤT HLV */}
+                    {/* 5. BIỂU ĐỒ HIỆU SUẤT HLV (ĐÃ CHUYỂN THÀNH CỘT NẰM NGANG + CHỈ SỐ TRUNG BÌNH) */}
                     <div className="bg-white rounded-3xl border border-slate-100 p-6 shadow-sm">
-                        <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-6">
-                            <Award className="w-5 h-5 text-amber-500" /> Xếp hạng Hiệu suất Huấn luyện viên (PT)
-                        </h3>
+                        <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-6">
+                            <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                                <Award className="w-5 h-5 text-amber-500" /> Biểu đồ Hiệu suất Huấn luyện viên (PT)
+                            </h3>
+
+                            {/* Thẻ hiển thị Hiệu suất Trung bình số ca/HLV tính từ DB */}
+                            {trainerPerformance.length > 0 && (
+                                <div className="bg-amber-50 border border-amber-100 text-amber-800 px-3 py-1 rounded-xl text-xs font-black self-start sm:self-auto shadow-xs">
+                                    Trung bình: {(trainerPerformance.reduce((acc, curr) => acc + curr.sessions, 0) / trainerPerformance.length).toFixed(1)} Ca / HLV
+                                </div>
+                            )}
+                        </div>
+
                         {trainerPerformance.length === 0 ? (
                             <div className="h-64 flex items-center justify-center text-slate-400 text-sm border-2 border-dashed border-slate-100 rounded-2xl">
                                 Chưa có lịch dạy HLV hoàn thành trong Database
                             </div>
                         ) : (
-                            <div className="space-y-4">
-                                {trainerPerformance.map((trainer, idx) => (
-                                    <div key={idx} className="flex items-center gap-4 bg-slate-50 p-3 rounded-2xl border border-slate-100">
-                                        <div className="w-8 h-8 rounded-full bg-amber-500 text-white font-black flex items-center justify-center text-xs">
-                                            #{idx + 1}
-                                        </div>
-                                        <div className="flex-1">
-                                            <h4 className="text-sm font-black text-slate-800">{trainer.name}</h4>
-                                            <p className="text-[11px] text-slate-400 font-bold">Huấn luyện viên trung tâm</p>
-                                        </div>
-                                        <div className="text-right">
-                                            <span className="text-sm font-black text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full">
-                                                {trainer.sessions} Ca dạy
-                                            </span>
-                                        </div>
-                                    </div>
-                                ))}
+                            <div className="space-y-4 pt-2">
+                                {(() => {
+                                    const totalSessions = trainerPerformance.reduce((acc, curr) => acc + curr.sessions, 0);
+                                    const avgSessions = totalSessions / trainerPerformance.length;
+                                    const maxSession = Math.max(...trainerPerformance.map(t => t.sessions), 1);
+
+                                    return trainerPerformance.map((trainer, idx) => {
+                                        const percentOfMax = Math.round((trainer.sessions / maxSession) * 100);
+                                        const isAboveAvg = trainer.sessions >= avgSessions;
+
+                                        return (
+                                            <div key={idx} className="bg-slate-50 p-3.5 rounded-2xl border border-slate-100 space-y-2">
+                                                <div className="flex items-center gap-3">
+                                                    <div className={`w-7 h-7 rounded-full font-black flex items-center justify-center text-xs ${idx === 0 ? 'bg-amber-500 text-white shadow-sm' : 'bg-slate-200 text-slate-700'
+                                                        }`}>
+                                                        #{idx + 1}
+                                                    </div>
+                                                    <div className="flex-1 min-w-0">
+                                                        <div className="flex items-center gap-2">
+                                                            <h4 className="text-sm font-black text-slate-800 truncate">{trainer.name}</h4>
+                                                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${isAboveAvg ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'
+                                                                }`}>
+                                                                {isAboveAvg ? 'Trên TB' : 'Dưới TB'}
+                                                            </span>
+                                                        </div>
+                                                        <p className="text-[11px] text-slate-400 font-bold">Huấn luyện viên trung tâm</p>
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <span className="text-sm font-black text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full">
+                                                            {trainer.sessions} Ca dạy
+                                                        </span>
+                                                    </div>
+                                                </div>
+
+                                                {/* Thanh Biểu đồ ngang thể hiện tương quan số ca dạy */}
+                                                <div className="w-full h-2.5 bg-slate-200 rounded-full overflow-hidden">
+                                                    <div
+                                                        style={{ width: `${percentOfMax}%` }}
+                                                        className={`h-full transition-all duration-700 ${idx === 0 ? 'bg-amber-500' : 'bg-indigo-500'
+                                                            }`}
+                                                    ></div>
+                                                </div>
+                                            </div>
+                                        );
+                                    });
+                                })()}
                             </div>
                         )}
                     </div>

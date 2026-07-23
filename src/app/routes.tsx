@@ -78,6 +78,7 @@ import { AdminMessages } from './pages/admin/AdminMessages';
 
 // IMPORT TRANG THỐNG KÊ BIỂU ĐỒ ADMIN
 import { AdminStats } from './pages/dashboard/AdminStats';
+import { LockerIssues } from './pages/dashboard/LockerIssues';
 
 // Khai báo RouteErrorBoundary dự phòng
 const RouteErrorBoundary = () => {
@@ -264,6 +265,10 @@ export const router = createBrowserRouter([
   {
     path: '/dashboard/settings',
     element: <ProtectedRoute role="member"><Settings /></ProtectedRoute>
+  },
+  {
+    path: '/dashboard/locker-issues',
+    element: <ProtectedRoute role="staff"><LockerIssues /></ProtectedRoute>
   },
   {
     path: '/admin/dashboard',

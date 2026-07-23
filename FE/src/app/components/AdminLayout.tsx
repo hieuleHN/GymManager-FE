@@ -1,0 +1,440 @@
+import { useState, useEffect, useRef } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router';
+import {
+  LayoutDashboard,
+  Users,
+  Dumbbell,
+  Briefcase,
+  ClipboardCheck,
+  Receipt,
+  Bell,
+  UserCog,
+  ListTodo,
+  BarChart3,
+  LogOut,
+  Menu,
+  X,
+  Home,
+  ChevronDown,
+  ChevronRight,
+  Package,
+  ShoppingBag,
+  MapPin,
+  FileText,
+  Globe,
+  CreditCard,
+  Briefcase as BriefcaseIcon,
+  DollarSign,
+  UserCircle,
+  Calendar,
+  Lock,
+  CheckCircle,
+  Shield,
+  Plus,
+  Building2,
+  MessageCircle,
+  Flag,
+  Heart,
+  MessageSquare
+} from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { useClub } from '../context/ClubContext';
+import { useNotifications } from '../hooks/useNotifications';
+import { AddClubModal } from './AddClubModal';
+import logo from '../../imports/ChatGPT_Image_May_14__2026__09_48_52_PM.png';
+import { ImageWithFallback } from './figma/ImageWithFallback';
+
+interface MenuItem {
+  name: string;
+  icon: any;
+  feature?: string;
+  href?: string;
+  submenu?: { name: string; href: string; feature?: string }[];
+}
+
+interface AdminLayoutProps {
+  children: React.ReactNode;
+}
+
+export function AdminLayout({ children }: AdminLayoutProps) {
+  const { user, logout, hasPermission } = useAuth();
+  const { selectedClub, setSelectedClub, clubs, setClubs } = useClub();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [expandedMenus, setExpandedMenus] = useState<string[]>(['customers']);
+  const [clubDropdownOpen, setClubDropdownOpen] = useState(false);
+  const clubDropdownRef = useRef<HTMLDivElement>(null);
+  const notifDropdownRef = useRef<HTMLDivElement>(null);
+  const [isLoadingClubs, setIsLoadingClubs] = useState(false);
+  const [showAddClubModal, setShowAddClubModal] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
+
+  const isAdminUser = user?.isAdmin === true;
+  const recipientRole = user?.isStaff ? 'staff' : 'member';
+  const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications(user?.id, recipientRole);
+
+  const formatNotifTime = (dateStr: string) => {
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diff = Math.floor((now.getTime() - date.getTime()) / 1000);
+    if (diff < 60) return 'Vừa xong';
+    if (diff < 3600) return `${Math.floor(diff / 60)} phút trước`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)} giờ trước`;
+    if (diff < 604800) return `${Math.floor(diff / 86400)} ngày trước`;
+    return date.toLocaleDateString('vi-VN');
+  };
+
+  const getNotifIcon = (type: string) => {
+    switch (type) {
+      case 'like': return <Heart className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />;
+      case 'comment': return <MessageSquare className="w-5 h-5 text-indigo-500 shrink-0 mt-0.5" />;
+      case 'report': return <Flag className="w-5 h-5 text-orange-500 shrink-0 mt-0.5" />;
+      default: return <Bell className="w-5 h-5 text-slate-500 shrink-0 mt-0.5" />;
+    }
+  };
+
+  useEffect(() => {
+    if (!isAdminUser) return;
+    setIsLoadingClubs(true);
+    fetch('/api/locations')
+      .then(res => res.json())
+      .then(data => {
+        const clubList = Array.isArray(data) ? data : (data?.data || []);
+        setClubs(clubList);
+      })
+      .catch(() => { })
+      .finally(() => setIsLoadingClubs(false));
+  }, [isAdminUser]);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (clubDropdownRef.current && !clubDropdownRef.current.contains(e.target as Node)) {
+        setClubDropdownOpen(false);
+      }
+      if (notifDropdownRef.current && !notifDropdownRef.current.contains(e.target as Node)) {
+        setShowNotifications(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const allMenuItems: MenuItem[] = [
+    { name: 'Dashboard', href: '/admin/dashboard', icon: LayoutDashboard, feature: 'statistics' },
+    {
+      name: 'Quản lý khách hàng', icon: Users, feature: 'customers',
+      submenu: [
+        { name: 'Danh sách khách hàng', href: '/admin/customers' },
+        { name: 'Đăng ký khách hàng', href: '/admin/customers/register' },
+        { name: 'Khách hàng hết hạn', href: '/admin/customers/expired' }
+      ]
+    },
+    {
+      name: 'Quản lý thiết bị', icon: Dumbbell, feature: 'equipment',
+      submenu: [
+        { name: 'Danh sách thiết bị', href: '/admin/equipment' },
+        { name: 'Thêm thiết bị', href: '/admin/equipment/add' }
+      ]
+    },
+    {
+      name: 'Quản lý gói tập', icon: Package, feature: 'packages',
+      submenu: [
+        { name: 'Danh sách gói tập', href: '/admin/packages' },
+        { name: 'Thêm gói tập', href: '/admin/packages/add' },
+        { name: 'Danh sách chính sách', href: '/admin/contracts' }
+      ]
+    },
+    {
+      name: 'Quản lý dịch vụ', icon: Briefcase, feature: 'services',
+      submenu: [
+        { name: 'Danh sách dịch vụ', href: '/admin/services' },
+        { name: 'Lịch sử dịch vụ', href: '/admin/services/history' }
+      ]
+    },
+    {
+      name: 'Quản lý điểm danh', icon: ClipboardCheck, feature: 'attendance',
+      submenu: [
+        { name: 'Điểm danh hội viên', href: '/admin/attendance' },
+        { name: 'Lịch sử điểm danh', href: '/admin/attendance/history' }
+      ]
+    },
+    {
+      name: 'Quản lý sản phẩm', icon: ShoppingBag, feature: 'products',
+      submenu: [
+        { name: 'Danh sách sản phẩm', href: '/admin/products' },
+        { name: 'Thêm sản phẩm', href: '/admin/products/add' },
+        { name: 'Khách trả hàng', href: '/admin/products/returns' }
+      ]
+    },
+    { name: 'Quản lý bộ môn', href: '/admin/disciplines', icon: ListTodo, feature: 'clubs' },
+    {
+      name: 'Quản lý nhân viên', icon: UserCog, feature: 'staff',
+      submenu: [
+        { name: 'Danh sách nhân viên', href: '/admin/staff' },
+        { name: 'Chi tiết lương nhân viên', href: '/admin/staff/salary' },
+        { name: 'Lịch sử trả lương', href: '/admin/staff/salary-history' },
+        { name: 'Thêm nhân viên', href: '/admin/staff/add' },
+        { name: 'Phân quyền', href: '/admin/staff/permissions' }
+      ]
+    },
+    {
+      name: 'Quản lý công việc', icon: ListTodo, feature: 'tasks',
+      submenu: [
+        { name: 'Danh sách công việc', href: '/admin/jobs' },
+        { name: 'Thêm công việc', href: '/admin/jobs/add' }
+      ]
+    },
+    { name: 'Quản lý thống kê', href: '/admin/statistics', icon: BarChart3, feature: 'statistics' },
+    { name: 'Quản lý cơ sở', href: '/admin/clubs', icon: MapPin, feature: 'clubs' },
+    { name: 'Quản lý chính sách', href: '/admin/policies', icon: FileText, feature: 'services' },
+    { name: 'Giao diện Trang chủ', href: '/admin/homepage', icon: Globe, feature: 'services' },
+    { name: 'Quản lý thanh toán', href: '/admin/payment', icon: CreditCard, feature: 'payment' },
+    { name: 'Quản lý tuyển dụng', href: '/admin/recruitment', icon: BriefcaseIcon, feature: 'staff' },
+    { name: 'Quản lý chi phí', href: '/admin/expenses', icon: DollarSign, feature: 'statistics' },
+    { name: 'Hồ sơ HLV', href: '/admin/trainer-profile', icon: UserCircle, feature: 'training' },
+    { name: 'Lịch tập', href: '/admin/training-schedule', icon: Calendar, feature: 'training' },
+    { name: 'Quản lý tủ đồ', href: '/admin/lockers', icon: Lock, feature: 'equipment' },
+    { name: 'Xác nhận lịch tập', href: '/admin/schedule-confirmations', icon: CheckCircle, feature: 'schedule' },
+    { name: 'Quản lý bài viết', href: '/admin/articles', icon: FileText, feature: 'services' },
+    { name: 'Cộng đồng', href: '/admin/community', icon: Users, feature: 'services' },
+    { name: 'Quản lý báo cáo', href: '/admin/reports', icon: Flag, feature: 'services' },
+    { name: 'Tin nhắn', href: '/admin/messages', icon: MessageCircle, feature: 'services' }
+  ];
+
+  const menuItems = allMenuItems.filter(item => {
+    if (!user?.isStaff) return false;
+    if (!item.feature) return true;
+    return hasPermission(item.feature);
+  });
+
+  const handleLogout = () => {
+    logout();
+    navigate('/');
+  };
+
+  const toggleMenu = (menuName: string) => {
+    setExpandedMenus(prev =>
+      prev.includes(menuName)
+        ? prev.filter(m => m !== menuName)
+        : [...prev, menuName]
+    );
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-50 flex">
+      <aside
+        className={`fixed inset-y-0 left-0 z-50 bg-white shadow-lg transition-transform duration-300 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
+          } w-72`}
+      >
+        <div className="flex flex-col h-full">
+          <div className="p-6 border-b border-slate-200">
+            <Link to="/">
+              <ImageWithFallback src={logo} alt="Logo" className="h-16 w-auto object-contain" />
+            </Link>
+          </div>
+
+          <div className="p-6 border-b border-slate-200">
+            <div className="flex items-center gap-4">
+              <div className="w-14 h-14 rounded-full bg-indigo-100 flex items-center justify-center ring-2 ring-indigo-100">
+                <span className="text-xl font-bold text-indigo-600">{user?.fullName?.charAt(0) || user?.username?.charAt(0) || 'U'}</span>
+              </div>
+              <div>
+                <h3 className="font-bold text-slate-900">{user?.fullName || user?.username}</h3>
+                <p className="text-sm text-indigo-600">{user?.role || 'Nhân viên'}</p>
+              </div>
+            </div>
+          </div>
+
+          <nav className="flex-1 overflow-y-auto p-4">
+            <ul className="space-y-1">
+              {menuItems.map((item) => {
+                const Icon = item.icon;
+                const hasSubmenu = 'submenu' in item && item.submenu;
+                const isExpanded = expandedMenus.includes(item.name);
+                const isActive = !hasSubmenu && location.pathname === item.href;
+
+                return (
+                  <li key={item.name}>
+                    {hasSubmenu ? (
+                      <>
+                        <button
+                          onClick={() => toggleMenu(item.name)}
+                          className="w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-all"
+                        >
+                          <div className="flex items-center gap-3">
+                            <Icon className="w-5 h-5" />
+                            <span className="text-sm font-medium">{item.name}</span>
+                          </div>
+                          {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                        </button>
+                        {isExpanded && (
+                          <ul className="mt-1 ml-4 space-y-1">
+                            {item.submenu!.filter(sub => !sub.feature || hasPermission(sub.feature)).map((subItem) => {
+                              const isSubActive = location.pathname === subItem.href;
+                              return (
+                                <li key={subItem.name}>
+                                  <Link to={subItem.href}
+                                    className={`block px-4 py-2.5 rounded-lg text-sm transition-all ${isSubActive ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                                      }`}>
+                                    {subItem.name}
+                                  </Link>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        )}
+                      </>
+                    ) : (
+                      <Link to={item.href!}
+                        className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${isActive ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                          }`}>
+                        <Icon className="w-5 h-5" />
+                        <span className="text-sm">{item.name}</span>
+                      </Link>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </nav>
+
+          <div className="p-4 border-t border-slate-200">
+            <button onClick={handleLogout}
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-red-600 hover:bg-red-50 transition-all">
+              <LogOut className="w-5 h-5" />
+              <span className="text-sm font-medium">Đăng xuất</span>
+            </button>
+          </div>
+        </div>
+      </aside>
+
+      <div className={`flex-1 transition-all duration-300 ${isSidebarOpen ? 'ml-72' : 'ml-0'}`}>
+        <header className="bg-white shadow-sm sticky top-0 z-40">
+          <div className="flex items-center justify-between px-6 py-4">
+            <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 rounded-lg hover:bg-slate-100 transition-colors">
+              {isSidebarOpen ? <X className="w-6 h-6 text-slate-600" /> : <Menu className="w-6 h-6 text-slate-600" />}
+            </button>
+            <div className="flex items-center gap-4">
+              {isAdminUser && (
+                <div className="relative" ref={clubDropdownRef}>
+                  <button
+                    onClick={() => setClubDropdownOpen(!clubDropdownOpen)}
+                    className="flex items-center gap-2 px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl hover:bg-slate-100 transition-colors text-sm min-w-[200px]"
+                  >
+                    <Building2 className="w-4 h-4 text-slate-500 shrink-0" />
+                    <span className="text-slate-700 truncate flex-1 text-left">
+                      {isLoadingClubs ? 'Đang tải...' : selectedClub === 'all' ? 'Tất cả câu lạc bộ' : clubs.find(c => c._id === selectedClub)?.address || 'Chọn câu lạc bộ'}
+                    </span>
+                    <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
+                  </button>
+                  {clubDropdownOpen && (
+                    <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-lg border border-slate-200 z-50 max-h-80 overflow-y-auto">
+                      <div className="p-2">
+                        <button
+                          onClick={() => { setSelectedClub('all'); setClubDropdownOpen(false); }}
+                          className={`w-full text-left px-4 py-3 rounded-lg text-sm transition-colors ${selectedClub === 'all' ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-slate-600 hover:bg-slate-50'
+                            }`}
+                        >
+                          Tất cả câu lạc bộ
+                        </button>
+                        <div className="border-t border-slate-100 my-1" />
+                        {clubs.map(club => (
+                          <button
+                            key={club._id}
+                            onClick={() => { setSelectedClub(club._id); setClubDropdownOpen(false); }}
+                            className={`w-full text-left px-4 py-3 rounded-lg text-sm transition-colors ${selectedClub === club._id ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-slate-600 hover:bg-slate-50'
+                              }`}
+                          >
+                            <div className="font-medium">{club.address}</div>
+                            {club.phone && <div className="text-xs text-slate-400 mt-0.5">{club.phone}</div>}
+                          </button>
+                        ))}
+                        <div className="border-t border-slate-100 my-1" />
+                        <button
+                          onClick={() => { setShowAddClubModal(true); setClubDropdownOpen(false); }}
+                          className="w-full text-left px-4 py-3 rounded-lg text-sm text-indigo-600 hover:bg-indigo-50 transition-colors flex items-center gap-2"
+                        >
+                          <Plus className="w-4 h-4" />
+                          Thêm câu lạc bộ
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+              <div className="relative" ref={notifDropdownRef}>
+                <button onClick={() => setShowNotifications(!showNotifications)}
+                  className="p-2 rounded-lg hover:bg-slate-100 transition-colors relative">
+                  <Bell className="w-5 h-5 text-slate-600" />
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 flex items-center justify-center min-w-[18px] h-[18px] rounded-full bg-red-500 text-white text-[10px] font-bold ring-2 ring-white px-1">
+                      {unreadCount > 99 ? '99+' : unreadCount}
+                    </span>
+                  )}
+                </button>
+                {showNotifications && (
+                  <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-xl border border-slate-200 z-50">
+                    <div className="flex items-center justify-between p-4 border-b border-slate-200">
+                      <h3 className="font-bold text-slate-900">Thông báo</h3>
+                      {unreadCount > 0 && (
+                        <button onClick={markAllAsRead} className="text-xs text-indigo-600 hover:text-indigo-700 font-medium">
+                          Đánh dấu đã đọc
+                        </button>
+                      )}
+                    </div>
+                    <div className="max-h-96 overflow-y-auto">
+                      {notifications.length === 0 && (
+                        <div className="p-4 text-center text-sm text-slate-500">Không có thông báo</div>
+                      )}
+                      {notifications.map((notif) => (
+                        <button
+                          key={notif._id}
+                          onClick={() => {
+                            if (!notif.read) markAsRead(notif._id);
+                            if (notif.type === 'new_article' && notif.relatedArticleId) {
+                              const articleId = typeof notif.relatedArticleId === 'object' ? notif.relatedArticleId._id : notif.relatedArticleId;
+                              navigate(`/articles/${articleId}`);
+                            } else if (notif.type === 'new_community_post' && notif.relatedPostId) {
+                              navigate('/admin/community');
+                            }
+                            setShowNotifications(false);
+                          }}
+                          className={`w-full text-left block p-4 hover:bg-slate-50 border-b border-slate-100 transition-colors ${!notif.read ? 'bg-indigo-50/40' : ''}`}
+                        >
+                          <div className="flex gap-3">
+                            {getNotifIcon(notif.type)}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between gap-2">
+                                <h4 className={`text-sm ${!notif.read ? 'font-bold text-slate-900' : 'font-medium text-slate-800'}`}>
+                                  {notif.title}
+                                </h4>
+                                <span className="text-xs text-slate-400 shrink-0">{formatNotifTime(notif.createdAt)}</span>
+                              </div>
+                              <p className="text-sm text-slate-600 mt-0.5 line-clamp-2">{notif.message}</p>
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+              <Link to="/" className="flex items-center gap-2 text-sm text-slate-600 hover:text-indigo-600 transition-colors">
+                <Home className="w-4 h-4" />
+                Về trang chủ
+              </Link>
+            </div>
+          </div>
+        </header>
+        <main className="p-6">{children}</main>
+      </div>
+
+      {isSidebarOpen && (
+        <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={() => setIsSidebarOpen(false)} />
+      )}
+
+      <AddClubModal isOpen={showAddClubModal} onClose={() => setShowAddClubModal(false)} />
+    </div>
+  );
+}
