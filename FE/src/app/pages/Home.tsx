@@ -1,4 +1,4 @@
-import { ArrowRight, Users, Trophy, Target, ChevronRight, Zap, MapPin, Play, Quote, Check, QrCode, Newspaper } from 'lucide-react';
+import { ArrowRight, Users, Trophy, Target, ChevronRight, Zap, MapPin, Play, Quote, Check, QrCode, Newspaper, Calendar, Eye, FileText } from 'lucide-react';
 import { Link, useNavigate } from 'react-router';
 import { Button } from '@mui/material';
 import { motion, AnimatePresence } from 'motion/react';
@@ -26,6 +26,20 @@ export function Home() {
   const [selectedDiscipline, setSelectedDiscipline] = useState('all');
   const [loadingPackages, setLoadingPackages] = useState(true);
   const [durationSelections, setDurationSelections] = useState<Record<string, number>>({});
+  const [homeArticles, setHomeArticles] = useState<any[]>([]);
+  const [loadingArticles, setLoadingArticles] = useState(true);
+
+  const stripHtml = (html: string) => {
+    const tmp = document.createElement('div');
+    tmp.innerHTML = html;
+    return tmp.textContent || tmp.innerText || '';
+  };
+
+  const formatDate = (dateStr: string) => {
+    return new Date(dateStr).toLocaleDateString('vi-VN', {
+      year: 'numeric', month: 'long', day: 'numeric'
+    });
+  };
 
   const formatPrice = (price: number) => {
     if (!price) return '0đ';
@@ -68,6 +82,13 @@ export function Home() {
       })
       .catch(() => { })
       .finally(() => setLoadingPackages(false));
+    fetch(`${getApiUrl()}/api/articles?page=1&limit=3`)
+      .then(res => res.json())
+      .then(data => {
+        if (data?.data) setHomeArticles(data.data);
+      })
+      .catch(() => { })
+      .finally(() => setLoadingArticles(false));
   }, []);
 
   const uniqueNames = Array.from(new Set(allDisciplines.map(d => d.name)));
@@ -477,6 +498,83 @@ export function Home() {
                   </motion.div>
                 );
               })}
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* Articles Section */}
+      <section className="py-24 bg-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-end justify-between mb-12">
+            <div>
+              <h2 className="text-3xl font-bold text-slate-900 mb-4">Bài viết & Kiến thức</h2>
+              <p className="text-slate-600 max-w-2xl">
+                Cập nhật kiến thức thể hình, dinh dưỡng và các sự kiện mới nhất từ ZENFITNESS
+              </p>
+            </div>
+            <Link to="/articles" className="hidden sm:inline-flex items-center gap-1 text-indigo-600 font-semibold hover:text-indigo-700 transition-colors">
+              Xem tất cả <ArrowRight className="w-4 h-4" />
+            </Link>
+          </div>
+
+          {loadingArticles ? (
+            <div className="text-center py-12">
+              <div className="animate-spin w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full mx-auto mb-4" />
+              <p className="text-slate-500">Đang tải bài viết...</p>
+            </div>
+          ) : homeArticles.length === 0 ? (
+            <div className="text-center py-12">
+              <FileText className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+              <p className="text-slate-500">Chưa có bài viết nào</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+              {homeArticles.map((article, index) => (
+                <motion.div
+                  key={article._id}
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ delay: index * 0.1 }}
+                >
+                  <Link
+                    to={`/articles/${article._id}`}
+                    className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-lg transition-shadow group flex flex-col h-full"
+                  >
+                    <div className="h-48 bg-slate-100 overflow-hidden">
+                      {article.image ? (
+                        <img src={article.image} alt={article.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-slate-300">
+                          <FileText className="w-12 h-12" />
+                        </div>
+                      )}
+                    </div>
+                    <div className="p-6 flex-1 flex flex-col">
+                      <span className="inline-block text-xs font-semibold px-3 py-1 rounded-full mb-3 self-start bg-indigo-100 text-indigo-700">
+                        {article.category}
+                      </span>
+                      <h3 className="text-lg font-bold text-slate-900 mb-3 line-clamp-2 group-hover:text-indigo-600 transition-colors">
+                        {article.title}
+                      </h3>
+                      <p className="text-sm text-slate-600 mb-4 line-clamp-3 flex-1">
+                        {stripHtml(article.content)}
+                      </p>
+                      <div className="flex items-center justify-between text-xs text-slate-500 mt-auto">
+                        <div className="flex items-center gap-1">
+                          <Calendar className="w-3.5 h-3.5" />
+                          {formatDate(article.publishedAt || article.createdAt)}
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Eye className="w-3.5 h-3.5" />
+                          {article.views} lượt xem
+                        </div>
+                      </div>
+                    </div>
+                  </Link>
+                </motion.div>
+              ))}
             </div>
           )}
         </div>

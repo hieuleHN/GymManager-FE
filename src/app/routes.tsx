@@ -78,6 +78,8 @@ import { PostManagement } from './pages/admin/PostManagement';
 import { AdminCommunity } from './pages/admin/AdminCommunity';
 import { AdminMessages } from './pages/admin/AdminMessages';
 import { AdminStats } from './pages/dashboard/AdminStats';
+import { Articles } from './pages/Articles';
+import { ArticleDetail } from './pages/ArticleDetail';
 
 const routeFeatures: Record<string, string> = {
   '/admin/dashboard': 'statistics',
@@ -127,7 +129,6 @@ const routeFeatures: Record<string, string> = {
   '/admin/tasks': 'tasks',
   '/admin/bookings': 'schedule',
   '/admin/invoices': 'payment',
-  '/admin/posts': 'services',
   '/admin/community': 'services',
   '/admin/messages': 'services'
 };
@@ -181,6 +182,8 @@ export const router = createBrowserRouter([
       { path: 'clubs/:id', Component: ClubDetail },
       { path: 'disciplines/:id', Component: DisciplineDetail },
       { path: 'auth', Component: Auth },
+      { path: 'articles', Component: Articles },
+      { path: 'articles/:id', Component: ArticleDetail },
 
       // ĐÃ TỐI ƯU TẠI ĐÂY: Đưa trang QR vào làm con của Layout 
       // để khi mở trang này, thanh menu Navbar màu trắng ở trên vẫn giữ cố định!

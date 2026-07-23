@@ -20,7 +20,8 @@ import {
   Loader2,
   AlertCircle,
   ChevronRight,
-  Wallet
+  Wallet,
+  FileText
 } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { useAuth, getApiUrl, getAuthHeaders } from '../context/AuthContext';
@@ -103,6 +104,9 @@ export function Layout() {
       navigate('/dashboard/schedule');
     } else if (notif.type === 'wallet_topup' || notif.type === 'wallet_payment') {
       navigate('/dashboard/history');
+    } else if (notif.type === 'new_article') {
+      const articleId = notif.relatedArticleId?._id || notif.relatedArticleId;
+      if (articleId) navigate(`/articles/${articleId}`);
     } else if (notif.relatedBookingId?._id || notif.relatedBookingId) {
       const bookingId = notif.relatedBookingId._id || notif.relatedBookingId;
       navigate(`/dashboard/bookings/${bookingId}/status`);
@@ -131,6 +135,7 @@ export function Layout() {
       case 'booking_request': return <Calendar className="w-4 h-4 text-indigo-500" />;
       case 'wallet_topup':
       case 'wallet_payment': return <Wallet className="w-4 h-4 text-emerald-500" />;
+      case 'new_article': return <FileText className="w-4 h-4 text-blue-500" />;
       default: return <AlertCircle className="w-4 h-4 text-slate-500" />;
     }
   };
@@ -157,6 +162,7 @@ export function Layout() {
     },
     { name: "Gói tập", href: "/packages", icon: CreditCard },
     { name: "Huấn luyện viên", href: "/trainers", icon: Users },
+    { name: "Bài viết", href: "/articles", icon: FileText },
   ];
 
   // ĐỒNG BỘ TẠI ĐÂY: Nếu hội viên đã login, đẩy cả Dashboard và Điểm danh vào chung mảng

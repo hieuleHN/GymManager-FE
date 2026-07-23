@@ -160,6 +160,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
     { name: 'Quản lý chính sách', href: '/admin/policies', icon: FileText, feature: 'services' },
     { name: 'Giao diện Trang chủ', href: '/admin/homepage', icon: Globe, feature: 'services' },
     { name: 'Quản lý thanh toán', href: '/admin/payment', icon: CreditCard, feature: 'payment' },
+    { name: 'Quản lý bài viết', href: '/admin/posts', icon: FileText },
     { name: 'Quản lý tuyển dụng', href: '/admin/recruitment', icon: BriefcaseIcon, feature: 'staff' },
     { name: 'Quản lý chi phí', href: '/admin/expenses', icon: DollarSign, feature: 'statistics' },
     { name: 'Hồ sơ HLV', href: '/admin/trainer-profile', icon: UserCircle, feature: 'training' },

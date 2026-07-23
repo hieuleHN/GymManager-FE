@@ -1,4 +1,4 @@
-import { ArrowRight, Users, Trophy, Target, ChevronRight, Zap, MapPin, Play, Quote, Check, QrCode } from 'lucide-react';
+import { ArrowRight, Users, Trophy, Target, ChevronRight, Zap, MapPin, Play, Quote, Check, QrCode, Eye, Calendar, Newspaper } from 'lucide-react';
 import { Link, useNavigate } from 'react-router';
 import { Button } from '@mui/material';
 import { motion, AnimatePresence } from 'motion/react';
@@ -24,6 +24,7 @@ export function Home() {
   const [allDisciplines, setAllDisciplines] = useState<{ _id: string; name: string }[]>([]);
   const [packages, setPackages] = useState<any[]>([]);
   const [selectedDiscipline, setSelectedDiscipline] = useState('all');
+  const [articles, setArticles] = useState<any[]>([]);
   const [loadingPackages, setLoadingPackages] = useState(true);
   const [durationSelections, setDurationSelections] = useState<Record<string, number>>({});
 
@@ -68,6 +69,10 @@ export function Home() {
       })
       .catch(() => { })
       .finally(() => setLoadingPackages(false));
+    fetch(`${getApiUrl()}/api/articles?limit=4&sort=newest`)
+      .then(res => res.json())
+      .then(data => { if (data?.data) setArticles(data.data); })
+      .catch(() => { });
   }, []);
 
   const uniqueNames = Array.from(new Set(allDisciplines.map(d => d.name)));
@@ -133,6 +138,25 @@ export function Home() {
                   </Link>
                 )}
 
+                <Link to="/articles">
+                  <Button
+                    variant="contained"
+                    size="large"
+                    sx={{
+                      bgcolor: '#0f172a',
+                      py: 1.5,
+                      px: 4,
+                      '&:hover': { bgcolor: '#334155' },
+                      textTransform: 'none',
+                      fontSize: '1.1rem',
+                      fontWeight: 'bold',
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.2)'
+                    }}
+                    startIcon={<Newspaper />}
+                  >
+                    Bài viết
+                  </Button>
+                </Link>
                 <Link to="/auth?mode=register">
                   <Button
                     variant="contained"
@@ -462,6 +486,59 @@ export function Home() {
           )}
         </div>
       </section>
+
+      {/* Articles Section */}
+      {articles.length > 0 && (
+        <section className="py-24 bg-white">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex items-end justify-between mb-12">
+              <div>
+                <h2 className="text-3xl font-bold text-slate-900 mb-2">Tin tức & Bài viết</h2>
+                <p className="text-slate-600">Kiến thức thể thao và sức khỏe mỗi ngày</p>
+              </div>
+              <Link to="/articles" className="hidden sm:inline-flex items-center gap-1 text-indigo-600 font-semibold hover:text-indigo-700 transition-colors">
+                Xem tất cả <ArrowRight className="w-4 h-4" />
+              </Link>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              {articles.map((article: any) => (
+                <Link key={article._id} to={`/articles/${article._id}`}
+                  className="group bg-white rounded-2xl border border-slate-200 overflow-hidden hover:shadow-lg transition-all duration-300">
+                  <div className="h-48 overflow-hidden">
+                    {article.image ? (
+                      <img src={`${getApiUrl()}${article.image}`} alt={article.title}
+                        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                    ) : (
+                      <div className="w-full h-full bg-gradient-to-br from-indigo-100 to-purple-100 flex items-center justify-center">
+                        <span className="text-4xl font-bold text-indigo-300">B</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="p-5">
+                    <span className="text-xs font-semibold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-full">
+                      {article.category === 'tin-tuc' ? 'Tin tức' :
+                       article.category === 'meo-tap' ? 'Mẹo tập' :
+                       article.category === 'dinh-duong' ? 'Dinh dưỡng' :
+                       article.category === 'su-kien' ? 'Sự kiện' : 'Khác'}
+                    </span>
+                    <h3 className="text-base font-bold text-slate-900 mt-3 mb-2 line-clamp-2 group-hover:text-indigo-600 transition-colors">
+                      {article.title}
+                    </h3>
+                    <p className="text-sm text-slate-500 line-clamp-2 mb-3">
+                      {article.content?.replace(/<[^>]*>/g, '').substring(0, 100)}
+                    </p>
+                    <div className="flex items-center gap-3 text-xs text-slate-400">
+                      <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />{new Date(article.createdAt).toLocaleDateString('vi-VN')}</span>
+                      <span className="flex items-center gap-1"><Eye className="w-3 h-3" />{article.views || 0}</span>
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+
+          </div>
+        </section>
+      )}
 
       {/* Testimonials Section */}
       <section className="bg-indigo-600 py-24 relative overflow-hidden">
