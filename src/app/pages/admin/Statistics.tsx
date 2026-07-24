@@ -1,316 +1,293 @@
 import { AdminLayout } from '../../components/AdminLayout';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
-  TrendingUp, TrendingDown, DollarSign, Users, CreditCard,
-  Activity, ShoppingBag, UserCheck, Calendar
+  TrendingUp, TrendingDown, DollarSign, Wallet, PiggyBank,
+  Package as PackageIcon, ShoppingBag, Wrench, AlertTriangle,
+  BarChart3, Activity, Loader2, Download
 } from 'lucide-react';
 import {
-  LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell,
-  AreaChart, Area, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis
+  AreaChart, Area, ComposedChart, Line
 } from 'recharts';
+import { api } from '../../../lib/api';
+import { useClub } from '../../context/ClubContext';
+import { exportToExcel } from '../../../lib/exportExcel';
 
-const revenueData = [
-  { month: 'T1', revenue: 450, target: 400 },
-  { month: 'T2', revenue: 520, target: 450 },
-  { month: 'T3', revenue: 480, target: 450 },
-  { month: 'T4', revenue: 590, target: 500 },
-  { month: 'T5', revenue: 610, target: 550 },
-  { month: 'T6', revenue: 680, target: 600 },
+const PERIODS = [
+  { key: 'month', label: 'Tháng này' },
+  { key: 'quarter', label: 'Quý này' },
+  { key: 'year', label: 'Năm nay' },
 ];
 
-const memberGrowthData = [
-  { month: 'T1', newMembers: 45, churned: 12, net: 33 },
-  { month: 'T2', newMembers: 62, churned: 18, net: 44 },
-  { month: 'T3', newMembers: 55, churned: 15, net: 40 },
-  { month: 'T4', newMembers: 78, churned: 20, net: 58 },
-  { month: 'T5', newMembers: 90, churned: 22, net: 68 },
-  { month: 'T6', newMembers: 105, churned: 25, net: 80 },
-];
+const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#14b8a6'];
 
-const membershipData = [
-  { name: 'Gym', value: 450, color: '#4f46e5' },
-  { name: 'Yoga', value: 320, color: '#06b6d4' },
-  { name: 'Boxing', value: 180, color: '#f59e0b' },
-  { name: 'Pilates', value: 150, color: '#10b981' },
-  { name: 'Combo', value: 200, color: '#8b5cf6' }
-];
+const fmt = (v: number) => v >= 1e6 ? `${(v / 1e6).toFixed(1)}M` : v >= 1e3 ? `${(v / 1e3).toFixed(0)}K` : `${v}`;
+const fmtVnd = (v: number) => new Intl.NumberFormat('vi-VN').format(v) + '₫';
+const fmtChange = (v: number) => `${v > 0 ? '+' : ''}${v}%`;
+const pct = (val: number, total: number) => `${Math.round((val / (total || 1)) * 100)}%`;
+const prevVal = (cur: number, change: number) => cur - (cur * (change ?? 0)) / 100;
+const changeStr = (v: number) => `${v > 0 ? '+' : ''}${v ?? 0}%`;
 
-const packageSales = [
-  { package: '1 tháng', sales: 120, revenue: 120 },
-  { package: '3 tháng', sales: 280, revenue: 560 },
-  { package: '6 tháng', sales: 350, revenue: 1050 },
-  { package: '12 tháng', sales: 550, revenue: 2750 }
-];
-
-const attendanceData = [
-  { day: 'T2', count: 145 },
-  { day: 'T3', count: 162 },
-  { day: 'T4', count: 138 },
-  { day: 'T5', count: 175 },
-  { day: 'T6', count: 188 },
-  { day: 'T7', count: 220 },
-  { day: 'CN', count: 195 },
-];
-
-const productData = [
-  { name: 'Whey Protein', sales: 85, revenue: 25500000 },
-  { name: 'BCAA', sales: 62, revenue: 12400000 },
-  { name: 'Pre-Workout', sales: 48, revenue: 14400000 },
-  { name: 'Creatine', sales: 72, revenue: 10800000 },
-  { name: 'Vitamin', sales: 95, revenue: 9500000 },
-];
-
-const trainerPerformance = [
-  { subject: 'Số buổi PT', A: 85, fullMark: 100 },
-  { subject: 'Đánh giá KH', A: 92, fullMark: 100 },
-  { subject: 'Tỷ lệ giữ chân', A: 78, fullMark: 100 },
-  { subject: 'Doanh thu', A: 88, fullMark: 100 },
-  { subject: 'Đúng giờ', A: 95, fullMark: 100 },
-  { subject: 'Chuyên môn', A: 90, fullMark: 100 },
-];
-
-const PERIODS = ['Tuần này', 'Tháng này', 'Quý này', 'Năm nay'];
+const emptyFinance = {
+  summary: { realCashIn: 0, accrualRevenue: 0, totalExpense: 0, totalProfit: 0, profitMargin: 0, change: { realCashIn: 0, accrualRevenue: 0, totalExpense: 0, totalProfit: 0 } },
+  cashFlowData: [], profitData: [], expenseStructure: [], participation: [], topProducts: [],
+};
 
 export function Statistics() {
-  const [period, setPeriod] = useState('Tháng này');
+  const [tab, setTab] = useState<'finance' | 'operations'>('finance');
+  const [period, setPeriod] = useState('month');
+  const [loading, setLoading] = useState(false);
+  const [finance, setFinance] = useState<any>(null);
+  const [operations, setOperations] = useState<any>(null);
+  const { selectedClub } = useClub();
+  const locParam = selectedClub && selectedClub !== 'all' ? `&locationId=${selectedClub}` : '';
 
-  const stats = [
-    { label: 'Doanh thu tháng này', value: '680M', change: '+11%', trend: 'up', icon: DollarSign, color: 'bg-green-500' },
-    { label: 'Tổng hội viên', value: '1,300', change: '+8%', trend: 'up', icon: Users, color: 'bg-blue-500' },
-    { label: 'Gói tập bán ra', value: '124', change: '+12%', trend: 'up', icon: CreditCard, color: 'bg-purple-500' },
-    { label: 'Tỷ lệ gia hạn', value: '78%', change: '-2%', trend: 'down', icon: TrendingUp, color: 'bg-indigo-500' },
-    { label: 'Điểm danh hôm nay', value: '220', change: '+18%', trend: 'up', icon: UserCheck, color: 'bg-teal-500' },
-    { label: 'Sản phẩm bán ra', value: '362', change: '+5%', trend: 'up', icon: ShoppingBag, color: 'bg-orange-500' },
-    { label: 'Buổi PT hôm nay', value: '48', change: '+7%', trend: 'up', icon: Activity, color: 'bg-pink-500' },
-    { label: 'HV đăng ký mới', value: '105', change: '+16%', trend: 'up', icon: Calendar, color: 'bg-cyan-500' },
-  ];
+  useEffect(() => {
+    setLoading(true);
+    const url = tab === 'finance'
+      ? `/api/statistics/finance?period=${period}${locParam}`
+      : `/api/statistics/operations?period=${period}${locParam}`;
+    api.get(url).then(data => tab === 'finance' ? setFinance(data) : setOperations(data))
+      .catch(() => tab === 'finance' ? setFinance(emptyFinance) : setOperations(null))
+      .finally(() => setLoading(false));
+  }, [tab, period, selectedClub]);
 
   return (
     <AdminLayout>
       <div className="max-w-7xl mx-auto space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-slate-900 mb-1">Quản lý thống kê</h1>
-            <p className="text-slate-600">Báo cáo và phân tích dữ liệu toàn hệ thống</p>
+            <h1 className="text-3xl font-bold text-slate-900 mb-1">Báo cáo & Thống kê</h1>
+            <p className="text-slate-600">Phân tích tài chính và vận hành phòng tập</p>
           </div>
           <div className="flex gap-2 bg-white rounded-xl border border-slate-200 p-1">
-            {PERIODS.map(p => (
-              <button
-                key={p}
-                onClick={() => setPeriod(p)}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                  period === p
-                    ? 'bg-indigo-600 text-white shadow-sm'
-                    : 'text-slate-600 hover:bg-slate-50'
-                }`}
-              >
-                {p}
+            {(['finance', 'operations'] as const).map(t => (
+              <button key={t} onClick={() => setTab(t)}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 ${tab === t ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}>
+                {t === 'finance' ? <BarChart3 className="w-4 h-4" /> : <Wrench className="w-4 h-4" />}
+                {t === 'finance' ? 'Tài chính' : 'Vận hành'}
               </button>
             ))}
           </div>
         </div>
 
-        {/* Stats Grid */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {stats.map((stat, idx) => {
-            const Icon = stat.icon;
-            const TrendIcon = stat.trend === 'up' ? TrendingUp : TrendingDown;
-            return (
-              <div key={idx} className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
-                <div className="flex items-center justify-between mb-3">
-                  <div className={`${stat.color} p-2.5 rounded-xl`}>
-                    <Icon className="w-5 h-5 text-white" />
-                  </div>
-                  <div className={`flex items-center gap-1 ${stat.trend === 'up' ? 'text-green-600' : 'text-red-600'}`}>
-                    <TrendIcon className="w-3.5 h-3.5" />
-                    <span className="text-xs font-semibold">{stat.change}</span>
-                  </div>
-                </div>
-                <p className="text-xs text-slate-500 mb-1">{stat.label}</p>
-                <p className="text-2xl font-bold text-slate-900">{stat.value}</p>
-              </div>
-            );
-          })}
+        <div className="flex items-center justify-between">
+          <div className="flex gap-2 bg-white rounded-xl border border-slate-200 p-1">
+            {PERIODS.map(p => (
+              <button key={p.key} onClick={() => setPeriod(p.key)}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${period === p.key ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}>
+                {p.label}
+              </button>
+            ))}
+          </div>
+          {loading && <Loader2 className="w-5 h-5 animate-spin text-indigo-500" />}
         </div>
 
-        {/* Charts Row 1 */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* 1. Revenue Chart */}
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-lg font-bold text-slate-900">Doanh thu theo tháng</h2>
-              <span className="text-xs bg-indigo-50 text-indigo-600 px-2.5 py-1 rounded-full font-medium">Triệu VNĐ</span>
-            </div>
-            <ResponsiveContainer width="100%" height={260}>
-              <AreaChart data={revenueData}>
-                <defs>
-                  <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.15} />
-                    <stop offset="95%" stopColor="#4f46e5" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-                <YAxis tick={{ fontSize: 12 }} />
-                <Tooltip formatter={(v: number) => [`${v}M`, '']} />
-                <Legend />
-                <Area type="monotone" dataKey="revenue" stroke="#4f46e5" strokeWidth={2} fill="url(#colorRevenue)" name="Doanh thu" />
-                <Line type="monotone" dataKey="target" stroke="#94a3b8" strokeWidth={2} strokeDasharray="5 5" name="Mục tiêu" dot={false} />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
+        {tab === 'finance' ? <FinanceTab data={finance || emptyFinance} period={period} /> : <OperationsTab data={operations} />}
+      </div>
+    </AdminLayout>
+  );
+}
 
-          {/* 2. Member Growth */}
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-lg font-bold text-slate-900">Tăng trưởng hội viên</h2>
-              <span className="text-xs bg-green-50 text-green-600 px-2.5 py-1 rounded-full font-medium">Người</span>
-            </div>
-            <ResponsiveContainer width="100%" height={260}>
-              <BarChart data={memberGrowthData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-                <YAxis tick={{ fontSize: 12 }} />
-                <Tooltip />
-                <Legend />
-                <Bar dataKey="newMembers" fill="#10b981" name="Đăng ký mới" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="churned" fill="#f87171" name="Rời bỏ" radius={[4, 4, 0, 0]} />
-                <Line type="monotone" dataKey="net" stroke="#4f46e5" strokeWidth={2} name="Tăng ròng" dot={false} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+function StatCard({ stat }: { stat: any }) {
+  const Icon = stat.icon;
+  const TrendIcon = stat.trend === 'up' ? TrendingUp : TrendingDown;
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+      <div className="flex items-center justify-between mb-3">
+        <div className={`${stat.color} p-2.5 rounded-xl`}><Icon className="w-5 h-5 text-white" /></div>
+        <div className={`flex items-center gap-1 ${stat.trend === 'up' ? 'text-green-600' : 'text-red-600'}`}>
+          <TrendIcon className="w-3.5 h-3.5" /><span className="text-xs font-semibold">{stat.change}</span>
         </div>
+      </div>
+      <p className="text-xs text-slate-500 mb-1">{stat.label}</p>
+      <p className="text-xl font-bold text-slate-900">{stat.value}</p>
+    </div>
+  );
+}
 
-        {/* Charts Row 2 */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* 3. Membership Distribution Pie */}
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
-            <h2 className="text-lg font-bold text-slate-900 mb-5">Phân bố hội viên theo môn</h2>
-            <ResponsiveContainer width="100%" height={220}>
-              <PieChart>
-                <Pie
-                  data={membershipData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={55}
-                  outerRadius={85}
-                  paddingAngle={3}
-                  dataKey="value"
-                >
-                  {membershipData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="grid grid-cols-2 gap-1 mt-2">
-              {membershipData.map((item) => (
-                <div key={item.name} className="flex items-center gap-2">
-                  <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: item.color }} />
-                  <span className="text-xs text-slate-600">{item.name}: {item.value}</span>
-                </div>
+function ExportBtn({ onClick }: { onClick: () => void }) {
+  return (
+    <div className="flex justify-end">
+      <button onClick={onClick} className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium">
+        <Download className="w-4 h-4" /> Xuất Excel
+      </button>
+    </div>
+  );
+}
+
+function FinanceTab({ data, period }: { data: any; period: string }) {
+  if (!data?.summary) return <div className="text-slate-400 text-sm">Đang tải dữ liệu tài chính...</div>;
+  const s = data.summary;
+  const c = s.change || {};
+
+  const now = new Date();
+  const periodLabel = period === 'quarter'
+    ? `Q${Math.floor(now.getMonth() / 3) + 1}/${now.getFullYear()}`
+    : period === 'year'
+    ? `${now.getFullYear()}`
+    : `T${now.getMonth() + 1}/${now.getFullYear()}`;
+
+  const stats = [
+    { label: 'Doanh thu thực thu', value: fmtVnd(s.realCashIn), change: fmtChange(c.realCashIn ?? 0), trend: (c.realCashIn ?? 0) >= 0 ? 'up' : 'down', icon: Wallet, color: 'bg-emerald-500' },
+    { label: 'Doanh thu ghi nhận', value: fmtVnd(s.accrualRevenue), change: fmtChange(c.accrualRevenue ?? 0), trend: (c.accrualRevenue ?? 0) >= 0 ? 'up' : 'down', icon: DollarSign, color: 'bg-indigo-500' },
+    { label: 'Tổng chi phí', value: fmtVnd(s.totalExpense), change: fmtChange(c.totalExpense ?? 0), trend: (c.totalExpense ?? 0) >= 0 ? 'down' : 'up', icon: Activity, color: 'bg-orange-500' },
+    { label: 'Lợi nhuận', value: fmtVnd(s.totalProfit), change: fmtChange(c.totalProfit ?? 0), trend: (c.totalProfit ?? 0) >= 0 ? 'up' : 'down', icon: PiggyBank, color: 'bg-green-500' },
+  ];
+
+  const summaryRows = [
+    { key: 'realCashIn', label: 'Doanh thu thực thu' },
+    { key: 'accrualRevenue', label: 'Doanh thu ghi nhận' },
+    { key: 'totalExpense', label: 'Tổng chi phí' },
+    { key: 'totalProfit', label: 'Lợi nhuận' },
+  ];
+
+  const handleExport = () => {
+    exportToExcel([
+      { name: 'Tong quan', headers: ['Chỉ số', 'Giá trị', 'Thay đổi (%)'], data: [{ 'Chỉ số': 'Kỳ báo cáo', 'Giá trị': periodLabel, 'Thay đổi (%)': '' }, ...summaryRows.map(r => ({ 'Chỉ số': r.label, 'Giá trị': s[r.key], 'Thay đổi (%)': changeStr(c[r.key]) })), { 'Chỉ số': 'Biên lợi nhuận', 'Giá trị': `${s.profitMargin}%`, 'Thay đổi (%)': '' }] },
+      { name: 'So sanh ky truoc', headers: ['Chỉ số', 'Kỳ này', 'Kỳ trước', 'Thay đổi'], data: summaryRows.map(r => ({ 'Chỉ số': r.label, 'Kỳ này': s[r.key], 'Kỳ trước': prevVal(s[r.key], c[r.key]), 'Thay đổi': changeStr(c[r.key]) })) },
+      { name: 'Chi phi theo loai', headers: ['Loại chi phí', 'Số tiền', 'Tỷ trọng (%)'], data: data.expenseStructure.map((i: any) => ({ 'Loại chi phí': i.name, 'Số tiền': i.value, 'Tỷ trọng (%)': pct(i.value, data.expenseStructure.reduce((s: number, x: any) => s + x.value, 0)) })) },
+      { name: 'Top san pham', headers: ['Sản phẩm', 'Đơn giá', 'Giá vốn', 'SL bán', 'Doanh thu', 'Lợi nhuận', 'Tỷ trọng (%)'], data: data.topProducts.map((i: any) => ({ 'Sản phẩm': i.name, 'Đơn giá': i.price, 'Giá vốn': i.costPrice, 'SL bán': i.quantity, 'Doanh thu': i.revenue, 'Lợi nhuận': i.profit, 'Tỷ trọng (%)': pct(i.revenue, data.topProducts.reduce((s: number, x: any) => s + x.revenue, 0)) })) },
+      { name: 'Dong tien chi tiet', headers: ['Tháng', 'Tiền thực thu', 'Tiền ghi nhận', 'Chi phí', 'Lợi nhuận', '% DT ghi nhận'], data: data.cashFlowData.map((i: any) => ({ 'Tháng': i.month, 'Tiền thực thu': i.cash, 'Tiền ghi nhận': i.revenue, 'Chi phí': i.expense, 'Lợi nhuận': i.profit, '% DT ghi nhận': pct(i.cash, i.revenue) })) },
+      { name: 'Khau hao thiet bi', headers: ['Thiết bị', 'Nguyên giá', 'Khấu hao/tháng', 'Tháng đã dùng', 'Đã khấu hao', 'Giá trị còn lại'], data: (data.depreciationDetail || []).map((d: any) => ({ 'Thiết bị': d.name, 'Nguyên giá': d.total, 'Khấu hao/tháng': d.monthlyDepreciation, 'Tháng đã dùng': d.monthsActive, 'Đã khấu hao': d.totalDepreciated, 'Giá trị còn lại': d.remainingValue })) },
+    ], `BaoCaoTaiChinh_${periodLabel.replace('/', '')}_${new Date().toISOString().slice(0, 10)}`);
+  };
+
+  return (
+    <>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">{stats.map((stat, i) => <StatCard key={i} stat={stat} />)}</div>
+      <ExportBtn onClick={handleExport} />
+
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="text-lg font-bold text-slate-900">Tổng quan tài chính theo tháng</h2>
+          <span className="text-xs bg-indigo-50 text-indigo-600 px-2.5 py-1 rounded-full font-medium">VNĐ</span>
+        </div>
+        <p className="text-xs text-slate-500 mb-4">Dòng tiền thực thu, doanh thu ghi nhận, chi phí và lợi nhuận theo từng tháng</p>
+        <ResponsiveContainer width="100%" height={300}>
+          <AreaChart data={data.cashFlowData}>
+            <defs>
+              {[
+                { id: 'gCash', color: '#10b981' }, { id: 'gRev', color: '#6366f1' },
+                { id: 'gExp', color: '#f59e0b' }, { id: 'gProfit', color: '#8b5cf6' },
+              ].map(g => (
+                <linearGradient key={g.id} id={g.id} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor={g.color} stopOpacity={0.25} />
+                  <stop offset="95%" stopColor={g.color} stopOpacity={0} />
+                </linearGradient>
               ))}
-            </div>
-          </div>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+            <XAxis dataKey="month" tick={{ fontSize: 12 }} />
+            <YAxis tickFormatter={fmt} tick={{ fontSize: 11 }} />
+            <Tooltip formatter={(v: number) => fmtVnd(v)} />
+            <Legend />
+            <Area type="monotone" dataKey="cash" stroke="#10b981" strokeWidth={2.5} fill="url(#gCash)" name="Doanh thu thực thu" />
+            <Area type="monotone" dataKey="revenue" stroke="#6366f1" strokeWidth={2.5} fill="url(#gRev)" name="Doanh thu ghi nhận" />
+            <Area type="monotone" dataKey="expense" stroke="#f59e0b" strokeWidth={2.5} fill="url(#gExp)" name="Tổng chi phí" />
+            <Area type="monotone" dataKey="profit" stroke="#8b5cf6" strokeWidth={2.5} fill="url(#gProfit)" name="Lợi nhuận" />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
 
-          {/* 4. Package Sales */}
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 lg:col-span-2">
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-lg font-bold text-slate-900">Doanh số theo loại gói</h2>
-              <span className="text-xs bg-purple-50 text-purple-600 px-2.5 py-1 rounded-full font-medium">Số lượng & Doanh thu (M)</span>
-            </div>
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={packageSales}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="package" tick={{ fontSize: 12 }} />
-                <YAxis yAxisId="left" tick={{ fontSize: 12 }} />
-                <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 12 }} />
-                <Tooltip />
-                <Legend />
-                <Bar yAxisId="left" dataKey="sales" fill="#4f46e5" name="Số lượng" radius={[4, 4, 0, 0]} />
-                <Bar yAxisId="right" dataKey="revenue" fill="#8b5cf6" name="DT (M)" radius={[4, 4, 0, 0]} opacity={0.7} />
-              </BarChart>
-            </ResponsiveContainer>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 lg:col-span-2">
+          <div className="flex items-center justify-between mb-1">
+            <h2 className="text-lg font-bold text-slate-900">Chi phí & Lợi nhuận theo tháng</h2>
+            <span className="text-xs bg-green-50 text-green-600 px-2.5 py-1 rounded-full font-medium">Biên lãi {s.profitMargin}%</span>
           </div>
+          <p className="text-xs text-slate-500 mb-4">Theo dõi phòng gym có vận hành hiệu quả không</p>
+          <ResponsiveContainer width="100%" height={280}>
+            <ComposedChart data={data.profitData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+              <XAxis dataKey="month" tick={{ fontSize: 12 }} />
+              <YAxis tickFormatter={fmt} tick={{ fontSize: 11 }} />
+              <Tooltip formatter={(v: number) => fmtVnd(v)} />
+              <Legend />
+              <Bar dataKey="revenue" fill="#6366f1" name="Doanh thu" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="expense" fill="#f59e0b" name="Chi phí" radius={[4, 4, 0, 0]} />
+              <Line type="monotone" dataKey="profit" stroke="#10b981" strokeWidth={2.5} dot={{ r: 3 }} name="Lợi nhuận" />
+            </ComposedChart>
+          </ResponsiveContainer>
         </div>
-
-        {/* Charts Row 3 */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* 5. Attendance by Day of Week */}
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-lg font-bold text-slate-900">Điểm danh theo ngày trong tuần</h2>
-              <span className="text-xs bg-teal-50 text-teal-600 px-2.5 py-1 rounded-full font-medium">Lượt</span>
-            </div>
-            <ResponsiveContainer width="100%" height={260}>
-              <BarChart data={attendanceData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="day" tick={{ fontSize: 12 }} />
-                <YAxis tick={{ fontSize: 12 }} />
-                <Tooltip />
-                <Bar dataKey="count" name="Lượt điểm danh" radius={[6, 6, 0, 0]}>
-                  {attendanceData.map((entry, index) => (
-                    <Cell
-                      key={`cell-${index}`}
-                      fill={entry.count === Math.max(...attendanceData.map(d => d.count)) ? '#4f46e5' : '#c7d2fe'}
-                    />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-
-          {/* 6. Trainer Performance Radar */}
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-lg font-bold text-slate-900">Hiệu suất HLV trung bình</h2>
-              <span className="text-xs bg-pink-50 text-pink-600 px-2.5 py-1 rounded-full font-medium">Điểm / 100</span>
-            </div>
-            <ResponsiveContainer width="100%" height={260}>
-              <RadarChart cx="50%" cy="50%" outerRadius={95} data={trainerPerformance}>
-                <PolarGrid stroke="#e2e8f0" />
-                <PolarAngleAxis dataKey="subject" tick={{ fontSize: 11 }} />
-                <PolarRadiusAxis angle={30} domain={[0, 100]} tick={{ fontSize: 10 }} />
-                <Radar name="HLV" dataKey="A" stroke="#4f46e5" fill="#4f46e5" fillOpacity={0.25} />
-                <Tooltip />
-              </RadarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        {/* Product Sales Table */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
-          <h2 className="text-lg font-bold text-slate-900 mb-5">Top sản phẩm bán chạy</h2>
+          <h2 className="text-lg font-bold text-slate-900 mb-4">Cơ cấu chi phí</h2>
+          <ResponsiveContainer width="100%" height={200}>
+            <PieChart>
+              <Pie data={data.expenseStructure} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={3}>
+                {data.expenseStructure.map((_: any, i: number) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+              </Pie>
+              <Tooltip formatter={(v: number) => fmtVnd(v)} />
+            </PieChart>
+          </ResponsiveContainer>
+          <div className="space-y-1.5 mt-2">
+            {data.expenseStructure.map((item: any, i: number) => (
+              <div key={i} className="flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }} /><span className="text-slate-600">{item.name}</span></div>
+                <span className="font-medium text-slate-800">{fmtVnd(item.value)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="text-lg font-bold text-slate-900">Doanh số theo gói & Tỉ lệ tham gia</h2>
+          <span className="text-xs bg-purple-50 text-purple-600 px-2.5 py-1 rounded-full font-medium">Số lượng & Lượt/ HV</span>
+        </div>
+        <p className="text-xs text-slate-500 mb-4">Gói nào mang lại nhiều tiền nhất và mức độ chăm chỉ của hội viên</p>
+        <ResponsiveContainer width="100%" height={300}>
+          <ComposedChart data={data.participation} layout="vertical">
+            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+            <XAxis type="number" tick={{ fontSize: 11 }} />
+            <YAxis type="category" dataKey="package" tick={{ fontSize: 12 }} width={80} />
+            <Tooltip formatter={(v: number, n) => n === 'revenue' ? fmtVnd(v) : [v, '']} />
+            <Legend />
+            <Bar dataKey="sales" fill="#6366f1" name="Số gói bán" radius={[0, 4, 4, 0]} barSize={14} />
+            <Bar dataKey="revenue" fill="#8b5cf6" name="Doanh thu" radius={[0, 4, 4, 0]} barSize={14} />
+            <Line type="monotone" dataKey="participation" stroke="#f59e0b" strokeWidth={2.5} dot={{ r: 4 }} name="Lượt tham gia / HV" />
+          </ComposedChart>
+        </ResponsiveContainer>
+      </div>
+
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-lg font-bold text-slate-900">Top sản phẩm bán chạy</h2>
+          <span className="text-xs bg-orange-50 text-orange-600 px-2.5 py-1 rounded-full font-medium flex items-center gap-1"><ShoppingBag className="w-3 h-3" /> Hàng phụ trợ</span>
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <ResponsiveContainer width="100%" height={260}>
+            <BarChart data={data.topProducts} layout="vertical">
+              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+              <XAxis type="number" tickFormatter={fmt} tick={{ fontSize: 11 }} />
+              <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={90} />
+              <Tooltip formatter={(v: number) => fmtVnd(v)} />
+              <Bar dataKey="revenue" name="Doanh thu" radius={[0, 4, 4, 0]}>
+                {data.topProducts.map((_: any, i: number) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-100">
-                  <th className="text-left py-3 px-4 text-slate-500 font-medium">Sản phẩm</th>
-                  <th className="text-right py-3 px-4 text-slate-500 font-medium">Số lượng bán</th>
-                  <th className="text-right py-3 px-4 text-slate-500 font-medium">Doanh thu</th>
-                  <th className="text-left py-3 px-4 text-slate-500 font-medium">Tỷ trọng</th>
+                  {['Sản phẩm', 'SL', 'Doanh thu', 'Lợi nhuận', 'Tỷ trọng'].map(h => (
+                    <th key={h} className={`py-3 px-2 text-slate-500 font-medium ${h === 'Tỷ trọng' ? 'text-left' : h === 'Sản phẩm' ? 'text-left' : 'text-right'}`}>{h}</th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
-                {productData.map((item, i) => {
-                  const totalRevenue = productData.reduce((s, d) => s + d.revenue, 0);
-                  const pct = Math.round((item.revenue / totalRevenue) * 100);
+                {data.topProducts.map((item: any, i: number) => {
+                  const p = pct(item.revenue, data.topProducts.reduce((s: number, d: any) => s + d.revenue, 0));
                   return (
                     <tr key={i} className="border-b border-slate-50 hover:bg-slate-50">
-                      <td className="py-3 px-4 font-medium text-slate-800">{item.name}</td>
-                      <td className="py-3 px-4 text-right text-slate-700">{item.sales}</td>
-                      <td className="py-3 px-4 text-right text-slate-700">{(item.revenue / 1000000).toFixed(1)}M</td>
-                      <td className="py-3 px-4">
-                        <div className="flex items-center gap-2">
-                          <div className="flex-1 bg-slate-100 rounded-full h-2">
-                            <div className="bg-indigo-500 h-2 rounded-full" style={{ width: `${pct}%` }} />
-                          </div>
-                          <span className="text-slate-600 text-xs w-8">{pct}%</span>
-                        </div>
-                      </td>
+                      <td className="py-2.5 px-2 font-medium text-slate-800">{item.name}</td>
+                      <td className="py-2.5 px-2 text-right text-slate-700">{item.quantity}</td>
+                      <td className="py-2.5 px-2 text-right text-slate-700">{fmtVnd(item.revenue)}</td>
+                      <td className="py-2.5 px-2 text-right text-slate-700">{fmtVnd(item.profit)}</td>
+                      <td className="py-2.5 px-2"><div className="flex items-center gap-2"><div className="flex-1 bg-slate-100 rounded-full h-2"><div className="bg-indigo-500 h-2 rounded-full" style={{ width: p }} /></div><span className="text-slate-600 text-xs w-8">{p}</span></div></td>
                     </tr>
                   );
                 })}
@@ -319,6 +296,131 @@ export function Statistics() {
           </div>
         </div>
       </div>
-    </AdminLayout>
+    </>
+  );
+}
+
+function OperationsTab({ data }: { data: any }) {
+  if (!data) return <div className="text-slate-400 text-sm">Đang tải dữ liệu vận hành...</div>;
+
+  const stats = [
+    { label: 'Tổng số thiết bị', value: `${data.totalQuantity}`, icon: PackageIcon, color: 'bg-blue-500' },
+    { label: 'Giá trị thiết bị', value: fmtVnd(data.totalValue), icon: DollarSign, color: 'bg-emerald-500' },
+    { label: 'Tổng báo cáo', value: `${data.totalReports}`, icon: AlertTriangle, color: 'bg-orange-500' },
+    { label: 'Chờ xử lý', value: `${data.pendingReports}`, trend: 'up', icon: Wrench, color: 'bg-red-500' },
+  ];
+
+  const withPct = (arr: any[]) => arr.map(i => ({ ...i, pct: pct(i.value, arr.reduce((s, x) => s + x.value, 0)) }));
+
+  const handleExport = () => {
+    exportToExcel([
+      { name: 'Tong quan van hanh', headers: ['Chỉ số', 'Giá trị'], data: stats.map(s => ({ 'Chỉ số': s.label, 'Giá trị': s.value.replace('₫', '').trim() })) },
+      { name: 'Tinh trang thiet bi', headers: ['Trạng thái', 'Số lượng', 'Tỷ trọng (%)'], data: withPct(data.equipmentStatus).map((i: any) => ({ 'Trạng thái': i.name, 'Số lượng': i.value, 'Tỷ trọng (%)': i.pct })) },
+      { name: 'Phan loai su co', headers: ['Loại sự cố', 'Số báo cáo', 'Tỷ trọng (%)'], data: withPct(data.equipmentReports).map((i: any) => ({ 'Loại sự cố': i.name, 'Số báo cáo': i.value, 'Tỷ trọng (%)': i.pct })) },
+      { name: 'Chi tiet bao cao', headers: ['Thiết bị', 'Loại sự cố', 'Số máy', 'Lý do', 'Thời gian', 'Trạng thái'], data: (data.reportDetails || []).map((r: any) => ({ 'Thiết bị': r.equipmentName, 'Loại sự cố': r.statusType, 'Số máy': r.affectedQuantity, 'Lý do': r.reason, 'Thời gian': r.reportedAt ? new Date(r.reportedAt).toLocaleDateString('vi-VN') : '', 'Trạng thái': r.status === 'pending' ? 'Chờ xử lý' : 'Hoàn thành' })) },
+      { name: 'Thiet bi can bao tri', headers: ['Thiết bị', 'Tổng số', 'Bị ảnh hưởng', 'Trạng thái', 'Báo cáo chờ', 'Bảo hành còn (tháng)'], data: data.needMaintenance.map((i: any) => ({ 'Thiết bị': i.name, 'Tổng số': i.quantity, 'Bị ảnh hưởng': i.affectedQuantity ?? '—', 'Trạng thái': i.status === 'maintenance' ? 'Đang bảo trì' : 'Hoạt động', 'Báo cáo chờ xử lý': i.reports, 'Bảo hành còn (tháng)': i.warrantyLeft ?? '—' })) },
+    ], `BaoCaoVanHanh_${new Date().toISOString().slice(0, 10)}`);
+  };
+
+  return (
+    <>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">{stats.map((stat, i) => <StatCard key={i} stat={stat} />)}</div>
+      <ExportBtn onClick={handleExport} />
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+          <h2 className="text-lg font-bold text-slate-900 mb-4">Tình trạng thiết bị</h2>
+          <ResponsiveContainer width="100%" height={250}>
+            <PieChart>
+              <Pie data={data.equipmentStatus} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={55} outerRadius={90} paddingAngle={3}>
+                {data.equipmentStatus.map((entry: any, i: number) => <Cell key={i} fill={entry.color} />)}
+              </Pie>
+              <Tooltip formatter={(v: number) => [`${v} máy`, '']} />
+            </PieChart>
+          </ResponsiveContainer>
+          <div className="grid grid-cols-2 gap-2 mt-2">
+            {data.equipmentStatus.map((item: any, i: number) => (
+              <div key={i} className="flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: item.color }} /><span className="text-slate-600">{item.name}</span></div>
+                <span className="font-semibold text-slate-800">{item.value}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+          <h2 className="text-lg font-bold text-slate-900 mb-4">Phân loại sự cố thiết bị</h2>
+          <ResponsiveContainer width="100%" height={250}>
+            <BarChart data={data.equipmentReports}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+              <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+              <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+              <Tooltip formatter={(v: number) => [`${v} báo cáo`, '']} />
+              <Bar dataKey="value" name="Số báo cáo" radius={[6, 6, 0, 0]}>
+                {data.equipmentReports.map((_: any, i: number) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+          {data.reportDetails && data.reportDetails.length > 0 && (
+            <div className="mt-4 max-h-48 overflow-y-auto space-y-2">
+              {data.reportDetails.map((r: any, i: number) => (
+                <div key={i} className="flex items-center gap-3 text-xs bg-slate-50 rounded-lg px-3 py-2">
+                  <span className="font-medium text-slate-800 truncate min-w-0 max-w-[120px]">{r.equipmentName}</span>
+                  <span className={`px-1.5 py-0.5 rounded-full font-semibold shrink-0 ${
+                    r.statusType === 'bảo trì' ? 'bg-yellow-100 text-yellow-700' :
+                    r.statusType === 'hoạt động' ? 'bg-green-100 text-green-700' :
+                    'bg-red-100 text-red-700'
+                  }`}>{r.statusType}</span>
+                  <span className="text-slate-500 shrink-0">{r.affectedQuantity} máy</span>
+                  <span className="text-slate-400 truncate min-w-0">{r.reason}</span>
+                  {r.status === 'pending' && <span className="ml-auto shrink-0 px-1.5 py-0.5 rounded bg-orange-100 text-orange-600 font-medium">Chờ xử lý</span>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+        <div className="flex items-center gap-2 mb-4">
+          <AlertTriangle className="w-5 h-5 text-amber-500" />
+          <h2 className="text-lg font-bold text-slate-900">Thiết bị cần lên kế hoạch bảo trì</h2>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-100">
+                {['Thiết bị', 'Tổng số', 'Bị ảnh hưởng', 'Trạng thái', 'Báo cáo chờ', 'Bảo hành (th)'].map(h => (
+                  <th key={h} className={`py-3 px-4 text-slate-500 font-medium ${h === 'Thiết bị' ? 'text-left' : 'text-right'}`}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {data.needMaintenance.map((eq: any, i: number) => (
+                <tr key={i} className="border-b border-slate-50 hover:bg-slate-50">
+                  <td className="py-3 px-4 font-medium text-slate-800">{eq.name}</td>
+                  <td className="py-3 px-4 text-right text-slate-700">{eq.quantity}</td>
+                  <td className="py-3 px-4 text-right">
+                    <span className="font-semibold text-amber-600">{eq.affectedQuantity ?? '—'}</span>
+                    <span className="text-slate-400"> / {eq.quantity}</span>
+                  </td>
+                  <td className="py-3 px-4 text-right">
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${eq.status === 'maintenance' ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'}`}>
+                      {eq.status === 'maintenance' ? 'Bảo trì' : 'Hoạt động'}
+                    </span>
+                  </td>
+                  <td className="py-3 px-4 text-right text-slate-700">{eq.reports}</td>
+                  <td className="py-3 px-4 text-right">
+                    <span className={`font-medium ${eq.warrantyLeft !== null && eq.warrantyLeft <= 3 ? 'text-red-600' : 'text-slate-700'}`}>
+                      {eq.warrantyLeft ?? '—'}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </>
   );
 }

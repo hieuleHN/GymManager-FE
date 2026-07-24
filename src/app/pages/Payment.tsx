@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useLocation, useNavigate, Navigate } from 'react-router';
 import { Button } from '@mui/material';
-import { CreditCard, Building2, Smartphone, Check, Loader2, ExternalLink, QrCode, X, Wallet, AlertTriangle } from 'lucide-react';
+import { CreditCard, Building2, Smartphone, Check, Loader2, ExternalLink, QrCode, X, Wallet, AlertTriangle, FileDown } from 'lucide-react';
 import { useAuth, getApiUrl, getAuthHeaders } from '../context/AuthContext';
 
 
@@ -342,6 +342,11 @@ export function Payment() {
   const pdfToken = encodeURIComponent(JSON.parse(localStorage.getItem('auth_user') || '{}').token || '');
   const pdfUrl = `${getApiUrl()}/api/user-packages/${regId}/contract-pdf?token=${pdfToken}`;
 
+  const handleDownloadContract = () => {
+    if (!regId) return;
+    window.open(pdfUrl, '_blank');
+  };
+
   if (paymentSuccess) {
     if (isBookingPayment) {
       const firstId = bookingId;
@@ -350,7 +355,54 @@ export function Payment() {
         : '/dashboard/history';
       navigate(url, { replace: true });
     } else {
-      navigate('/dashboard/my-packages', { replace: true });
+      return (
+        <div className="min-h-screen bg-slate-50 flex items-center justify-center py-12 px-4">
+          <div className="max-w-md w-full bg-white p-8 rounded-2xl shadow-lg text-center">
+            <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
+              <Check className="w-10 h-10 text-green-600" />
+            </div>
+            <h2 className="text-2xl font-bold text-slate-900 mb-4">Thanh toán thành công!</h2>
+            <p className="text-slate-600 mb-6">Đơn hàng của bạn đã được xác nhận. Hợp đồng đã được tạo.</p>
+            <div className="space-y-3">
+              {regId && (
+                <Button
+                  fullWidth
+                  variant="contained"
+                  size="large"
+                  startIcon={<FileDown className="w-5 h-5" />}
+                  onClick={handleDownloadContract}
+                  sx={{
+                    height: 56,
+                    borderRadius: 3,
+                    textTransform: 'none',
+                    fontSize: '1rem',
+                    fontWeight: 700,
+                    bgcolor: '#059669',
+                    '&:hover': { bgcolor: '#047857' }
+                  }}
+                >
+                  Tải hợp đồng (PDF)
+                </Button>
+              )}
+              <Button
+                fullWidth
+                variant="outlined"
+                size="large"
+                onClick={() => navigate('/dashboard/my-packages', { replace: true })}
+                sx={{
+                  height: 56,
+                  borderRadius: 3,
+                  textTransform: 'none',
+                  fontSize: '1rem',
+                  fontWeight: 700
+                }}
+              >
+                Về trang gói tập
+              </Button>
+            </div>
+          </div>
+        </div>
+      );
     }
     return null;
   }

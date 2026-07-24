@@ -513,7 +513,7 @@ export function MyPackages() {
                         sx={{ textTransform: 'none', borderRadius: 2, bgcolor: '#d97706', '&:hover': { bgcolor: '#b45309' } }}>
                         Thanh toán ngay
                       </Button>
-                    ) : reg.contract_pdf && reg.payment_status === 'paid' ? (
+                    ) : reg.payment_status !== 'chờ thanh toán' ? (
                       <>
                         {reg.status === 'chờ xác nhận' && (
                           <div className="col-span-2 flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800 mb-1">
@@ -529,12 +529,11 @@ export function MyPackages() {
                         </a>
                       </>
                     ) : null}
-                    <Link to="/packages">
-                      <Button fullWidth variant="outlined" size="small"
-                        sx={{ textTransform: 'none', borderRadius: 2 }}>
-                        Đăng ký thêm
-                      </Button>
-                    </Link>
+                    <Button fullWidth variant="outlined" size="small"
+                      onClick={() => navigate(`/dashboard/upgrade/${reg._id}`)}
+                      sx={{ textTransform: 'none', borderRadius: 2, color: '#22c55e', borderColor: '#22c55e', '&:hover': { borderColor: '#16a34a', bgcolor: 'rgba(34,197,94,0.08)' } }}>
+                      Nâng cấp
+                    </Button>
                     <Button fullWidth variant="contained" size="small"
                       onClick={() => navigate(`/packages/${reg.package_id?._id}`)}
                       sx={{ textTransform: 'none', borderRadius: 2, bgcolor: '#4f46e5', '&:hover': { bgcolor: '#4338ca' } }}>
@@ -580,20 +579,12 @@ export function MyPackages() {
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-3">
-                      {reg.contract_pdf && (
-                        <a href={`${getApiUrl()}/api/user-packages/${reg._id}/contract-pdf?token=${encodeURIComponent(JSON.parse(localStorage.getItem('auth_user') || '{}').token || '')}`} target="_blank" rel="noopener noreferrer" className="block col-span-2">
-                          <Button fullWidth variant="outlined" size="small"
-                            sx={{ textTransform: 'none', borderRadius: 2, color: '#4f46e5', borderColor: '#4f46e5' }}>
-                            Xem hợp đồng (PDF)
-                          </Button>
-                        </a>
-                      )}
-                      <Link to="/packages">
+                      <a href={`${getApiUrl()}/api/user-packages/${reg._id}/contract-pdf?token=${encodeURIComponent(JSON.parse(localStorage.getItem('auth_user') || '{}').token || '')}`} target="_blank" rel="noopener noreferrer" className="block col-span-2">
                         <Button fullWidth variant="outlined" size="small"
-                          sx={{ textTransform: 'none', borderRadius: 2 }}>
-                          Đăng ký thêm
+                          sx={{ textTransform: 'none', borderRadius: 2, color: '#4f46e5', borderColor: '#4f46e5' }}>
+                          Xem hợp đồng (PDF)
                         </Button>
-                      </Link>
+                      </a>
                       <Button fullWidth variant="contained" size="small"
                         onClick={() => navigate(`/packages/${reg.package_id?._id}`)}
                         sx={{ textTransform: 'none', borderRadius: 2, bgcolor: '#4f46e5', '&:hover': { bgcolor: '#4338ca' } }}>
