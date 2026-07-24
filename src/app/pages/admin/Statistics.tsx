@@ -84,7 +84,7 @@ export function Statistics() {
           {loading && <Loader2 className="w-5 h-5 animate-spin text-indigo-500" />}
         </div>
 
-        {tab === 'finance' ? <FinanceTab data={finance || emptyFinance} /> : <OperationsTab data={operations} />}
+        {tab === 'finance' ? <FinanceTab data={finance || emptyFinance} period={period} /> : <OperationsTab data={operations} />}
       </div>
     </AdminLayout>
   );
@@ -117,10 +117,17 @@ function ExportBtn({ onClick }: { onClick: () => void }) {
   );
 }
 
-function FinanceTab({ data }: { data: any }) {
+function FinanceTab({ data, period }: { data: any; period: string }) {
   if (!data?.summary) return <div className="text-slate-400 text-sm">Đang tải dữ liệu tài chính...</div>;
   const s = data.summary;
   const c = s.change || {};
+
+  const now = new Date();
+  const periodLabel = period === 'quarter'
+    ? `Q${Math.floor(now.getMonth() / 3) + 1}/${now.getFullYear()}`
+    : period === 'year'
+    ? `${now.getFullYear()}`
+    : `T${now.getMonth() + 1}/${now.getFullYear()}`;
 
   const stats = [
     { label: 'Doanh thu thực thu', value: fmtVnd(s.realCashIn), change: fmtChange(c.realCashIn ?? 0), trend: (c.realCashIn ?? 0) >= 0 ? 'up' : 'down', icon: Wallet, color: 'bg-emerald-500' },
@@ -138,13 +145,13 @@ function FinanceTab({ data }: { data: any }) {
 
   const handleExport = () => {
     exportToExcel([
-      { name: 'Tong quan', headers: ['Chỉ số', 'Giá trị', 'Thay đổi (%)'], data: [...summaryRows.map(r => ({ 'Chỉ số': r.label, 'Giá trị': s[r.key], 'Thay đổi (%)': changeStr(c[r.key]) })), { 'Chỉ số': 'Biên lợi nhuận', 'Giá trị': `${s.profitMargin}%`, 'Thay đổi (%)': '' }] },
+      { name: 'Tong quan', headers: ['Chỉ số', 'Giá trị', 'Thay đổi (%)'], data: [{ 'Chỉ số': 'Kỳ báo cáo', 'Giá trị': periodLabel, 'Thay đổi (%)': '' }, ...summaryRows.map(r => ({ 'Chỉ số': r.label, 'Giá trị': s[r.key], 'Thay đổi (%)': changeStr(c[r.key]) })), { 'Chỉ số': 'Biên lợi nhuận', 'Giá trị': `${s.profitMargin}%`, 'Thay đổi (%)': '' }] },
       { name: 'So sanh ky truoc', headers: ['Chỉ số', 'Kỳ này', 'Kỳ trước', 'Thay đổi'], data: summaryRows.map(r => ({ 'Chỉ số': r.label, 'Kỳ này': s[r.key], 'Kỳ trước': prevVal(s[r.key], c[r.key]), 'Thay đổi': changeStr(c[r.key]) })) },
-      { name: 'Chi tiet theo thang', headers: ['Tháng', 'DT thực thu', 'DT ghi nhận', 'Chi phí', 'Lợi nhuận', 'Biên LN (%)'], data: data.cashFlowData.map((i: any) => ({ 'Tháng': i.month, 'DT thực thu': i.cash, 'DT ghi nhận': i.revenue, 'Chi phí': i.expense, 'Lợi nhuận': i.profit, 'Biên LN (%)': `${i.revenue > 0 ? Math.round((i.profit / i.revenue) * 100) : 0}%` })) },
       { name: 'Chi phi theo loai', headers: ['Loại chi phí', 'Số tiền', 'Tỷ trọng (%)'], data: data.expenseStructure.map((i: any) => ({ 'Loại chi phí': i.name, 'Số tiền': i.value, 'Tỷ trọng (%)': pct(i.value, data.expenseStructure.reduce((s: number, x: any) => s + x.value, 0)) })) },
       { name: 'Top san pham', headers: ['Sản phẩm', 'Đơn giá', 'Giá vốn', 'SL bán', 'Doanh thu', 'Lợi nhuận', 'Tỷ trọng (%)'], data: data.topProducts.map((i: any) => ({ 'Sản phẩm': i.name, 'Đơn giá': i.price, 'Giá vốn': i.costPrice, 'SL bán': i.quantity, 'Doanh thu': i.revenue, 'Lợi nhuận': i.profit, 'Tỷ trọng (%)': pct(i.revenue, data.topProducts.reduce((s: number, x: any) => s + x.revenue, 0)) })) },
-      { name: 'Dong tien chi tiet', headers: ['Tháng', 'Tiền thực thu', 'Tiền ghi nhận', 'Chi phí', 'Lợi nhuận', '% DT thực thu'], data: (() => { const tc = data.cashFlowData.reduce((s: number, i: any) => s + i.cash, 0); return data.cashFlowData.map((i: any) => ({ 'Tháng': i.month, 'Tiền thực thu': i.cash, 'Tiền ghi nhận': i.revenue, 'Chi phí': i.expense, 'Lợi nhuận': i.profit, '% DT thực thu': pct(i.cash, tc) })); })() },
-    ], `BaoCaoTaiChinh_${new Date().toISOString().slice(0, 10)}`);
+      { name: 'Dong tien chi tiet', headers: ['Tháng', 'Tiền thực thu', 'Tiền ghi nhận', 'Chi phí', 'Lợi nhuận', '% DT ghi nhận'], data: data.cashFlowData.map((i: any) => ({ 'Tháng': i.month, 'Tiền thực thu': i.cash, 'Tiền ghi nhận': i.revenue, 'Chi phí': i.expense, 'Lợi nhuận': i.profit, '% DT ghi nhận': pct(i.cash, i.revenue) })) },
+      { name: 'Khau hao thiet bi', headers: ['Thiết bị', 'Nguyên giá', 'Khấu hao/tháng', 'Tháng đã dùng', 'Đã khấu hao', 'Giá trị còn lại'], data: (data.depreciationDetail || []).map((d: any) => ({ 'Thiết bị': d.name, 'Nguyên giá': d.total, 'Khấu hao/tháng': d.monthlyDepreciation, 'Tháng đã dùng': d.monthsActive, 'Đã khấu hao': d.totalDepreciated, 'Giá trị còn lại': d.remainingValue })) },
+    ], `BaoCaoTaiChinh_${periodLabel.replace('/', '')}_${new Date().toISOString().slice(0, 10)}`);
   };
 
   return (
