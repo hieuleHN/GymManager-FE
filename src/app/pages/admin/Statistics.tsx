@@ -8,11 +8,12 @@ import {
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell,
-  AreaChart, Area, ComposedChart, Funnel
+  AreaChart, Area, ComposedChart, Line
 } from 'recharts';
 import { api } from '../../../lib/api';
 import { useClub } from '../../context/ClubContext';
 import { exportToExcel } from '../../../lib/exportExcel';
+import { ActivityStats } from './ActivityStats';
 
 const PERIODS = [
   { key: 'week', label: 'Tuần này' },
@@ -68,7 +69,7 @@ const fallbackFinance = {
 };
 
 export function Statistics() {
-  const [tab, setTab] = useState<'finance' | 'operations'>('finance');
+  const [tab, setTab] = useState<'finance' | 'operations' | 'activity'>('finance');
   const [period, setPeriod] = useState('month');
   const [loading, setLoading] = useState(false);
   const [finance, setFinance] = useState<any>(null);
@@ -78,6 +79,7 @@ export function Statistics() {
   const locParam = selectedClub && selectedClub !== 'all' ? `&locationId=${selectedClub}` : '';
 
   useEffect(() => {
+    if (tab === 'activity') return;
     if (tab === 'finance') fetchFinance();
     else fetchOperations();
   }, [tab, period, selectedClub]);
@@ -137,53 +139,77 @@ export function Statistics() {
             <p className="text-slate-600">Phân tích tài chính và vận hành phòng tập</p>
           </div>
           <div className="flex gap-2 bg-white rounded-xl border border-slate-200 p-1">
-            <button
-              onClick={() => setTab('finance')}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 ${tab === 'finance' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}
-            >
-              <BarChart3 className="w-4 h-4" /> Tài chính
-            </button>
-            <button
-              onClick={() => setTab('operations')}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 ${tab === 'operations' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}
-            >
-              <Wrench className="w-4 h-4" /> Vận hành
-            </button>
+            {[
+              { key: 'finance' as const, label: 'Tài chính', icon: BarChart3 },
+              { key: 'operations' as const, label: 'Vận hành', icon: Wrench },
+              { key: 'activity' as const, label: 'Hoạt động', icon: Activity },
+            ].map(t => {
+              const Icon = t.icon;
+              return (
+                <button key={t.key} onClick={() => setTab(t.key)}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 ${tab === t.key ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}>
+                  <Icon className="w-4 h-4" /> {t.label}
+                </button>
+              );
+            })}
           </div>
         </div>
 
-        {/* Period + loading */}
-        <div className="flex items-center justify-between">
-          <div className="flex gap-2 bg-white rounded-xl border border-slate-200 p-1">
-            {PERIODS.map(p => (
-              <button
-                key={p.key}
-                onClick={() => setPeriod(p.key)}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${period === p.key ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}
-              >
-                {p.label}
-              </button>
-            ))}
+        {tab !== 'activity' && (
+          <div className="flex items-center justify-between">
+            <div className="flex gap-2 bg-white rounded-xl border border-slate-200 p-1">
+              {PERIODS.map(p => (
+                <button key={p.key} onClick={() => setPeriod(p.key)}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${period === p.key ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}>
+                  {p.label}
+                </button>
+              ))}
+            </div>
+            {loading && <Loader2 className="w-5 h-5 animate-spin text-indigo-500" />}
           </div>
-          {loading && <Loader2 className="w-5 h-5 animate-spin text-indigo-500" />}
-        </div>
-
-        {tab === 'finance' ? (
-          <FinanceTab data={fd} />
-        ) : (
-          <OperationsTab data={od} />
         )}
+
+        {tab === 'finance' && <FinanceTab data={fd} period={period} />}
+        {tab === 'operations' && <OperationsTab data={od} />}
+        {tab === 'activity' && <ActivityStats />}
       </div>
     </AdminLayout>
   );
 }
 
-function fmtChange(v: number) {
-  const sign = v > 0 ? '+' : '';
-  return `${sign}${v}%`;
+function StatCard({ stat }: { stat: any }) {
+  const Icon = stat.icon;
+  const TrendIcon = stat.trend === 'up' ? TrendingUp : TrendingDown;
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+      <div className="flex items-center justify-between mb-3">
+        <div className={`${stat.color} p-2.5 rounded-xl`}><Icon className="w-5 h-5 text-white" /></div>
+        <div className={`flex items-center gap-1 ${stat.trend === 'up' ? 'text-green-600' : 'text-red-600'}`}>
+          <TrendIcon className="w-3.5 h-3.5" /><span className="text-xs font-semibold">{stat.change}</span>
+        </div>
+      </div>
+      <p className="text-xs text-slate-500 mb-1">{stat.label}</p>
+      <p className="text-xl font-bold text-slate-900">{stat.value}</p>
+    </div>
+  );
 }
 
-function FinanceTab({ data }: { data: any }) {
+function ExportBtn({ onClick }: { onClick: () => void }) {
+  return (
+    <div className="flex justify-end">
+      <button onClick={onClick} className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium">
+        <Download className="w-4 h-4" /> Xuất Excel
+      </button>
+    </div>
+  );
+}
+
+const fmtChange = (v: number) => `${v > 0 ? '+' : ''}${v}%`;
+const pct = (val: number, total: number) => `${Math.round((val / (total || 1)) * 100)}%`;
+const prevVal = (cur: number, change: number) => cur - (cur * (change ?? 0)) / 100;
+const changeStr = (v: number) => `${v > 0 ? '+' : ''}${v ?? 0}%`;
+
+function FinanceTab({ data, period }: { data: any; period: string }) {
   if (!data?.summary) return <div className="text-slate-400 text-sm">Đang tải dữ liệu tài chính...</div>;
   const s = data.summary;
   const c = s.change || {};
@@ -194,30 +220,28 @@ function FinanceTab({ data }: { data: any }) {
     { label: 'Lợi nhuận', value: fmtVnd(s.totalProfit), change: fmtChange(c.totalProfit ?? 0), trend: (c.totalProfit ?? 0) >= 0 ? 'up' : 'down', icon: PiggyBank, color: 'bg-green-500' },
   ];
 
+  const summaryRows = [
+    { key: 'realCashIn', label: 'Doanh thu thực thu' },
+    { key: 'accrualRevenue', label: 'Doanh thu ghi nhận' },
+    { key: 'totalExpense', label: 'Tổng chi phí' },
+    { key: 'totalProfit', label: 'Lợi nhuận' },
+  ];
+
+  const handleExport = () => {
+    exportToExcel([
+      { name: 'Tong quan', headers: ['Chỉ số', 'Giá trị', 'Thay đổi (%)'], data: [{ 'Chỉ số': 'Kỳ báo cáo', 'Giá trị': period, 'Thay đổi (%)': '' }, ...summaryRows.map(r => ({ 'Chỉ số': r.label, 'Giá trị': s[r.key], 'Thay đổi (%)': changeStr(c[r.key]) })), { 'Chỉ số': 'Biên lợi nhuận', 'Giá trị': `${s.profitMargin}%`, 'Thay đổi (%)': '' }] },
+      { name: 'So sanh ky truoc', headers: ['Chỉ số', 'Kỳ này', 'Kỳ trước', 'Thay đổi'], data: summaryRows.map(r => ({ 'Chỉ số': r.label, 'Kỳ này': s[r.key], 'Kỳ trước': prevVal(s[r.key], c[r.key]), 'Thay đổi': changeStr(c[r.key]) })) },
+      { name: 'Chi phi theo loai', headers: ['Loại chi phí', 'Số tiền', 'Tỷ trọng (%)'], data: data.expenseStructure.map((i: any) => ({ 'Loại chi phí': i.name, 'Số tiền': i.value, 'Tỷ trọng (%)': pct(i.value, data.expenseStructure.reduce((s: number, x: any) => s + x.value, 0)) })) },
+      { name: 'Top san pham', headers: ['Sản phẩm', 'Đơn giá', 'Giá vốn', 'SL bán', 'Doanh thu', 'Lợi nhuận', 'Tỷ trọng (%)'], data: data.topProducts.map((i: any) => ({ 'Sản phẩm': i.name, 'Đơn giá': i.price, 'Giá vốn': i.costPrice, 'SL bán': i.quantity, 'Doanh thu': i.revenue, 'Lợi nhuận': i.profit, 'Tỷ trọng (%)': pct(i.revenue, data.topProducts.reduce((s: number, x: any) => s + x.revenue, 0)) })) },
+      { name: 'Dong tien chi tiet', headers: ['Tháng', 'Tiền thực thu', 'Tiền ghi nhận', 'Chi phí', 'Lợi nhuận', '% DT ghi nhận'], data: data.cashFlowData.map((cf: any, idx: number) => { const pd = data.profitData?.[idx] || {}; return { 'Tháng': cf.month, 'Tiền thực thu': cf.cash, 'Tiền ghi nhận': cf.revenue, 'Chi phí': pd.expense ?? 0, 'Lợi nhuận': pd.profit ?? 0, '% DT ghi nhận': pct(cf.cash, cf.revenue) }; }) },
+      { name: 'Khau hao thiet bi', headers: ['Thiết bị', 'Nguyên giá', 'Khấu hao/tháng', 'Tháng đã dùng', 'Đã khấu hao', 'Giá trị còn lại'], data: (data.depreciationDetail || []).map((d: any) => ({ 'Thiết bị': d.name, 'Nguyên giá': d.total, 'Khấu hao/tháng': d.monthlyDepreciation, 'Tháng đã dùng': d.monthsActive, 'Đã khấu hao': d.totalDepreciated, 'Giá trị còn lại': d.remainingValue })) },
+    ], `BaoCaoTaiChinh_${period}_${new Date().toISOString().slice(0, 10)}`);
+  };
+
   return (
     <>
-      {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {stats.map((stat, idx) => {
-          const Icon = stat.icon;
-          const TrendIcon = stat.trend === 'up' ? TrendingUp : TrendingDown;
-          return (
-            <div key={idx} className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
-              <div className="flex items-center justify-between mb-3">
-                <div className={`${stat.color} p-2.5 rounded-xl`}>
-                  <Icon className="w-5 h-5 text-white" />
-                </div>
-                <div className={`flex items-center gap-1 ${stat.trend === 'up' ? 'text-green-600' : 'text-red-600'}`}>
-                  <TrendIcon className="w-3.5 h-3.5" />
-                  <span className="text-xs font-semibold">{stat.change}</span>
-                </div>
-              </div>
-              <p className="text-xs text-slate-500 mb-1">{stat.label}</p>
-              <p className="text-xl font-bold text-slate-900">{stat.value}</p>
-            </div>
-          );
-        })}
-      </div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">{stats.map((stat, i) => <StatCard key={i} stat={stat} />)}</div>
+      <ExportBtn onClick={handleExport} />
 
       {/* 1. Dòng tiền vs Doanh thu ghi nhận */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
@@ -388,22 +412,22 @@ function OperationsTab({ data }: { data: any }) {
     { label: 'Chờ xử lý', value: `${data.pendingReports}`, trend: 'up', icon: Wrench, color: 'bg-red-500' },
   ];
 
+  const withPct = (arr: any[]) => arr.map((i: any) => ({ ...i, pct: pct(i.value, arr.reduce((s: number, x: any) => s + x.value, 0)) }));
+
+  const handleExport = () => {
+    exportToExcel([
+      { name: 'Tong quan van hanh', headers: ['Chỉ số', 'Giá trị'], data: opStats.map(s => ({ 'Chỉ số': s.label, 'Giá trị': typeof s.value === 'string' ? s.value.replace('₫', '').trim() : s.value })) },
+      { name: 'Tinh trang thiet bi', headers: ['Trạng thái', 'Số lượng', 'Tỷ trọng (%)'], data: withPct(data.equipmentStatus).map((i: any) => ({ 'Trạng thái': i.name, 'Số lượng': i.value, 'Tỷ trọng (%)': i.pct })) },
+      { name: 'Phan loai su co', headers: ['Loại sự cố', 'Số báo cáo', 'Tỷ trọng (%)'], data: withPct(data.equipmentReports).map((i: any) => ({ 'Loại sự cố': i.name, 'Số báo cáo': i.value, 'Tỷ trọng (%)': i.pct })) },
+      { name: 'Chi tiet bao cao', headers: ['Thiết bị', 'Loại sự cố', 'Số máy', 'Lý do', 'Thời gian', 'Trạng thái'], data: (data.reportDetails || []).map((r: any) => ({ 'Thiết bị': r.equipmentName, 'Loại sự cố': r.statusType, 'Số máy': r.affectedQuantity, 'Lý do': r.reason, 'Thời gian': r.reportedAt ? new Date(r.reportedAt).toLocaleDateString('vi-VN') : '', 'Trạng thái': r.status === 'pending' ? 'Chờ xử lý' : 'Hoàn thành' })) },
+      { name: 'Thiet bi can bao tri', headers: ['Thiết bị', 'Tổng số', 'Bị ảnh hưởng', 'Trạng thái', 'Báo cáo chờ', 'Bảo hành còn (tháng)'], data: data.needMaintenance.map((i: any) => ({ 'Thiết bị': i.name, 'Tổng số': i.quantity, 'Bị ảnh hưởng': i.affectedQuantity ?? '—', 'Trạng thái': i.status === 'maintenance' ? 'Đang bảo trì' : 'Hoạt động', 'Báo cáo chờ xử lý': i.reports, 'Bảo hành còn (tháng)': i.warrantyLeft ?? '—' })) },
+    ], `BaoCaoVanHanh_${new Date().toISOString().slice(0, 10)}`);
+  };
+
   return (
     <>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {opStats.map((stat, idx) => {
-          const Icon = stat.icon;
-          return (
-            <div key={idx} className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
-              <div className={`${stat.color} p-2.5 rounded-xl w-fit mb-3`}>
-                <Icon className="w-5 h-5 text-white" />
-              </div>
-              <p className="text-xs text-slate-500 mb-1">{stat.label}</p>
-              <p className="text-xl font-bold text-slate-900">{stat.value}</p>
-            </div>
-          );
-        })}
-      </div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">{opStats.map((stat, i) => <StatCard key={i} stat={stat} />)}</div>
+      <ExportBtn onClick={handleExport} />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Tình trạng thiết bị */}

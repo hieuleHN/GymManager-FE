@@ -294,7 +294,7 @@ export const router = createBrowserRouter([
   },
   {
     path: '/admin/admin-stats',
-    element: <ProtectedRoute role="staff"><AdminStats /></ProtectedRoute>
+    element: <Navigate to="/admin/statistics" replace />
   },
   {
     path: '/admin/customers',

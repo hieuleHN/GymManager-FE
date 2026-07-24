@@ -588,9 +588,9 @@ export function MyPackages() {
                       <Link to="/packages">
                         <Button fullWidth variant="outlined" size="small"
                           sx={{ textTransform: 'none', borderRadius: 2, color: '#4f46e5', borderColor: '#4f46e5' }}>
-                          Xem hợp đồng (PDF)
+                          Xem gói tập
                         </Button>
-                      </a>
+                      </Link>
                       <Button fullWidth variant="contained" size="small"
                         onClick={() => navigate(`/packages/${reg.package_id?._id}`)}
                         sx={{ textTransform: 'none', borderRadius: 2, bgcolor: '#4f46e5', '&:hover': { bgcolor: '#4338ca' } }}>
