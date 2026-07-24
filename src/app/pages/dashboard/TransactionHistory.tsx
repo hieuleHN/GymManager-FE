@@ -40,6 +40,7 @@ interface BatchGroup {
 interface Transaction {
   _id: string;
   type: 'package' | 'booking' | 'wallet';
+  walletSubType?: 'topup' | 'payment' | 'refund' | 'withdraw';
   name: string;
   total_price: number;
   payment_method: string;
@@ -261,6 +262,7 @@ export function TransactionHistory() {
             list.push({
               _id: `wallet_${tx._id}`,
               type: 'wallet',
+              walletSubType: txType,
               name,
               total_price: Math.abs(tx.amount || 0),
               payment_method: method,
@@ -384,7 +386,12 @@ export function TransactionHistory() {
                           ) : null}
                         </td>
                         <td className="px-4 py-4 text-sm text-slate-600 whitespace-nowrap">
-                          {tx.type === 'booking' ? 'Đặt lịch' : tx.type === 'wallet' ? 'Nạp ví' : 'Gói tập'}
+                          {tx.type === 'booking' ? 'Đặt lịch' : tx.type === 'wallet'
+                            ? tx.walletSubType === 'payment' ? 'Thanh toán'
+                              : tx.walletSubType === 'refund' ? 'Hoàn tiền'
+                              : tx.walletSubType === 'topup' ? 'Nạp tiền'
+                              : 'Ví'
+                            : 'Gói tập'}
                         </td>
                         <td className="px-4 py-4">
                           <span className="font-semibold text-slate-900 whitespace-nowrap">

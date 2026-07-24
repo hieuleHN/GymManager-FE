@@ -14,6 +14,7 @@ interface Registration {
     name: string;
     unitPrice: number;
     features: string[];
+    disciplineId?: { _id: string; name: string };
   };
   locationId: {
     _id: string;
@@ -382,32 +383,37 @@ export function MyPackages() {
           </div>
         )}
 
-        {ptSessions.length > 0 && (
-          <div className="bg-gradient-to-r from-indigo-50 to-green-50 border border-indigo-200 rounded-2xl p-5">
-            <h3 className="font-semibold text-indigo-900 mb-3 flex items-center gap-2">
-              <Calendar className="w-5 h-5 text-indigo-600" />
-              Buổi tập Huấn luyện viên trong tháng
-            </h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {ptSessions.map((ps, i) => (
-                <div key={i} className="bg-white/80 rounded-xl p-3 border border-indigo-100">
-                  <p className="text-sm font-medium text-slate-800">{ps.packageName}</p>
-                  <p className="text-lg font-bold text-indigo-600">
-                    {ps.isFullMonth ? 'Không giới hạn' : `${ps.currentMonthRemaining} / ${ps.ptSessionsPerMonth} buổi`}
-                  </p>
-                  <div className="w-full bg-slate-200 rounded-full h-1.5 mt-1">
-                    {!ps.isFullMonth && ps.ptSessionsPerMonth > 0 && (
-                      <div
-                        className="bg-indigo-600 h-1.5 rounded-full transition-all"
-                        style={{ width: `${((ps.ptSessionsPerMonth - (ps.ptSessionsPerMonth - ps.currentMonthRemaining)) / ps.ptSessionsPerMonth) * 100}%` }}
-                      />
-                    )}
+        {(() => {
+          const validPtSessions = ptSessions.filter(
+            (ps: any) => ps.ptSessionsPerMonth > 0 || ps.isFullMonth
+          );
+          return validPtSessions.length > 0 ? (
+            <div className="bg-gradient-to-r from-indigo-50 to-green-50 border border-indigo-200 rounded-2xl p-5">
+              <h3 className="font-semibold text-indigo-900 mb-3 flex items-center gap-2">
+                <Calendar className="w-5 h-5 text-indigo-600" />
+                Buổi tập Huấn luyện viên trong tháng
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {validPtSessions.map((ps: any, i: number) => (
+                  <div key={i} className="bg-white/80 rounded-xl p-3 border border-indigo-100">
+                    <p className="text-sm font-medium text-slate-800">{ps.packageName}</p>
+                    <p className="text-lg font-bold text-indigo-600">
+                      {ps.isFullMonth ? 'Không giới hạn' : `${ps.currentMonthRemaining} / ${ps.ptSessionsPerMonth} buổi`}
+                    </p>
+                    <div className="w-full bg-slate-200 rounded-full h-1.5 mt-1">
+                      {!ps.isFullMonth && ps.ptSessionsPerMonth > 0 && (
+                        <div
+                          className="bg-indigo-600 h-1.5 rounded-full transition-all"
+                          style={{ width: `${(ps.currentMonthRemaining / ps.ptSessionsPerMonth) * 100}%` }}
+                        />
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-          </div>
-        )}
+          ) : null;
+        })()}
 
         <div>
           <h1 className="text-3xl font-bold text-slate-900 mb-2">
@@ -451,6 +457,11 @@ export function MyPackages() {
                       <h3 className="text-2xl font-bold text-slate-900">
                         {reg.package_id?.name || "Đã xóa"}
                       </h3>
+                      {reg.package_id?.disciplineId?.name && (
+                        <p className="text-sm text-indigo-600 font-medium mt-1">
+                          {reg.package_id.disciplineId.name}
+                        </p>
+                      )}
                     </div>
                   </div>
 
@@ -560,6 +571,9 @@ export function MyPackages() {
                           Đã thanh toán - chờ duyệt
                         </span>
                         <h3 className="text-2xl font-bold text-slate-900">{reg.package_id?.name || 'Đã xóa'}</h3>
+                        {reg.package_id?.disciplineId?.name && (
+                          <p className="text-sm text-indigo-600 font-medium mt-1">{reg.package_id.disciplineId.name}</p>
+                        )}
                       </div>
                       <div className="text-right">
                         <p className="text-sm text-slate-600">Giá trị</p>
@@ -617,6 +631,9 @@ export function MyPackages() {
                           {reg.status}
                         </span>
                         <h3 className="text-2xl font-bold text-slate-900">{reg.package_id?.name || 'Đã xóa'}</h3>
+                        {reg.package_id?.disciplineId?.name && (
+                          <p className="text-sm text-indigo-600 font-medium mt-1">{reg.package_id.disciplineId.name}</p>
+                        )}
                       </div>
                       <div className="text-right">
                         <p className="text-sm text-slate-600">Giá trị</p>
