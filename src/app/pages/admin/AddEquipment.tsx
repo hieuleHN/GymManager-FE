@@ -25,7 +25,7 @@ export function AddEquipment() {
   const navigate = useNavigate();
   const { selectedClub } = useClub();
   const [submitting, setSubmitting] = useState(false);
-  const { register, handleSubmit, formState: { errors } } = useForm<EquipmentFormData>({
+  const { register, handleSubmit, watch, formState: { errors } } = useForm<EquipmentFormData>({
     defaultValues: {
       name: '',
       description: '',
@@ -40,6 +40,10 @@ export function AddEquipment() {
     }
   });
 
+  const unitPrice = Number(watch('unitPrice')) || 0;
+  const quantity = Number(watch('quantity')) || 0;
+  const calculatedTotal = unitPrice * quantity;
+
   const onSubmit = async (data: EquipmentFormData) => {
     setSubmitting(true);
     try {
@@ -52,11 +56,9 @@ export function AddEquipment() {
         phone: data.phone.trim(),
         address: data.address.trim(),
         purchaser: data.purchaser.trim(),
-        warranty_period: parseInt(data.warranty_period) || 12
+        warranty_period: parseInt(data.warranty_period) || 12,
+        total: calculatedTotal
       };
-      if (data.total) {
-        body.total = parseFloat(data.total);
-      }
       if (selectedClub !== 'all') {
         body.location_id = selectedClub;
       }
@@ -216,10 +218,11 @@ export function AddEquipment() {
                     Tổng tiền
                   </label>
                   <input
-                    type="number"
-                    {...register('total')}
-                    className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    placeholder="Nhập tổng tiền"
+                    type="text"
+                    readOnly
+                    value={calculatedTotal > 0 ? calculatedTotal.toLocaleString('vi-VN') + 'đ' : ''}
+                    className="w-full p-3 border border-slate-200 rounded-xl bg-slate-50 text-slate-700 font-semibold"
+                    placeholder="Đơn giá × Số lượng"
                   />
                 </div>
               </div>

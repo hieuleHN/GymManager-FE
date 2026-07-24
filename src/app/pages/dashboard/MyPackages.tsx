@@ -529,12 +529,11 @@ export function MyPackages() {
                         </a>
                       </>
                     ) : null}
-                    <Link to="/packages">
-                      <Button fullWidth variant="outlined" size="small"
-                        sx={{ textTransform: 'none', borderRadius: 2 }}>
-                        Đăng ký thêm
-                      </Button>
-                    </Link>
+                    <Button fullWidth variant="outlined" size="small"
+                      onClick={() => navigate(`/dashboard/upgrade/${reg._id}`)}
+                      sx={{ textTransform: 'none', borderRadius: 2, color: '#22c55e', borderColor: '#22c55e', '&:hover': { borderColor: '#16a34a', bgcolor: 'rgba(34,197,94,0.08)' } }}>
+                      Nâng cấp
+                    </Button>
                     <Button fullWidth variant="contained" size="small"
                       onClick={() => navigate(`/packages/${reg.package_id?._id}`)}
                       sx={{ textTransform: 'none', borderRadius: 2, bgcolor: '#4f46e5', '&:hover': { bgcolor: '#4338ca' } }}>
@@ -588,10 +587,10 @@ export function MyPackages() {
                       </a>
                       <Link to="/packages">
                         <Button fullWidth variant="outlined" size="small"
-                          sx={{ textTransform: 'none', borderRadius: 2 }}>
-                          Đăng ký thêm
+                          sx={{ textTransform: 'none', borderRadius: 2, color: '#4f46e5', borderColor: '#4f46e5' }}>
+                          Xem hợp đồng (PDF)
                         </Button>
-                      </Link>
+                      </a>
                       <Button fullWidth variant="contained" size="small"
                         onClick={() => navigate(`/packages/${reg.package_id?._id}`)}
                         sx={{ textTransform: 'none', borderRadius: 2, bgcolor: '#4f46e5', '&:hover': { bgcolor: '#4338ca' } }}>

@@ -26,6 +26,7 @@ export function EquipmentList() {
   const [selectedReport, setSelectedReport] = useState<any>(null);
   const [reportStatusType, setReportStatusType] = useState('');
   const [reportReason, setReportReason] = useState('');
+  const [reportAffectedQty, setReportAffectedQty] = useState(1);
 
   const fetchEquipment = async (p = page) => {
     setLoading(true);
@@ -63,6 +64,7 @@ export function EquipmentList() {
     setSelectedEquipment(item);
     setReportStatusType('');
     setReportReason('');
+    setReportAffectedQty(1);
     setShowReportModal(true);
   };
 
@@ -73,7 +75,7 @@ export function EquipmentList() {
       const res = await fetch(`${getApiUrl()}/api/equipments/${selectedEquipment._id}/report`, {
         method: 'POST',
         headers: getAuthHeaders(),
-        body: JSON.stringify({ statusType: reportStatusType || undefined, reason: reportReason })
+        body: JSON.stringify({ statusType: reportStatusType || undefined, reason: reportReason, affectedQuantity: reportAffectedQty })
       });
       if (res.ok) {
         toast.success('Đã gửi báo cáo');
@@ -81,6 +83,7 @@ export function EquipmentList() {
         setSelectedEquipment(null);
         setReportStatusType('');
         setReportReason('');
+        setReportAffectedQty(1);
         fetchEquipment(page);
       } else { toast.error('Gửi báo cáo thất bại'); }
     } catch { toast.error('Gửi báo cáo thất bại'); }
@@ -272,6 +275,9 @@ export function EquipmentList() {
                             (report.statusType || report.reason) === 'hoạt động' ? 'bg-green-100 text-green-700' :
                             'bg-red-100 text-red-700'
                           }`}>{report.statusType || 'hoạt động'}</span>
+                          <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600">
+                            {report.affectedQuantity || 1}/{selectedEquipment.quantity || 1} máy
+                          </span>
                           <span className="text-sm text-slate-700 line-clamp-2">{report.reason}</span>
                         </div>
                         {report.reportedAt && (
@@ -310,6 +316,7 @@ export function EquipmentList() {
             <div className="bg-orange-50 rounded-xl p-4 mb-6">
               <p className="text-sm text-slate-600 mb-1">Thiết bị</p>
               <p className="text-lg font-semibold text-slate-900">{selectedEquipment.name}</p>
+              <p className="text-sm text-slate-500">Số lượng bị ảnh hưởng: <span className="font-semibold text-slate-800">{selectedReport.affectedQuantity || 1} / {selectedEquipment.quantity || 1}</span></p>
             </div>
             <div className="mb-4">
               <p className="text-sm text-slate-600 mb-2">Trạng thái</p>
@@ -344,6 +351,8 @@ export function EquipmentList() {
             <h3 className="text-xl font-bold text-slate-900 mb-4">Báo cáo thiết bị</h3>
             <p className="text-sm text-slate-600 mb-4">
               Thiết bị: <span className="font-semibold text-slate-900">{selectedEquipment?.name}</span>
+              <span className="text-slate-400 mx-1">•</span>
+              <span className="text-slate-500">Tổng: {selectedEquipment?.quantity || 1}</span>
             </p>
             <div className="mb-4">
               <label className="block text-sm font-medium text-slate-700 mb-2">Trạng thái</label>
@@ -354,6 +363,17 @@ export function EquipmentList() {
                   <option key={opt} value={opt}>{opt}</option>
                 ))}
               </select>
+            </div>
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-slate-700 mb-2">Số lượng thiết bị có vấn đề</label>
+              <input type="number" min={1} max={selectedEquipment?.quantity || 1}
+                value={reportAffectedQty}
+                onChange={(e) => {
+                  const v = parseInt(e.target.value) || 1;
+                  setReportAffectedQty(Math.max(1, Math.min(v, selectedEquipment?.quantity || 1)));
+                }}
+                className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              <p className="text-xs text-slate-400 mt-1">Số máy bị ảnh hưởng trong tổng {selectedEquipment?.quantity || 1} máy</p>
             </div>
             <div className="mb-6">
               <label className="block text-sm font-medium text-slate-700 mb-2">Lý do</label>

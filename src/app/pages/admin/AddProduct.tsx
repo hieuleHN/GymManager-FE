@@ -27,8 +27,13 @@ export function AddProduct() {
     register,
     handleSubmit,
     formState: { errors },
-    getValues
+    getValues,
+    watch
   } = useForm<AddProductFormData>();
+
+  const costPrice = Number(watch('costPrice')) || 0;
+  const quantity = Number(watch('quantity')) || 0;
+  const calculatedTotal = costPrice * quantity;
 
   const onSubmit = async () => {
     const formData = getValues();
@@ -150,6 +155,19 @@ export function AddProduct() {
                 />
                 {errors.quantity && <p className="text-red-500 text-sm mt-1">{errors.quantity.message}</p>}
               </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                Tổng tiền nhập hàng
+              </label>
+              <input
+                type="text"
+                readOnly
+                value={calculatedTotal > 0 ? calculatedTotal.toLocaleString('vi-VN') + 'đ' : ''}
+                className="w-full p-3 border border-slate-200 rounded-xl bg-slate-50 text-slate-700 font-semibold"
+                placeholder="Giá nhập × Số lượng"
+              />
             </div>
 
             <div>

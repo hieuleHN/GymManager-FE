@@ -1,17 +1,18 @@
 import { AdminLayout } from '../../components/AdminLayout';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import {
   TrendingUp, TrendingDown, DollarSign, Wallet, PiggyBank,
   Package as PackageIcon, ShoppingBag, Wrench, AlertTriangle,
-  BarChart3, Activity, Loader2
+  BarChart3, Activity, Loader2, Download
 } from 'lucide-react';
 import {
-  LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell,
   AreaChart, Area, ComposedChart, Funnel
 } from 'recharts';
 import { api } from '../../../lib/api';
 import { useClub } from '../../context/ClubContext';
+import { exportToExcel } from '../../../lib/exportExcel';
 
 const PERIODS = [
   { key: 'week', label: 'Tuần này' },
@@ -126,7 +127,6 @@ export function Statistics() {
 
   const fd = finance || fallbackFinance;
   const od = operations;
-
   return (
     <AdminLayout>
       <div className="max-w-7xl mx-auto space-y-6">

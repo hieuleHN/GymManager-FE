@@ -1,4 +1,5 @@
-import MemberQR from './pages/MemberQR'; // Nhúng màn hình QR vào route
+import MemberQR from './pages/MemberQR';
+import { StaffQR } from './pages/StaffQR';
 import { AttendanceScanner } from './pages/admin/AttendanceScanner';
 import { createBrowserRouter, Navigate, useLocation } from 'react-router';
 import { Layout } from './components/Layout';
@@ -16,6 +17,7 @@ import { PackageCheckout } from './pages/PackageCheckout';
 import { Contract } from './pages/Contract';
 import { Payment } from './pages/Payment';
 import { MyPackages } from './pages/dashboard/MyPackages';
+import { PackageUpgrade } from './pages/dashboard/PackageUpgrade';
 import { TransactionHistory } from './pages/dashboard/TransactionHistory';
 import { Schedule } from './pages/dashboard/Schedule';
 import { BookSchedule } from './pages/dashboard/BookSchedule';
@@ -43,6 +45,8 @@ import { StaffSalary } from './pages/admin/StaffSalary';
 import { StaffSalaryHistory } from './pages/admin/StaffSalaryHistory';
 import { AddStaff } from './pages/admin/AddStaff';
 import { StaffPermissions } from './pages/admin/StaffPermissions';
+import { StaffWallet } from './pages/admin/StaffWallet';
+import { StaffCheckIn } from './pages/admin/StaffCheckIn';
 import { JobList } from './pages/admin/JobList';
 import { AddJob } from './pages/admin/AddJob';
 import { EditJob } from './pages/admin/EditJob';
@@ -73,6 +77,9 @@ import { Tasks } from './pages/admin/Tasks';
 import { Invoices } from './pages/admin/Invoices';
 import { BookingManagement } from './pages/admin/BookingManagement';
 import { PostManagement } from './pages/admin/PostManagement';
+import { ArticleManagement } from './pages/admin/ArticleManagement';
+import { Articles } from './pages/Articles';
+import { ArticleDetail } from './pages/ArticleDetail';
 import { AdminCommunity } from './pages/admin/AdminCommunity';
 import { AdminMessages } from './pages/admin/AdminMessages';
 
@@ -145,6 +152,7 @@ const routeFeatures: Record<string, string> = {
   '/admin/bookings': 'schedule',
   '/admin/invoices': 'payment',
   '/admin/posts': 'services',
+  '/admin/articles': 'services',
   '/admin/community': 'services',
   '/admin/messages': 'services'
 };
@@ -196,9 +204,15 @@ export const router = createBrowserRouter([
       { path: 'clubs/:id', Component: ClubDetail },
       { path: 'disciplines/:id', Component: DisciplineDetail },
       { path: 'auth', Component: Auth },
+      { path: 'articles', Component: Articles },
+      { path: 'articles/:id', Component: ArticleDetail },
       {
         path: 'dashboard/qr',
         element: <ProtectedRoute role="member"><MemberQR /></ProtectedRoute>
+      },
+      {
+        path: 'staff-qr',
+        element: <ProtectedRoute role="staff"><StaffQR /></ProtectedRoute>
       }
     ],
   },
@@ -209,6 +223,10 @@ export const router = createBrowserRouter([
   {
     path: '/dashboard/my-packages',
     element: <ProtectedRoute role="member"><MyPackages /></ProtectedRoute>
+  },
+  {
+    path: '/dashboard/upgrade/:registrationId',
+    element: <ProtectedRoute role="member"><PackageUpgrade /></ProtectedRoute>
   },
   {
     path: '/dashboard/history',
@@ -339,6 +357,10 @@ export const router = createBrowserRouter([
     element: <ProtectedRoute role="staff"><AttendanceHistory /></ProtectedRoute>
   },
   {
+    path: '/admin/staff-attendance',
+    element: <ProtectedRoute role="staff"><StaffCheckIn /></ProtectedRoute>
+  },
+  {
     path: '/admin/products',
     element: <ProtectedRoute role="staff"><ProductList /></ProtectedRoute>
   },
@@ -373,6 +395,10 @@ export const router = createBrowserRouter([
   {
     path: '/admin/staff/permissions',
     element: <ProtectedRoute role="staff"><StaffPermissions /></ProtectedRoute>
+  },
+  {
+    path: '/admin/wallet',
+    element: <ProtectedRoute role="staff"><StaffWallet /></ProtectedRoute>
   },
   {
     path: '/admin/jobs',
@@ -449,6 +475,10 @@ export const router = createBrowserRouter([
   {
     path: '/admin/posts',
     element: <ProtectedRoute role="staff"><PostManagement /></ProtectedRoute>
+  },
+  {
+    path: '/admin/articles',
+    element: <ProtectedRoute role="staff"><ArticleManagement /></ProtectedRoute>
   },
   {
     path: '/admin/community',
