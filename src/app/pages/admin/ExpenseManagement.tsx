@@ -37,6 +37,7 @@ export function ExpenseManagement() {
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
   const [importCost, setImportCost] = useState(0);
+  const [equipmentCost, setEquipmentCost] = useState(0);
 
   const { register, handleSubmit: onFormSubmit, formState: { errors }, reset } = useForm<ExpenseFormData>({
     defaultValues: { category: 'equipment', description: '', amount: '', date: '', note: '' }
@@ -81,6 +82,23 @@ export function ExpenseManagement() {
     fetchImportCost();
   }, [selectedClub]);
 
+  useEffect(() => {
+    const fetchEquipmentCost = async () => {
+      try {
+        const base = selectedClub && selectedClub !== 'all'
+          ? `/api/equipments?locationId=${selectedClub}`
+          : '/api/equipments';
+        const res = await fetch(base, { headers });
+        if (!res.ok) return;
+        const data = await res.json();
+        const equipments = data.data || data || [];
+        const total = equipments.reduce((sum: number, e: any) => sum + (e.total || 0), 0);
+        setEquipmentCost(total);
+      } catch {}
+    };
+    fetchEquipmentCost();
+  }, [selectedClub]);
+
   const getCategoryIcon = (category: Expense['category']) => {
     switch (category) {
       case 'equipment': return <Wrench className="w-5 h-5" />;
@@ -117,7 +135,7 @@ export function ExpenseManagement() {
     tax: expenses.filter(e => e.category === 'tax').reduce((sum, e) => sum + e.amount, 0),
     other: expenses.filter(e => e.category === 'other').reduce((sum, e) => sum + e.amount, 0),
   };
-  const totalExpenses = Object.values(totalByCategory).reduce((sum, v) => sum + v, 0) + importCost;
+  const totalExpenses = Object.values(totalByCategory).reduce((sum, v) => sum + v, 0) + importCost + equipmentCost;
 
   const formatCurrency = (amount: number) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
 
@@ -203,6 +221,12 @@ export function ExpenseManagement() {
               <Package className="w-6 h-6" /><h3 className="font-semibold text-slate-900">Tiền nhập hàng</h3>
             </div>
             <p className="text-2xl font-bold text-slate-900">{formatCurrency(importCost)}</p>
+          </div>
+          <div className="bg-white rounded-2xl p-6 border border-slate-200">
+            <div className="flex items-center gap-3 mb-2 text-blue-600">
+              <Wrench className="w-6 h-6" /><h3 className="font-semibold text-slate-900">Tiền thiết bị</h3>
+            </div>
+            <p className="text-2xl font-bold text-slate-900">{formatCurrency(equipmentCost)}</p>
           </div>
           {(['equipment', 'utilities', 'tax', 'other'] as const).map(cat => (
             <div key={cat} className="bg-white rounded-2xl p-6 border border-slate-200">
