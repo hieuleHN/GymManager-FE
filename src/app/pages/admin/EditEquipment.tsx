@@ -32,8 +32,13 @@ export function EditEquipment() {
     register,
     handleSubmit: formHandleSubmit,
     reset,
+    watch,
     formState: { errors }
   } = useForm<EquipmentFormData>();
+
+  const unitPrice = Number(watch('unitPrice')) || 0;
+  const quantity = Number(watch('quantity')) || 0;
+  const calculatedTotal = unitPrice * quantity;
 
   useEffect(() => {
     if (!id) return;
@@ -74,11 +79,9 @@ export function EditEquipment() {
         phone: data.phone.trim(),
         address: data.address.trim(),
         purchaser: data.purchaser.trim(),
-        warranty_period: parseInt(data.warranty_period) || 12
+        warranty_period: parseInt(data.warranty_period) || 12,
+        total: calculatedTotal
       };
-      if (data.total) {
-        body.total = parseFloat(data.total);
-      }
       if (selectedClub !== 'all') {
         body.location_id = selectedClub;
       }
@@ -248,10 +251,11 @@ export function EditEquipment() {
                     Tổng tiền
                   </label>
                   <input
-                    type="number"
-                    {...register('total')}
-                    className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    placeholder="Nhập tổng tiền"
+                    type="text"
+                    readOnly
+                    value={calculatedTotal > 0 ? calculatedTotal.toLocaleString('vi-VN') + 'đ' : ''}
+                    className="w-full p-3 border border-slate-200 rounded-xl bg-slate-50 text-slate-700 font-semibold"
+                    placeholder="Đơn giá × Số lượng"
                   />
                 </div>
               </div>
