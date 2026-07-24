@@ -182,7 +182,8 @@ export function AdminLayout({ children }: AdminLayoutProps) {
     user?.isAdmin
       ? { name: 'Quản lý tủ đồ', href: '/admin/lockers', icon: Lock }
       : { name: 'Báo cáo sự cố tủ đồ', href: '/dashboard/locker-issues', icon: Lock },
-    { name: 'Xác nhận lịch tập', href: '/admin/schedule-confirmations', icon: CheckCircle, feature: 'schedule' }
+    { name: 'Xác nhận lịch tập', href: '/admin/schedule-confirmations', icon: CheckCircle, feature: 'schedule' },
+    { name: 'Quản lý bài viết', href: '/admin/articles', icon: FileText, feature: 'services' }
   ];
 
   const menuItems = allMenuItems.filter(item => {

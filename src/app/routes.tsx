@@ -77,6 +77,9 @@ import { Tasks } from './pages/admin/Tasks';
 import { Invoices } from './pages/admin/Invoices';
 import { BookingManagement } from './pages/admin/BookingManagement';
 import { PostManagement } from './pages/admin/PostManagement';
+import { ArticleManagement } from './pages/admin/ArticleManagement';
+import { Articles } from './pages/Articles';
+import { ArticleDetail } from './pages/ArticleDetail';
 import { AdminCommunity } from './pages/admin/AdminCommunity';
 import { AdminMessages } from './pages/admin/AdminMessages';
 
@@ -149,6 +152,7 @@ const routeFeatures: Record<string, string> = {
   '/admin/bookings': 'schedule',
   '/admin/invoices': 'payment',
   '/admin/posts': 'services',
+  '/admin/articles': 'services',
   '/admin/community': 'services',
   '/admin/messages': 'services'
 };
@@ -200,6 +204,8 @@ export const router = createBrowserRouter([
       { path: 'clubs/:id', Component: ClubDetail },
       { path: 'disciplines/:id', Component: DisciplineDetail },
       { path: 'auth', Component: Auth },
+      { path: 'articles', Component: Articles },
+      { path: 'articles/:id', Component: ArticleDetail },
       {
         path: 'dashboard/qr',
         element: <ProtectedRoute role="member"><MemberQR /></ProtectedRoute>
@@ -469,6 +475,10 @@ export const router = createBrowserRouter([
   {
     path: '/admin/posts',
     element: <ProtectedRoute role="staff"><PostManagement /></ProtectedRoute>
+  },
+  {
+    path: '/admin/articles',
+    element: <ProtectedRoute role="staff"><ArticleManagement /></ProtectedRoute>
   },
   {
     path: '/admin/community',
