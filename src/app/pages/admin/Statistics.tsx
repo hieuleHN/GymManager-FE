@@ -84,11 +84,11 @@ export function Statistics() {
 
   const validateCustomDate = (from: string, to: string) => {
     if (!from || !to) { setDateError('Vui lòng chọn cả ngày bắt đầu và kết thúc'); return false; }
-    const f = new Date(from);
-    const t = new Date(to);
+    const f = new Date(from + 'T00:00:00');
+    const t = new Date(to + 'T00:00:00');
     const today = new Date();
     today.setHours(23, 59, 59, 999);
-    if (f > t) { setDateError('Ngày bắt đầu phải trước ngày kết thúc'); return false; }
+    if (t < f) { setDateError('Ngày kết thúc không được nhỏ hơn ngày bắt đầu'); return false; }
     if (t > today) { setDateError('Ngày kết thúc không được lớn hơn hôm nay'); return false; }
     const diffMonths = (t.getFullYear() - f.getFullYear()) * 12 + (t.getMonth() - f.getMonth());
     if (diffMonths > 24) { setDateError('Khoảng thời gian tối đa 2 năm'); return false; }
@@ -219,8 +219,8 @@ export function Statistics() {
           </div>
         )}
 
-        {tab === 'finance' && <FinanceTab data={fd} period={period} />}
-        {tab === 'operations' && <OperationsTab data={od} />}
+        {tab === 'finance' && <FinanceTab data={fd} period={period} customFrom={customFrom} customTo={customTo} />}
+        {tab === 'operations' && <OperationsTab data={od} period={period} customFrom={customFrom} customTo={customTo} />}
         {tab === 'activity' && <ActivityStats />}
       </div>
     </AdminLayout>
@@ -259,7 +259,7 @@ const pct = (val: number, total: number) => `${Math.round((val / (total || 1)) *
 const prevVal = (cur: number, change: number) => cur - (cur * (change ?? 0)) / 100;
 const changeStr = (v: number) => `${v > 0 ? '+' : ''}${v ?? 0}%`;
 
-function FinanceTab({ data, period }: { data: any; period: string }) {
+function FinanceTab({ data, period, customFrom, customTo }: { data: any; period: string; customFrom?: string; customTo?: string }) {
   if (!data?.summary) return <div className="text-slate-400 text-sm">Đang tải dữ liệu tài chính...</div>;
   const s = data.summary;
   const c = s.change || {};
@@ -277,15 +277,17 @@ function FinanceTab({ data, period }: { data: any; period: string }) {
     { key: 'totalProfit', label: 'Lợi nhuận' },
   ];
 
+  const periodLabel = customFrom && customTo ? `${customFrom} → ${customTo}` : (PERIODS.find(p => p.key === period)?.label || period);
+
   const handleExport = () => {
     exportToExcel([
-      { name: 'Tong quan', headers: ['Chỉ số', 'Giá trị', 'Thay đổi (%)'], data: [{ 'Chỉ số': 'Kỳ báo cáo', 'Giá trị': period, 'Thay đổi (%)': '' }, ...summaryRows.map(r => ({ 'Chỉ số': r.label, 'Giá trị': s[r.key], 'Thay đổi (%)': changeStr(c[r.key]) })), { 'Chỉ số': 'Biên lợi nhuận', 'Giá trị': `${s.profitMargin}%`, 'Thay đổi (%)': '' }] },
+      { name: 'Tong quan', headers: ['Chỉ số', 'Giá trị', 'Thay đổi (%)'], data: [{ 'Chỉ số': 'Kỳ báo cáo', 'Giá trị': periodLabel, 'Thay đổi (%)': '' }, ...summaryRows.map(r => ({ 'Chỉ số': r.label, 'Giá trị': s[r.key], 'Thay đổi (%)': changeStr(c[r.key]) })), { 'Chỉ số': 'Biên lợi nhuận', 'Giá trị': `${s.profitMargin}%`, 'Thay đổi (%)': '' }] },
       { name: 'So sanh ky truoc', headers: ['Chỉ số', 'Kỳ này', 'Kỳ trước', 'Thay đổi'], data: summaryRows.map(r => ({ 'Chỉ số': r.label, 'Kỳ này': s[r.key], 'Kỳ trước': prevVal(s[r.key], c[r.key]), 'Thay đổi': changeStr(c[r.key]) })) },
       { name: 'Chi phi theo loai', headers: ['Loại chi phí', 'Số tiền', 'Tỷ trọng (%)'], data: data.expenseStructure.map((i: any) => ({ 'Loại chi phí': i.name, 'Số tiền': i.value, 'Tỷ trọng (%)': pct(i.value, data.expenseStructure.reduce((s: number, x: any) => s + x.value, 0)) })) },
       { name: 'Top san pham', headers: ['Sản phẩm', 'Đơn giá', 'Giá vốn', 'SL bán', 'Doanh thu', 'Lợi nhuận', 'Tỷ trọng (%)'], data: data.topProducts.map((i: any) => ({ 'Sản phẩm': i.name, 'Đơn giá': i.price, 'Giá vốn': i.costPrice, 'SL bán': i.quantity, 'Doanh thu': i.revenue, 'Lợi nhuận': i.profit, 'Tỷ trọng (%)': pct(i.revenue, data.topProducts.reduce((s: number, x: any) => s + x.revenue, 0)) })) },
       { name: 'Dong tien chi tiet', headers: ['Tháng', 'Tiền thực thu', 'Tiền ghi nhận', 'Chi phí', 'Lợi nhuận', '% DT ghi nhận'], data: data.cashFlowData.map((cf: any, idx: number) => { const pd = data.profitData?.[idx] || {}; return { 'Tháng': cf.month, 'Tiền thực thu': cf.cash, 'Tiền ghi nhận': cf.revenue, 'Chi phí': pd.expense ?? 0, 'Lợi nhuận': pd.profit ?? 0, '% DT ghi nhận': pct(cf.cash, cf.revenue) }; }) },
       { name: 'Khau hao thiet bi', headers: ['Thiết bị', 'Nguyên giá', 'Khấu hao/tháng', 'Tháng đã dùng', 'Đã khấu hao', 'Giá trị còn lại'], data: (data.depreciationDetail || []).map((d: any) => ({ 'Thiết bị': d.name, 'Nguyên giá': d.total, 'Khấu hao/tháng': d.monthlyDepreciation, 'Tháng đã dùng': d.monthsActive, 'Đã khấu hao': d.totalDepreciated, 'Giá trị còn lại': d.remainingValue })) },
-    ], `BaoCaoTaiChinh_${period}_${new Date().toISOString().slice(0, 10)}`);
+    ], `BaoCaoTaiChinh_${periodLabel.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}`);
   };
 
   return (
@@ -476,7 +478,7 @@ function FinanceTab({ data, period }: { data: any; period: string }) {
   );
 }
 
-function OperationsTab({ data }: { data: any }) {
+function OperationsTab({ data, period, customFrom, customTo }: { data: any; period?: string; customFrom?: string; customTo?: string }) {
   if (!data) return <div className="text-slate-400 text-sm">Đang tải dữ liệu vận hành...</div>;
   const opStats = [
     { label: 'Tổng số thiết bị', value: `${data.totalQuantity}`, icon: PackageIcon, color: 'bg-blue-500' },
@@ -487,14 +489,15 @@ function OperationsTab({ data }: { data: any }) {
 
   const withPct = (arr: any[]) => arr.map((i: any) => ({ ...i, pct: pct(i.value, arr.reduce((s: number, x: any) => s + x.value, 0)) }));
 
+  const periodLabel = customFrom && customTo ? `${customFrom} → ${customTo}` : (period ? (PERIODS.find(p => p.key === period)?.label || period) : '');
+
   const handleExport = () => {
     exportToExcel([
-      { name: 'Tong quan van hanh', headers: ['Chỉ số', 'Giá trị'], data: opStats.map(s => ({ 'Chỉ số': s.label, 'Giá trị': typeof s.value === 'string' ? s.value.replace('₫', '').trim() : s.value })) },
+      { name: 'Tong quan van hanh', headers: ['Chỉ số', 'Giá trị', 'Kỳ báo cáo'], data: [{ 'Chỉ số': 'Kỳ báo cáo', 'Giá trị': periodLabel, 'Kỳ báo cáo': '' }, ...opStats.map(s => ({ 'Chỉ số': s.label, 'Giá trị': typeof s.value === 'string' ? s.value.replace('₫', '').trim() : s.value, 'Kỳ báo cáo': '' }))] },
       { name: 'Tinh trang thiet bi', headers: ['Trạng thái', 'Số lượng', 'Tỷ trọng (%)'], data: withPct(data.equipmentStatus).map((i: any) => ({ 'Trạng thái': i.name, 'Số lượng': i.value, 'Tỷ trọng (%)': i.pct })) },
       { name: 'Phan loai su co', headers: ['Loại sự cố', 'Số báo cáo', 'Tỷ trọng (%)'], data: withPct(data.equipmentReports).map((i: any) => ({ 'Loại sự cố': i.name, 'Số báo cáo': i.value, 'Tỷ trọng (%)': i.pct })) },
       { name: 'Chi tiet bao cao', headers: ['Thiết bị', 'Loại sự cố', 'Số máy', 'Lý do', 'Thời gian', 'Trạng thái'], data: (data.reportDetails || []).map((r: any) => ({ 'Thiết bị': r.equipmentName, 'Loại sự cố': r.statusType, 'Số máy': r.affectedQuantity, 'Lý do': r.reason, 'Thời gian': r.reportedAt ? new Date(r.reportedAt).toLocaleDateString('vi-VN') : '', 'Trạng thái': r.status === 'pending' ? 'Chờ xử lý' : 'Hoàn thành' })) },
-      { name: 'Thiet bi can bao tri', headers: ['Thiết bị', 'Tổng số', 'Bị ảnh hưởng', 'Trạng thái', 'Báo cáo chờ', 'Bảo hành còn (tháng)'], data: data.needMaintenance.map((i: any) => ({ 'Thiết bị': i.name, 'Tổng số': i.quantity, 'Bị ảnh hưởng': i.affectedQuantity ?? '—', 'Trạng thái': i.status === 'maintenance' ? 'Đang bảo trì' : 'Hoạt động', 'Báo cáo chờ xử lý': i.reports, 'Bảo hành còn (tháng)': i.warrantyLeft ?? '—' })) },
-    ], `BaoCaoVanHanh_${new Date().toISOString().slice(0, 10)}`);
+    ], `BaoCaoVanHanh_${periodLabel.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}`);
   };
 
   return (
