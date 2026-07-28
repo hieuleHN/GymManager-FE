@@ -14,6 +14,7 @@ interface Registration {
     name: string;
     unitPrice: number;
     features: string[];
+    disciplineId?: { _id: string; name: string };
   };
   locationId: {
     _id: string;
@@ -382,32 +383,37 @@ export function MyPackages() {
           </div>
         )}
 
-        {ptSessions.length > 0 && (
-          <div className="bg-gradient-to-r from-indigo-50 to-green-50 border border-indigo-200 rounded-2xl p-5">
-            <h3 className="font-semibold text-indigo-900 mb-3 flex items-center gap-2">
-              <Calendar className="w-5 h-5 text-indigo-600" />
-              Buổi tập Huấn luyện viên trong tháng
-            </h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {ptSessions.map((ps, i) => (
-                <div key={i} className="bg-white/80 rounded-xl p-3 border border-indigo-100">
-                  <p className="text-sm font-medium text-slate-800">{ps.packageName}</p>
-                  <p className="text-lg font-bold text-indigo-600">
-                    {ps.isFullMonth ? 'Không giới hạn' : `${ps.currentMonthRemaining} / ${ps.ptSessionsPerMonth} buổi`}
-                  </p>
-                  <div className="w-full bg-slate-200 rounded-full h-1.5 mt-1">
-                    {!ps.isFullMonth && ps.ptSessionsPerMonth > 0 && (
-                      <div
-                        className="bg-indigo-600 h-1.5 rounded-full transition-all"
-                        style={{ width: `${((ps.ptSessionsPerMonth - (ps.ptSessionsPerMonth - ps.currentMonthRemaining)) / ps.ptSessionsPerMonth) * 100}%` }}
-                      />
-                    )}
+        {(() => {
+          const validPtSessions = ptSessions.filter(
+            (ps: any) => ps.ptSessionsPerMonth > 0 || ps.isFullMonth
+          );
+          return validPtSessions.length > 0 ? (
+            <div className="bg-gradient-to-r from-indigo-50 to-green-50 border border-indigo-200 rounded-2xl p-5">
+              <h3 className="font-semibold text-indigo-900 mb-3 flex items-center gap-2">
+                <Calendar className="w-5 h-5 text-indigo-600" />
+                Buổi tập Huấn luyện viên trong tháng
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {validPtSessions.map((ps: any, i: number) => (
+                  <div key={i} className="bg-white/80 rounded-xl p-3 border border-indigo-100">
+                    <p className="text-sm font-medium text-slate-800">{ps.packageName}</p>
+                    <p className="text-lg font-bold text-indigo-600">
+                      {ps.isFullMonth ? 'Không giới hạn' : `${ps.currentMonthRemaining} / ${ps.ptSessionsPerMonth} buổi`}
+                    </p>
+                    <div className="w-full bg-slate-200 rounded-full h-1.5 mt-1">
+                      {!ps.isFullMonth && ps.ptSessionsPerMonth > 0 && (
+                        <div
+                          className="bg-indigo-600 h-1.5 rounded-full transition-all"
+                          style={{ width: `${(ps.currentMonthRemaining / ps.ptSessionsPerMonth) * 100}%` }}
+                        />
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-          </div>
-        )}
+          ) : null;
+        })()}
 
         <div>
           <h1 className="text-3xl font-bold text-slate-900 mb-2">
@@ -451,6 +457,11 @@ export function MyPackages() {
                       <h3 className="text-2xl font-bold text-slate-900">
                         {reg.package_id?.name || "Đã xóa"}
                       </h3>
+                      {reg.package_id?.disciplineId?.name && (
+                        <p className="text-sm text-indigo-600 font-medium mt-1">
+                          {reg.package_id.disciplineId.name}
+                        </p>
+                      )}
                     </div>
                   </div>
 
@@ -513,7 +524,7 @@ export function MyPackages() {
                         sx={{ textTransform: 'none', borderRadius: 2, bgcolor: '#d97706', '&:hover': { bgcolor: '#b45309' } }}>
                         Thanh toán ngay
                       </Button>
-                    ) : reg.contract_pdf && reg.payment_status === 'paid' ? (
+                    ) : reg.payment_status !== 'chờ thanh toán' ? (
                       <>
                         {reg.status === 'chờ xác nhận' && (
                           <div className="col-span-2 flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800 mb-1">
@@ -529,12 +540,11 @@ export function MyPackages() {
                         </a>
                       </>
                     ) : null}
-                    <Link to="/packages">
-                      <Button fullWidth variant="outlined" size="small"
-                        sx={{ textTransform: 'none', borderRadius: 2 }}>
-                        Đăng ký thêm
-                      </Button>
-                    </Link>
+                    <Button fullWidth variant="outlined" size="small"
+                      onClick={() => navigate(`/dashboard/upgrade/${reg._id}`)}
+                      sx={{ textTransform: 'none', borderRadius: 2, color: '#22c55e', borderColor: '#22c55e', '&:hover': { borderColor: '#16a34a', bgcolor: 'rgba(34,197,94,0.08)' } }}>
+                      Nâng cấp
+                    </Button>
                     <Button fullWidth variant="contained" size="small"
                       onClick={() => navigate(`/packages/${reg.package_id?._id}`)}
                       sx={{ textTransform: 'none', borderRadius: 2, bgcolor: '#4f46e5', '&:hover': { bgcolor: '#4338ca' } }}>
@@ -561,6 +571,9 @@ export function MyPackages() {
                           Đã thanh toán - chờ duyệt
                         </span>
                         <h3 className="text-2xl font-bold text-slate-900">{reg.package_id?.name || 'Đã xóa'}</h3>
+                        {reg.package_id?.disciplineId?.name && (
+                          <p className="text-sm text-indigo-600 font-medium mt-1">{reg.package_id.disciplineId.name}</p>
+                        )}
                       </div>
                       <div className="text-right">
                         <p className="text-sm text-slate-600">Giá trị</p>
@@ -580,18 +593,16 @@ export function MyPackages() {
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-3">
-                      {reg.contract_pdf && (
-                        <a href={`${getApiUrl()}/api/user-packages/${reg._id}/contract-pdf?token=${encodeURIComponent(JSON.parse(localStorage.getItem('auth_user') || '{}').token || '')}`} target="_blank" rel="noopener noreferrer" className="block col-span-2">
-                          <Button fullWidth variant="outlined" size="small"
-                            sx={{ textTransform: 'none', borderRadius: 2, color: '#4f46e5', borderColor: '#4f46e5' }}>
-                            Xem hợp đồng (PDF)
-                          </Button>
-                        </a>
-                      )}
+                      <a href={`${getApiUrl()}/api/user-packages/${reg._id}/contract-pdf?token=${encodeURIComponent(JSON.parse(localStorage.getItem('auth_user') || '{}').token || '')}`} target="_blank" rel="noopener noreferrer" className="block col-span-2">
+                        <Button fullWidth variant="outlined" size="small"
+                          sx={{ textTransform: 'none', borderRadius: 2, color: '#4f46e5', borderColor: '#4f46e5' }}>
+                          Xem hợp đồng (PDF)
+                        </Button>
+                      </a>
                       <Link to="/packages">
                         <Button fullWidth variant="outlined" size="small"
-                          sx={{ textTransform: 'none', borderRadius: 2 }}>
-                          Đăng ký thêm
+                          sx={{ textTransform: 'none', borderRadius: 2, color: '#4f46e5', borderColor: '#4f46e5' }}>
+                          Xem gói tập
                         </Button>
                       </Link>
                       <Button fullWidth variant="contained" size="small"
@@ -620,6 +631,9 @@ export function MyPackages() {
                           {reg.status}
                         </span>
                         <h3 className="text-2xl font-bold text-slate-900">{reg.package_id?.name || 'Đã xóa'}</h3>
+                        {reg.package_id?.disciplineId?.name && (
+                          <p className="text-sm text-indigo-600 font-medium mt-1">{reg.package_id.disciplineId.name}</p>
+                        )}
                       </div>
                       <div className="text-right">
                         <p className="text-sm text-slate-600">Giá trị</p>

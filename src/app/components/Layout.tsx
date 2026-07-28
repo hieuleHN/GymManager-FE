@@ -20,17 +20,15 @@ import {
   Loader2,
   AlertCircle,
   ChevronRight,
-  Wallet
-} from 'lucide-react';
-import { useState, useEffect, useRef } from 'react';
-import { useAuth, getApiUrl, getAuthHeaders } from '../context/AuthContext';
-import { Button } from '@mui/material';
-
+  Wallet,
+} from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { useAuth, getApiUrl, getAuthHeaders } from "../context/AuthContext";
+import { Button } from "@mui/material";
 
 import logo from "../../imports/ChatGPT_Image_May_14__2026__09_48_52_PM.png";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
-import { WalletBalance } from './WalletBalance';
-import { clubsData, disciplinesData } from "../data";
+import { WalletBalance } from "./WalletBalance";
 import "slick-carousel/slick/slick.css";
 import "slick-carousel/slick/slick-theme.css";
 
@@ -38,13 +36,42 @@ export function Layout() {
   const { user, logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+
+  // UI States
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
+
+  // Notification States
   const [notifications, setNotifications] = useState<any[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [showNotifications, setShowNotifications] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
 
+  // ─── ĐỒNG BỘ DỮ LIỆU ĐỘNG (API) ───
+  const [clubs, setClubs] = useState<any[]>([]);
+  const [disciplines, setDisciplines] = useState<any[]>([]);
+
+  useEffect(() => {
+    // 1. Lấy danh sách Câu lạc bộ (Cơ sở)
+    fetch(`${getApiUrl()}/api/locations`)
+      .then((res) => res.json())
+      .then((data) => {
+        const clubList = Array.isArray(data) ? data : data?.data || [];
+        setClubs(clubList);
+      })
+      .catch((err) => console.error("Lỗi lấy danh sách CLB:", err));
+
+    // 2. Lấy danh sách Bộ môn
+    fetch(`${getApiUrl()}/api/disciplines?limit=50`)
+      .then((res) => res.json())
+      .then((data) => {
+        const discList = Array.isArray(data) ? data : data?.data || [];
+        setDisciplines(discList);
+      })
+      .catch((err) => console.error("Lỗi lấy danh sách Bộ môn:", err));
+  }, []);
+
+  // ─── XỬ LÝ THÔNG BÁO ───
   useEffect(() => {
     if (!user) return;
     fetchNotifications();
@@ -59,17 +86,20 @@ export function Layout() {
         setShowNotifications(false);
       }
     };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
   const fetchNotifications = async () => {
     if (!user) return;
     try {
-      const role = user.role === 'member' ? 'member' : 'staff';
-      const res = await fetch(`${getApiUrl()}/api/notifications?recipientId=${user.id}&recipientRole=${role}&limit=10`, {
-        headers: getAuthHeaders()
-      });
+      const role = user.role === "member" ? "member" : "staff";
+      const res = await fetch(
+        `${getApiUrl()}/api/notifications?recipientId=${user.id}&recipientRole=${role}&limit=10`,
+        {
+          headers: getAuthHeaders(),
+        },
+      );
       if (res.ok) {
         const data = await res.json();
         setNotifications(data.data || []);
@@ -80,10 +110,13 @@ export function Layout() {
   const fetchUnreadCount = async () => {
     if (!user) return;
     try {
-      const role = user.role === 'member' ? 'member' : 'staff';
-      const res = await fetch(`${getApiUrl()}/api/notifications/unread-count?recipientId=${user.id}&recipientRole=${role}`, {
-        headers: getAuthHeaders()
-      });
+      const role = user.role === "member" ? "member" : "staff";
+      const res = await fetch(
+        `${getApiUrl()}/api/notifications/unread-count?recipientId=${user.id}&recipientRole=${role}`,
+        {
+          headers: getAuthHeaders(),
+        },
+      );
       if (res.ok) {
         const data = await res.json();
         setUnreadCount(data.count || 0);
@@ -94,15 +127,18 @@ export function Layout() {
   const handleNotificationClick = async (notif: any) => {
     try {
       await fetch(`${getApiUrl()}/api/notifications/${notif._id}/read`, {
-        method: 'PUT',
-        headers: getAuthHeaders()
+        method: "PUT",
+        headers: getAuthHeaders(),
       });
     } catch {}
     setShowNotifications(false);
-    if (notif.type === 'booking_transferred') {
-      navigate('/dashboard/schedule');
-    } else if (notif.type === 'wallet_topup' || notif.type === 'wallet_payment') {
-      navigate('/dashboard/history');
+    if (notif.type === "booking_transferred") {
+      navigate("/dashboard/schedule");
+    } else if (
+      notif.type === "wallet_topup" ||
+      notif.type === "wallet_payment"
+    ) {
+      navigate("/dashboard/history");
     } else if (notif.relatedBookingId?._id || notif.relatedBookingId) {
       const bookingId = notif.relatedBookingId._id || notif.relatedBookingId;
       navigate(`/dashboard/bookings/${bookingId}/status`);
@@ -112,30 +148,38 @@ export function Layout() {
   const markAllAsRead = async () => {
     if (!user) return;
     try {
-      const role = user.role === 'member' ? 'member' : 'staff';
+      const role = user.role === "member" ? "member" : "staff";
       await fetch(`${getApiUrl()}/api/notifications/read-all`, {
-        method: 'PUT',
-        headers: { ...getAuthHeaders() as any, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ recipientId: user.id, recipientRole: role })
+        method: "PUT",
+        headers: {
+          ...(getAuthHeaders() as any),
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ recipientId: user.id, recipientRole: role }),
       });
       setUnreadCount(0);
-      setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+      setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
     } catch {}
   };
 
   const getNotifIcon = (type: string) => {
     switch (type) {
-      case 'booking_confirmed': return <Check className="w-4 h-4 text-green-500" />;
-      case 'booking_rejected':
-      case 'booking_cancelled': return <XCircle className="w-4 h-4 text-red-500" />;
-      case 'booking_request': return <Calendar className="w-4 h-4 text-indigo-500" />;
-      case 'wallet_topup':
-      case 'wallet_payment': return <Wallet className="w-4 h-4 text-emerald-500" />;
-      default: return <AlertCircle className="w-4 h-4 text-slate-500" />;
+      case "booking_confirmed":
+        return <Check className="w-4 h-4 text-green-500" />;
+      case "booking_rejected":
+      case "booking_cancelled":
+        return <XCircle className="w-4 h-4 text-red-500" />;
+      case "booking_request":
+        return <Calendar className="w-4 h-4 text-indigo-500" />;
+      case "wallet_topup":
+      case "wallet_payment":
+        return <Wallet className="w-4 h-4 text-emerald-500" />;
+      default:
+        return <AlertCircle className="w-4 h-4 text-slate-500" />;
     }
   };
 
-  // Mảng chứa các menu điều hướng gốc
+  // ─── CẤU HÌNH MENU NAVBAR ───
   const navigation = [
     { name: "Trang chủ", href: "/", icon: Dumbbell },
     {
@@ -143,23 +187,31 @@ export function Layout() {
       href: "#",
       icon: MapPin,
       isDropdown: true,
-      items: clubsData.map((c) => ({ name: c.name, href: `/clubs/${c.id}` })),
+      items:
+        clubs.length > 0
+          ? clubs.map((c) => ({
+              name: c.name || c.address,
+              href: `/clubs/${c._id}`,
+            }))
+          : [{ name: "Đang cập nhật...", href: "#" }],
     },
     {
       name: "Bộ Môn",
       href: "#",
       icon: Activity,
       isDropdown: true,
-      items: disciplinesData.map((d) => ({
-        name: d.name,
-        href: `/disciplines/${d.id}`,
-      })),
+      items:
+        disciplines.length > 0
+          ? disciplines.map((d) => ({
+              name: d.name,
+              href: `/disciplines/${d._id}`,
+            }))
+          : [{ name: "Đang cập nhật...", href: "#" }],
     },
     { name: "Gói tập", href: "/packages", icon: CreditCard },
     { name: "Huấn luyện viên", href: "/trainers", icon: Users },
   ];
 
-  // ĐỒNG BỘ TẠI ĐÂY: Nếu hội viên đã login, đẩy cả Dashboard và Điểm danh vào chung mảng
   if (user) {
     navigation.push({
       name: "DASHBOARD HỘI VIÊN",
@@ -189,7 +241,7 @@ export function Layout() {
                 />
               </Link>
 
-              {/* Danh sách menu trên máy tính - Đã dọn sạch các block button thừa lẻ tẻ */}
+              {/* Menu Desktop */}
               <div className="hidden md:ml-8 lg:flex md:space-x-4 lg:space-x-6">
                 {navigation.map((item) =>
                   item.isDropdown ? (
@@ -239,12 +291,21 @@ export function Layout() {
             {/* Cụm chức năng Avatar / Login bên tay phải */}
             <div className="hidden md:flex items-center gap-4">
               {user ? (
-                <div className="flex items-center gap-4 relative" ref={notifRef}>
-                  <button onClick={() => { setShowNotifications(!showNotifications); if (!showNotifications) fetchNotifications(); }} className="text-slate-500 hover:text-slate-700 relative">
+                <div
+                  className="flex items-center gap-4 relative"
+                  ref={notifRef}
+                >
+                  <button
+                    onClick={() => {
+                      setShowNotifications(!showNotifications);
+                      if (!showNotifications) fetchNotifications();
+                    }}
+                    className="text-slate-500 hover:text-slate-700 relative"
+                  >
                     <Bell className="w-5 h-5" />
                     {unreadCount > 0 && (
                       <span className="absolute -top-1.5 -right-1.5 block min-w-[18px] h-[18px] rounded-full bg-red-500 ring-2 ring-white text-white text-[10px] font-bold flex items-center justify-center px-1">
-                        {unreadCount > 99 ? '99+' : unreadCount}
+                        {unreadCount > 99 ? "99+" : unreadCount}
                       </span>
                     )}
                   </button>
@@ -254,7 +315,10 @@ export function Layout() {
                       <div className="flex items-center justify-between p-4 border-b border-slate-100 shrink-0">
                         <h3 className="font-bold text-slate-900">Thông báo</h3>
                         {unreadCount > 0 && (
-                          <button onClick={markAllAsRead} className="text-xs text-indigo-600 hover:text-indigo-800 font-medium">
+                          <button
+                            onClick={markAllAsRead}
+                            className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+                          >
                             Đánh dấu đã đọc
                           </button>
                         )}
@@ -267,18 +331,37 @@ export function Layout() {
                           </div>
                         ) : (
                           notifications.map((notif) => (
-                            <button key={notif._id} onClick={() => handleNotificationClick(notif)}
-                              className={`w-full text-left p-4 flex gap-3 hover:bg-slate-50 transition-colors border-b border-slate-50 ${!notif.read ? 'bg-indigo-50/50' : ''}`}>
+                            <button
+                              key={notif._id}
+                              onClick={() => handleNotificationClick(notif)}
+                              className={`w-full text-left p-4 flex gap-3 hover:bg-slate-50 transition-colors border-b border-slate-50 ${
+                                !notif.read ? "bg-indigo-50/50" : ""
+                              }`}
+                            >
                               <div className="mt-0.5 shrink-0">
                                 {getNotifIcon(notif.type)}
                               </div>
                               <div className="flex-1 min-w-0">
-                                <p className={`text-sm ${!notif.read ? 'font-semibold text-slate-900' : 'text-slate-700'}`}>{notif.title}</p>
-                                <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">{notif.message}</p>
+                                <p
+                                  className={`text-sm ${
+                                    !notif.read
+                                      ? "font-semibold text-slate-900"
+                                      : "text-slate-700"
+                                  }`}
+                                >
+                                  {notif.title}
+                                </p>
+                                <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">
+                                  {notif.message}
+                                </p>
                                 <p className="text-[10px] text-slate-400 mt-1">
-                                  {new Date(notif.createdAt).toLocaleDateString('vi-VN', {
-                                    hour: '2-digit', minute: '2-digit'
-                                  })}
+                                  {new Date(notif.createdAt).toLocaleDateString(
+                                    "vi-VN",
+                                    {
+                                      hour: "2-digit",
+                                      minute: "2-digit",
+                                    },
+                                  )}
                                 </p>
                               </div>
                               <ChevronRight className="w-4 h-4 text-slate-300 shrink-0 mt-1" />
@@ -357,7 +440,7 @@ export function Layout() {
           </div>
         </div>
 
-        {/* Mobile menu (Hiển thị mượt mà trên điện thoại) */}
+        {/* Mobile menu */}
         {isMobileMenuOpen && (
           <div className="lg:hidden bg-white border-b border-slate-200 h-[calc(100vh-4rem)] overflow-y-auto">
             <div className="pt-2 pb-3 space-y-1 px-4">
@@ -442,10 +525,10 @@ export function Layout() {
                 Dịch vụ
               </h3>
               <ul className="space-y-2 text-sm">
-                {disciplinesData.map((discipline) => (
-                  <li key={discipline.id}>
+                {disciplines.slice(0, 5).map((discipline) => (
+                  <li key={discipline._id}>
                     <Link
-                      to={`/disciplines/${discipline.id}`}
+                      to={`/disciplines/${discipline._id}`}
                       className="hover:text-indigo-400"
                     >
                       {discipline.name}
@@ -496,13 +579,16 @@ export function Layout() {
                 Thông tin
               </h3>
               <ul className="space-y-2 text-sm">
-                {clubsData.slice(0, 5).map((club) => (
-                  <li key={club.id}>
+                {clubs.slice(0, 5).map((club) => (
+                  <li key={club._id}>
                     <Link
-                      to={`/clubs/${club.id}`}
+                      to={`/clubs/${club._id}`}
                       className="hover:text-indigo-400"
                     >
-                      {club.name.replace("ZenFitness ", "Cơ sở ")}
+                      {(club.name || club.address).replace(
+                        "ZenFitness ",
+                        "Cơ sở ",
+                      )}
                     </Link>
                   </li>
                 ))}

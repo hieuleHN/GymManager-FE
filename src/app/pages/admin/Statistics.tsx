@@ -13,30 +13,64 @@ import {
 import { api } from '../../../lib/api';
 import { useClub } from '../../context/ClubContext';
 import { exportToExcel } from '../../../lib/exportExcel';
+import { ActivityStats } from './ActivityStats';
 
 const PERIODS = [
+  { key: 'week', label: 'Tuần này' },
   { key: 'month', label: 'Tháng này' },
   { key: 'quarter', label: 'Quý này' },
   { key: 'year', label: 'Năm nay' },
 ];
 
-const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#14b8a6'];
-
-const fmt = (v: number) => v >= 1e6 ? `${(v / 1e6).toFixed(1)}M` : v >= 1e3 ? `${(v / 1e3).toFixed(0)}K` : `${v}`;
+const fmt = (v: number) => {
+  if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
+  if (v >= 1_000) return `${(v / 1_000).toFixed(0)}K`;
+  return `${v}`;
+};
 const fmtVnd = (v: number) => new Intl.NumberFormat('vi-VN').format(v) + '₫';
-const fmtChange = (v: number) => `${v > 0 ? '+' : ''}${v}%`;
-const pct = (val: number, total: number) => `${Math.round((val / (total || 1)) * 100)}%`;
-const prevVal = (cur: number, change: number) => cur - (cur * (change ?? 0)) / 100;
-const changeStr = (v: number) => `${v > 0 ? '+' : ''}${v ?? 0}%`;
 
-const emptyFinance = {
-  summary: { realCashIn: 0, accrualRevenue: 0, totalExpense: 0, totalProfit: 0, profitMargin: 0, change: { realCashIn: 0, accrualRevenue: 0, totalExpense: 0, totalProfit: 0 } },
-  cashFlowData: [], profitData: [], expenseStructure: [], participation: [], topProducts: [],
+const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#14b8a6'];
+const MONTHS = ["T1", "T2", "T3", "T4", "T5", "T6", "T7", "T8", "T9", "T10", "T11", "T12"];
+
+// ---------- Fallback data (khi BE chưa có dữ liệu) ----------
+const fallbackFinance = {
+  summary: {
+    cashRevenue: 680_000_000, accrualRevenue: 720_000_000, realCashIn: 1_050_000_000,
+    totalExpense: 280_000_000, totalProfit: 440_000_000, profitMargin: 61,
+    change: { realCashIn: 0, accrualRevenue: 0, totalExpense: 0, totalProfit: 0 },
+  },
+  cashFlowData: MONTHS.map((m, i) => ({ month: m, cash: [120, 150, 140, 180, 200, 230, 210, 250, 240, 270, 260, 290][i] * 1000_000, revenue: [130, 160, 150, 190, 210, 240, 220, 260, 250, 280, 270, 300][i] * 1000_000 })),
+  profitData: MONTHS.map((m, i) => { const rev = [130, 160, 150, 190, 210, 240, 220, 260, 250, 280, 270, 300][i] * 1000_000; const exp = [50, 60, 55, 70, 65, 80, 75, 85, 80, 90, 85, 95][i] * 1000_000; return { month: m, revenue: rev, expense: exp, profit: rev - exp }; }),
+  expenseStructure: [
+    { name: 'Thiết bị', value: 120_000_000 },
+    { name: 'Tiện ích', value: 80_000_000 },
+    { name: 'Thuế/Phí', value: 50_000_000 },
+    { name: 'Khác', value: 30_000_000 },
+  ],
+  packageSalesData: [
+    { package: '1 tháng', sales: 120, revenue: 120_000_000 },
+    { package: '3 tháng', sales: 280, revenue: 560_000_000 },
+    { package: '6 tháng', sales: 350, revenue: 1_050_000_000 },
+    { package: '12 tháng', sales: 550, revenue: 2_750_000_000 },
+  ],
+  participation: [
+    { package: '1 tháng', sales: 120, revenue: 120_000_000, participation: 18 },
+    { package: '3 tháng', sales: 280, revenue: 560_000_000, participation: 34 },
+    { package: '6 tháng', sales: 350, revenue: 1_050_000_000, participation: 52 },
+    { package: '12 tháng', sales: 550, revenue: 2_750_000_000, participation: 88 },
+  ],
+  topProducts: [
+    { name: 'Whey Protein', price: 300_000, quantity: 85, revenue: 25_500_000 },
+    { name: 'BCAA', price: 200_000, quantity: 62, revenue: 12_400_000 },
+    { name: 'Pre-Workout', price: 300_000, quantity: 48, revenue: 14_400_000 },
+    { name: 'Creatine', price: 150_000, quantity: 72, revenue: 10_800_000 },
+    { name: 'Vitamin', price: 100_000, quantity: 95, revenue: 9_500_000 },
+  ],
 };
 const fallbackFinance = emptyFinance;
 
 export function Statistics() {
-  const [tab, setTab] = useState<'finance' | 'operations'>('finance');
+  const [tab, setTab] = useState<'finance' | 'operations' | 'activity'>('finance');
   const [period, setPeriod] = useState('month');
   const [loading, setLoading] = useState(false);
   const [finance, setFinance] = useState<any>(null);
@@ -46,6 +80,7 @@ export function Statistics() {
   const [customTo, setCustomTo] = useState('');
   const [dateError, setDateError] = useState('');
   const { selectedClub } = useClub();
+
   const locParam = selectedClub && selectedClub !== 'all' ? `&locationId=${selectedClub}` : '';
 
   const validateCustomDate = (from: string, to: string) => {
@@ -127,19 +162,26 @@ export function Statistics() {
   return (
     <AdminLayout>
       <div className="max-w-7xl mx-auto space-y-6">
+        {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
             <h1 className="text-3xl font-bold text-slate-900 mb-1">Báo cáo & Thống kê</h1>
             <p className="text-slate-600">Phân tích tài chính và vận hành phòng tập</p>
           </div>
           <div className="flex gap-2 bg-white rounded-xl border border-slate-200 p-1">
-            {(['finance', 'operations'] as const).map(t => (
-              <button key={t} onClick={() => setTab(t)}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 ${tab === t ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}>
-                {t === 'finance' ? <BarChart3 className="w-4 h-4" /> : <Wrench className="w-4 h-4" />}
-                {t === 'finance' ? 'Tài chính' : 'Vận hành'}
-              </button>
-            ))}
+            {[
+              { key: 'finance' as const, label: 'Tài chính', icon: BarChart3 },
+              { key: 'operations' as const, label: 'Vận hành', icon: Wrench },
+              { key: 'activity' as const, label: 'Hoạt động', icon: Activity },
+            ].map(t => {
+              const Icon = t.icon;
+              return (
+                <button key={t.key} onClick={() => setTab(t.key)}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 ${tab === t.key ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}>
+                  <Icon className="w-4 h-4" /> {t.label}
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -178,7 +220,9 @@ export function Statistics() {
           </div>
         )}
 
-        {tab === 'finance' ? <FinanceTab data={finance || emptyFinance} period={period} /> : <OperationsTab data={operations} />}
+        {tab === 'finance' && <FinanceTab data={fd} period={period} />}
+        {tab === 'operations' && <OperationsTab data={od} />}
+        {tab === 'activity' && <ActivityStats />}
       </div>
     </AdminLayout>
   );
@@ -211,18 +255,15 @@ function ExportBtn({ onClick }: { onClick: () => void }) {
   );
 }
 
+const fmtChange = (v: number) => `${v > 0 ? '+' : ''}${v}%`;
+const pct = (val: number, total: number) => `${Math.round((val / (total || 1)) * 100)}%`;
+const prevVal = (cur: number, change: number) => cur - (cur * (change ?? 0)) / 100;
+const changeStr = (v: number) => `${v > 0 ? '+' : ''}${v ?? 0}%`;
+
 function FinanceTab({ data, period }: { data: any; period: string }) {
   if (!data?.summary) return <div className="text-slate-400 text-sm">Đang tải dữ liệu tài chính...</div>;
   const s = data.summary;
   const c = s.change || {};
-
-  const now = new Date();
-  const periodLabel = period === 'quarter'
-    ? `Q${Math.floor(now.getMonth() / 3) + 1}/${now.getFullYear()}`
-    : period === 'year'
-    ? `${now.getFullYear()}`
-    : `T${now.getMonth() + 1}/${now.getFullYear()}`;
-
   const stats = [
     { label: 'Doanh thu thực thu', value: fmtVnd(s.realCashIn), change: fmtChange(c.realCashIn ?? 0), trend: (c.realCashIn ?? 0) >= 0 ? 'up' : 'down', icon: Wallet, color: 'bg-emerald-500' },
     { label: 'Doanh thu ghi nhận', value: fmtVnd(s.accrualRevenue), change: fmtChange(c.accrualRevenue ?? 0), trend: (c.accrualRevenue ?? 0) >= 0 ? 'up' : 'down', icon: DollarSign, color: 'bg-indigo-500' },
@@ -239,13 +280,13 @@ function FinanceTab({ data, period }: { data: any; period: string }) {
 
   const handleExport = () => {
     exportToExcel([
-      { name: 'Tong quan', headers: ['Chỉ số', 'Giá trị', 'Thay đổi (%)'], data: [{ 'Chỉ số': 'Kỳ báo cáo', 'Giá trị': periodLabel, 'Thay đổi (%)': '' }, ...summaryRows.map(r => ({ 'Chỉ số': r.label, 'Giá trị': s[r.key], 'Thay đổi (%)': changeStr(c[r.key]) })), { 'Chỉ số': 'Biên lợi nhuận', 'Giá trị': `${s.profitMargin}%`, 'Thay đổi (%)': '' }] },
+      { name: 'Tong quan', headers: ['Chỉ số', 'Giá trị', 'Thay đổi (%)'], data: [{ 'Chỉ số': 'Kỳ báo cáo', 'Giá trị': period, 'Thay đổi (%)': '' }, ...summaryRows.map(r => ({ 'Chỉ số': r.label, 'Giá trị': s[r.key], 'Thay đổi (%)': changeStr(c[r.key]) })), { 'Chỉ số': 'Biên lợi nhuận', 'Giá trị': `${s.profitMargin}%`, 'Thay đổi (%)': '' }] },
       { name: 'So sanh ky truoc', headers: ['Chỉ số', 'Kỳ này', 'Kỳ trước', 'Thay đổi'], data: summaryRows.map(r => ({ 'Chỉ số': r.label, 'Kỳ này': s[r.key], 'Kỳ trước': prevVal(s[r.key], c[r.key]), 'Thay đổi': changeStr(c[r.key]) })) },
       { name: 'Chi phi theo loai', headers: ['Loại chi phí', 'Số tiền', 'Tỷ trọng (%)'], data: data.expenseStructure.map((i: any) => ({ 'Loại chi phí': i.name, 'Số tiền': i.value, 'Tỷ trọng (%)': pct(i.value, data.expenseStructure.reduce((s: number, x: any) => s + x.value, 0)) })) },
       { name: 'Top san pham', headers: ['Sản phẩm', 'Đơn giá', 'Giá vốn', 'SL bán', 'Doanh thu', 'Lợi nhuận', 'Tỷ trọng (%)'], data: data.topProducts.map((i: any) => ({ 'Sản phẩm': i.name, 'Đơn giá': i.price, 'Giá vốn': i.costPrice, 'SL bán': i.quantity, 'Doanh thu': i.revenue, 'Lợi nhuận': i.profit, 'Tỷ trọng (%)': pct(i.revenue, data.topProducts.reduce((s: number, x: any) => s + x.revenue, 0)) })) },
-      { name: 'Dong tien chi tiet', headers: ['Tháng', 'Tiền thực thu', 'Tiền ghi nhận', 'Chi phí', 'Lợi nhuận', '% DT ghi nhận'], data: data.cashFlowData.map((i: any) => ({ 'Tháng': i.month, 'Tiền thực thu': i.cash, 'Tiền ghi nhận': i.revenue, 'Chi phí': i.expense, 'Lợi nhuận': i.profit, '% DT ghi nhận': pct(i.cash, i.revenue) })) },
+      { name: 'Dong tien chi tiet', headers: ['Tháng', 'Tiền thực thu', 'Tiền ghi nhận', 'Chi phí', 'Lợi nhuận', '% DT ghi nhận'], data: data.cashFlowData.map((cf: any, idx: number) => { const pd = data.profitData?.[idx] || {}; return { 'Tháng': cf.month, 'Tiền thực thu': cf.cash, 'Tiền ghi nhận': cf.revenue, 'Chi phí': pd.expense ?? 0, 'Lợi nhuận': pd.profit ?? 0, '% DT ghi nhận': pct(cf.cash, cf.revenue) }; }) },
       { name: 'Khau hao thiet bi', headers: ['Thiết bị', 'Nguyên giá', 'Khấu hao/tháng', 'Tháng đã dùng', 'Đã khấu hao', 'Giá trị còn lại'], data: (data.depreciationDetail || []).map((d: any) => ({ 'Thiết bị': d.name, 'Nguyên giá': d.total, 'Khấu hao/tháng': d.monthlyDepreciation, 'Tháng đã dùng': d.monthsActive, 'Đã khấu hao': d.totalDepreciated, 'Giá trị còn lại': d.remainingValue })) },
-    ], `BaoCaoTaiChinh_${periodLabel.replace('/', '')}_${new Date().toISOString().slice(0, 10)}`);
+    ], `BaoCaoTaiChinh_${period}_${new Date().toISOString().slice(0, 10)}`);
   };
 
   return (
@@ -253,34 +294,32 @@ function FinanceTab({ data, period }: { data: any; period: string }) {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">{stats.map((stat, i) => <StatCard key={i} stat={stat} />)}</div>
       <ExportBtn onClick={handleExport} />
 
+      {/* 1. Dòng tiền vs Doanh thu ghi nhận */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
         <div className="flex items-center justify-between mb-1">
-          <h2 className="text-lg font-bold text-slate-900">Tổng quan tài chính theo tháng</h2>
+          <h2 className="text-lg font-bold text-slate-900">Dòng tiền thực thu vs Doanh thu ghi nhận</h2>
           <span className="text-xs bg-indigo-50 text-indigo-600 px-2.5 py-1 rounded-full font-medium">VNĐ</span>
         </div>
-        <p className="text-xs text-slate-500 mb-4">Dòng tiền thực thu, doanh thu ghi nhận, chi phí và lợi nhuận theo từng tháng</p>
+        <p className="text-xs text-slate-500 mb-4">Phân biệt tiền mặt đã vào ví (thực thu) và giá trị hợp đồng gói (ghi nhận theo kỳ)</p>
         <ResponsiveContainer width="100%" height={300}>
           <AreaChart data={data.cashFlowData}>
             <defs>
-              {[
-                { id: 'gCash', color: '#10b981' }, { id: 'gRev', color: '#6366f1' },
-                { id: 'gExp', color: '#f59e0b' }, { id: 'gProfit', color: '#8b5cf6' },
-              ].map(g => (
-                <linearGradient key={g.id} id={g.id} x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor={g.color} stopOpacity={0.25} />
-                  <stop offset="95%" stopColor={g.color} stopOpacity={0} />
-                </linearGradient>
-              ))}
+              <linearGradient id="gCash" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#10b981" stopOpacity={0.25} />
+                <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+              </linearGradient>
+              <linearGradient id="gRev" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#6366f1" stopOpacity={0.2} />
+                <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+              </linearGradient>
             </defs>
             <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
             <XAxis dataKey="month" tick={{ fontSize: 12 }} />
             <YAxis tickFormatter={fmt} tick={{ fontSize: 11 }} />
             <Tooltip formatter={(v: number) => fmtVnd(v)} />
             <Legend />
-            <Area type="monotone" dataKey="cash" stroke="#10b981" strokeWidth={2.5} fill="url(#gCash)" name="Doanh thu thực thu" />
+            <Area type="monotone" dataKey="cash" stroke="#10b981" strokeWidth={2.5} fill="url(#gCash)" name="Dòng tiền thực thu" />
             <Area type="monotone" dataKey="revenue" stroke="#6366f1" strokeWidth={2.5} fill="url(#gRev)" name="Doanh thu ghi nhận" />
-            <Area type="monotone" dataKey="expense" stroke="#f59e0b" strokeWidth={2.5} fill="url(#gExp)" name="Tổng chi phí" />
-            <Area type="monotone" dataKey="profit" stroke="#8b5cf6" strokeWidth={2.5} fill="url(#gProfit)" name="Lợi nhuận" />
           </AreaChart>
         </ResponsiveContainer>
       </div>
@@ -308,7 +347,6 @@ function FinanceTab({ data, period }: { data: any; period: string }) {
           </ResponsiveContainer>
         </div>
       )}
-
       {/* 2. Chi phí & Lãi */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 lg:col-span-2">
@@ -330,20 +368,26 @@ function FinanceTab({ data, period }: { data: any; period: string }) {
             </ComposedChart>
           </ResponsiveContainer>
         </div>
+
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
           <h2 className="text-lg font-bold text-slate-900 mb-4">Cơ cấu chi phí</h2>
           <ResponsiveContainer width="100%" height={200}>
             <PieChart>
               <Pie data={data.expenseStructure} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={3}>
-                {data.expenseStructure.map((_: any, i: number) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                {data.expenseStructure.map((_, i) => (
+                  <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                ))}
               </Pie>
               <Tooltip formatter={(v: number) => fmtVnd(v)} />
             </PieChart>
           </ResponsiveContainer>
           <div className="space-y-1.5 mt-2">
-            {data.expenseStructure.map((item: any, i: number) => (
+            {data.expenseStructure.map((item, i) => (
               <div key={i} className="flex items-center justify-between text-xs">
-                <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }} /><span className="text-slate-600">{item.name}</span></div>
+                <div className="flex items-center gap-2">
+                  <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
+                  <span className="text-slate-600">{item.name}</span>
+                </div>
                 <span className="font-medium text-slate-800">{fmtVnd(item.value)}</span>
               </div>
             ))}
@@ -351,6 +395,7 @@ function FinanceTab({ data, period }: { data: any; period: string }) {
         </div>
       </div>
 
+      {/* 3. Doanh số theo loại gói & Tỉ lệ tham gia */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
         <div className="flex items-center justify-between mb-1">
           <h2 className="text-lg font-bold text-slate-900">Doanh số theo gói & Tỉ lệ tham gia</h2>
@@ -371,6 +416,7 @@ function FinanceTab({ data, period }: { data: any; period: string }) {
         </ResponsiveContainer>
       </div>
 
+      {/* 4. Top sản phẩm bán chạy */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-lg font-bold text-slate-900">Top sản phẩm bán chạy</h2>
@@ -384,7 +430,9 @@ function FinanceTab({ data, period }: { data: any; period: string }) {
               <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={90} />
               <Tooltip formatter={(v: number) => fmtVnd(v)} />
               <Bar dataKey="revenue" name="Doanh thu" radius={[0, 4, 4, 0]}>
-                {data.topProducts.map((_: any, i: number) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                {data.topProducts.map((_, i) => (
+                  <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                ))}
               </Bar>
             </BarChart>
           </ResponsiveContainer>
@@ -392,21 +440,31 @@ function FinanceTab({ data, period }: { data: any; period: string }) {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-100">
-                  {['Sản phẩm', 'SL', 'Doanh thu', 'Lợi nhuận', 'Tỷ trọng'].map(h => (
-                    <th key={h} className={`py-3 px-2 text-slate-500 font-medium ${h === 'Tỷ trọng' ? 'text-left' : h === 'Sản phẩm' ? 'text-left' : 'text-right'}`}>{h}</th>
-                  ))}
+                  <th className="text-left py-3 px-2 text-slate-500 font-medium">Sản phẩm</th>
+                  <th className="text-right py-3 px-2 text-slate-500 font-medium">SL</th>
+                  <th className="text-right py-3 px-2 text-slate-500 font-medium">Doanh thu</th>
+                  <th className="text-right py-3 px-2 text-slate-500 font-medium">Lợi nhuận</th>
+                  <th className="text-left py-3 px-2 text-slate-500 font-medium">Tỷ trọng</th>
                 </tr>
               </thead>
               <tbody>
-                {data.topProducts.map((item: any, i: number) => {
-                  const p = pct(item.revenue, data.topProducts.reduce((s: number, d: any) => s + d.revenue, 0));
+                {data.topProducts.map((item, i) => {
+                  const total = data.topProducts.reduce((s, d) => s + d.revenue, 0) || 1;
+                  const pct = Math.round((item.revenue / total) * 100);
                   return (
                     <tr key={i} className="border-b border-slate-50 hover:bg-slate-50">
                       <td className="py-2.5 px-2 font-medium text-slate-800">{item.name}</td>
                       <td className="py-2.5 px-2 text-right text-slate-700">{item.quantity}</td>
                       <td className="py-2.5 px-2 text-right text-slate-700">{fmtVnd(item.revenue)}</td>
                       <td className="py-2.5 px-2 text-right text-slate-700">{fmtVnd(item.profit)}</td>
-                      <td className="py-2.5 px-2"><div className="flex items-center gap-2"><div className="flex-1 bg-slate-100 rounded-full h-2"><div className="bg-indigo-500 h-2 rounded-full" style={{ width: p }} /></div><span className="text-slate-600 text-xs w-8">{p}</span></div></td>
+                      <td className="py-2.5 px-2">
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1 bg-slate-100 rounded-full h-2">
+                            <div className="bg-indigo-500 h-2 rounded-full" style={{ width: `${pct}%` }} />
+                          </div>
+                          <span className="text-slate-600 text-xs w-8">{pct}%</span>
+                        </div>
+                      </td>
                     </tr>
                   );
                 })}
@@ -421,19 +479,18 @@ function FinanceTab({ data, period }: { data: any; period: string }) {
 
 function OperationsTab({ data }: { data: any }) {
   if (!data) return <div className="text-slate-400 text-sm">Đang tải dữ liệu vận hành...</div>;
-
-  const stats = [
+  const opStats = [
     { label: 'Tổng số thiết bị', value: `${data.totalQuantity}`, icon: PackageIcon, color: 'bg-blue-500' },
     { label: 'Giá trị thiết bị', value: fmtVnd(data.totalValue), icon: DollarSign, color: 'bg-emerald-500' },
     { label: 'Tổng báo cáo', value: `${data.totalReports}`, icon: AlertTriangle, color: 'bg-orange-500' },
     { label: 'Chờ xử lý', value: `${data.pendingReports}`, trend: 'up', icon: Wrench, color: 'bg-red-500' },
   ];
 
-  const withPct = (arr: any[]) => arr.map(i => ({ ...i, pct: pct(i.value, arr.reduce((s, x) => s + x.value, 0)) }));
+  const withPct = (arr: any[]) => arr.map((i: any) => ({ ...i, pct: pct(i.value, arr.reduce((s: number, x: any) => s + x.value, 0)) }));
 
   const handleExport = () => {
     exportToExcel([
-      { name: 'Tong quan van hanh', headers: ['Chỉ số', 'Giá trị'], data: stats.map(s => ({ 'Chỉ số': s.label, 'Giá trị': s.value.replace('₫', '').trim() })) },
+      { name: 'Tong quan van hanh', headers: ['Chỉ số', 'Giá trị'], data: opStats.map(s => ({ 'Chỉ số': s.label, 'Giá trị': typeof s.value === 'string' ? s.value.replace('₫', '').trim() : s.value })) },
       { name: 'Tinh trang thiet bi', headers: ['Trạng thái', 'Số lượng', 'Tỷ trọng (%)'], data: withPct(data.equipmentStatus).map((i: any) => ({ 'Trạng thái': i.name, 'Số lượng': i.value, 'Tỷ trọng (%)': i.pct })) },
       { name: 'Phan loai su co', headers: ['Loại sự cố', 'Số báo cáo', 'Tỷ trọng (%)'], data: withPct(data.equipmentReports).map((i: any) => ({ 'Loại sự cố': i.name, 'Số báo cáo': i.value, 'Tỷ trọng (%)': i.pct })) },
       { name: 'Chi tiet bao cao', headers: ['Thiết bị', 'Loại sự cố', 'Số máy', 'Lý do', 'Thời gian', 'Trạng thái'], data: (data.reportDetails || []).map((r: any) => ({ 'Thiết bị': r.equipmentName, 'Loại sự cố': r.statusType, 'Số máy': r.affectedQuantity, 'Lý do': r.reason, 'Thời gian': r.reportedAt ? new Date(r.reportedAt).toLocaleDateString('vi-VN') : '', 'Trạng thái': r.status === 'pending' ? 'Chờ xử lý' : 'Hoàn thành' })) },
@@ -443,30 +500,46 @@ function OperationsTab({ data }: { data: any }) {
 
   return (
     <>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">{stats.map((stat, i) => <StatCard key={i} stat={stat} />)}</div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">{opStats.map((stat, i) => <StatCard key={i} stat={stat} />)}</div>
       <ExportBtn onClick={handleExport} />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Tình trạng thiết bị */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
           <h2 className="text-lg font-bold text-slate-900 mb-4">Tình trạng thiết bị</h2>
           <ResponsiveContainer width="100%" height={250}>
             <PieChart>
-              <Pie data={data.equipmentStatus} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={55} outerRadius={90} paddingAngle={3}>
-                {data.equipmentStatus.map((entry: any, i: number) => <Cell key={i} fill={entry.color} />)}
+              <Pie
+                data={data.equipmentStatus}
+                dataKey="value"
+                nameKey="name"
+                cx="50%"
+                cy="50%"
+                innerRadius={55}
+                outerRadius={90}
+                paddingAngle={3}
+              >
+                {data.equipmentStatus.map((entry, i) => (
+                  <Cell key={i} fill={entry.color} />
+                ))}
               </Pie>
               <Tooltip formatter={(v: number) => [`${v} máy`, '']} />
             </PieChart>
           </ResponsiveContainer>
           <div className="grid grid-cols-2 gap-2 mt-2">
-            {data.equipmentStatus.map((item: any, i: number) => (
+            {data.equipmentStatus.map((item, i) => (
               <div key={i} className="flex items-center justify-between text-xs">
-                <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: item.color }} /><span className="text-slate-600">{item.name}</span></div>
+                <div className="flex items-center gap-2">
+                  <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: item.color }} />
+                  <span className="text-slate-600">{item.name}</span>
+                </div>
                 <span className="font-semibold text-slate-800">{item.value}</span>
               </div>
             ))}
           </div>
         </div>
 
+        {/* Loại báo cáo hỏng hóc */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
           <h2 className="text-lg font-bold text-slate-900 mb-4">Phân loại sự cố thiết bị</h2>
           <ResponsiveContainer width="100%" height={250}>
@@ -476,27 +549,12 @@ function OperationsTab({ data }: { data: any }) {
               <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
               <Tooltip formatter={(v: number) => [`${v} báo cáo`, '']} />
               <Bar dataKey="value" name="Số báo cáo" radius={[6, 6, 0, 0]}>
-                {data.equipmentReports.map((_: any, i: number) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                {data.equipmentReports.map((_, i) => (
+                  <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                ))}
               </Bar>
             </BarChart>
           </ResponsiveContainer>
-          {data.reportDetails && data.reportDetails.length > 0 && (
-            <div className="mt-4 max-h-48 overflow-y-auto space-y-2">
-              {data.reportDetails.map((r: any, i: number) => (
-                <div key={i} className="flex items-center gap-3 text-xs bg-slate-50 rounded-lg px-3 py-2">
-                  <span className="font-medium text-slate-800 truncate min-w-0 max-w-[120px]">{r.equipmentName}</span>
-                  <span className={`px-1.5 py-0.5 rounded-full font-semibold shrink-0 ${
-                    r.statusType === 'bảo trì' ? 'bg-yellow-100 text-yellow-700' :
-                    r.statusType === 'hoạt động' ? 'bg-green-100 text-green-700' :
-                    'bg-red-100 text-red-700'
-                  }`}>{r.statusType}</span>
-                  <span className="text-slate-500 shrink-0">{r.affectedQuantity} máy</span>
-                  <span className="text-slate-400 truncate min-w-0">{r.reason}</span>
-                  {r.status === 'pending' && <span className="ml-auto shrink-0 px-1.5 py-0.5 rounded bg-orange-100 text-orange-600 font-medium">Chờ xử lý</span>}
-                </div>
-              ))}
-            </div>
-          )}
         </div>
       </div>
 

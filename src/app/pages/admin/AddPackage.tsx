@@ -16,7 +16,6 @@ interface Discipline {
 interface PackageFormData {
   name: string;
   disciplineId: string;
-  locationId: string;
   unitPrice: string;
 }
 
@@ -33,7 +32,6 @@ export function AddPackage() {
   } = useForm<PackageFormData>();
 
   const [disciplines, setDisciplines] = useState<Discipline[]>([]);
-  const [locations, setLocations] = useState<any[]>([]);
 
   const [features, setFeatures] = useState<string[]>([""]);
   const [durations, setDurations] = useState<
@@ -41,30 +39,19 @@ export function AddPackage() {
   >([{ months: "", discount: "" }]);
   const [ptSessionsPerMonth, setPtSessionsPerMonth] = useState("");
   const [isFullMonth, setIsFullMonth] = useState(false);
+  const [isCombo, setIsCombo] = useState(false);
+  const [selectedDisciplines, setSelectedDisciplines] = useState<string[]>([]);
   const [contractA, setContractA] = useState("");
   const [contractB, setContractB] = useState("");
   const [contractTerms, setContractTerms] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    const fetchLocations = async () => {
-      try {
-        const res = await fetch("/api/locations", { headers: headers as any });
-        if (res.ok) {
-          const data = await res.json();
-          setLocations(data);
-          if (selectedClub && selectedClub !== "all") {
-            setValue("locationId", selectedClub);
-          }
-        }
-      } catch {
-        toast.error("Không thể tải danh sách cơ sở");
-      }
-    };
-
+    const locId = selectedClub && selectedClub !== 'all' ? selectedClub : undefined;
     const fetchDisciplines = async () => {
       try {
-        const res = await fetch("/api/disciplines", { headers: headers as any });
+        const url = locId ? `/api/disciplines?locationId=${locId}` : "/api/disciplines";
+        const res = await fetch(url, { headers: headers as any });
         if (res.ok) {
           const data = await res.json();
           const list = Array.isArray(data) ? data : data.data || [];
@@ -74,11 +61,9 @@ export function AddPackage() {
         toast.error("Không thể tải danh sách bộ môn");
       }
     };
-
-    fetchLocations();
     fetchDisciplines();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [selectedClub]);
 
   const addFeature = () => setFeatures([...features, ""]);
   const removeFeature = (index: number) =>
@@ -104,12 +89,20 @@ export function AddPackage() {
   };
 
   const onSubmit = async (data: PackageFormData) => {
+    if (isCombo && selectedDisciplines.length === 0) {
+      toast.error('Vui lòng chọn ít nhất một bộ môn cho gói combo');
+      setSubmitting(false);
+      return;
+    }
     setSubmitting(true);
     try {
+      const locId = selectedClub && selectedClub !== 'all' ? selectedClub : undefined;
       const body: any = {
         name: data.name,
-        disciplineId: data.disciplineId,
-        locationId: data.locationId,
+        disciplineId: isCombo ? null : data.disciplineId,
+        combo: isCombo,
+        disciplines: isCombo ? selectedDisciplines : [],
+        locationId: locId,
         unitPrice: Number(data.unitPrice),
         features: features.filter((f) => f.trim()),
         ptSessionsPerMonth: isFullMonth ? 0 : (Number(ptSessionsPerMonth) || 0),
@@ -171,50 +164,75 @@ export function AddPackage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Cơ sở (Chi nhánh) <span className="text-red-500">*</span>
+                <label className="flex items-center gap-3 mb-4 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={isCombo}
+                    onChange={(e) => {
+                      setIsCombo(e.target.checked);
+                      if (!e.target.checked) setSelectedDisciplines([]);
+                    }}
+                    className="w-5 h-5 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500"
+                  />
+                  <span className="text-sm font-medium text-slate-700">Gói Combo (nhiều bộ môn)</span>
                 </label>
-                <select
-                  {...register("locationId", {
-                    required: "Vui lòng chọn cơ sở chi nhánh",
-                  })}
-                  className={`w-full p-3 border ${errors.locationId ? "border-red-400" : "border-slate-200"} rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500`}
-                >
-                  <option value="">Chọn cơ sở</option>
-                  {locations.map((loc) => (
-                    <option key={loc._id} value={loc._id}>
-                      {loc.address || loc.title}
-                    </option>
-                  ))}
-                </select>
-                {errors.locationId && (
-                  <span className="text-red-500 text-sm mt-1">
-                    {errors.locationId.message}
-                  </span>
-                )}
-              </div>
 
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Bộ môn <span className="text-red-500">*</span>
-                </label>
-                <select
-                  {...register("disciplineId", {
-                    required: "Vui lòng chọn bộ môn",
-                  })}
-                  className={`w-full p-3 border ${errors.disciplineId ? "border-red-400" : "border-slate-200"} rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500`}
-                >
-                  <option value="">Chọn bộ môn</option>
-                  {disciplines.map((d) => (
-                    <option key={d._id} value={d._id}>
-                      {d.name}
-                    </option>
-                  ))}
-                </select>
-                {errors.disciplineId && (
-                  <span className="text-red-500 text-sm mt-1">
-                    {errors.disciplineId.message}
-                  </span>
+                {isCombo ? (
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">
+                      Chọn các bộ môn <span className="text-red-500">*</span>
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      {disciplines.map((d) => {
+                        const active = selectedDisciplines.includes(d._id);
+                        return (
+                          <button
+                            key={d._id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedDisciplines(prev =>
+                                active ? prev.filter(id => id !== d._id) : [...prev, d._id]
+                              );
+                            }}
+                            className={`px-4 py-2 rounded-xl text-sm font-medium border-2 transition-all ${
+                              active
+                                ? 'bg-indigo-600 text-white border-indigo-600'
+                                : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'
+                            }`}
+                          >
+                            {d.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {errors.disciplineId && (
+                      <span className="text-red-500 text-sm mt-1">Vui lòng chọn ít nhất một bộ môn</span>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">
+                      Bộ môn <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      {...register("disciplineId", {
+                        required: !isCombo ? "Vui lòng chọn bộ môn" : false,
+                      })}
+                      className={`w-full p-3 border ${errors.disciplineId ? "border-red-400" : "border-slate-200"} rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+                    >
+                      <option value="">Chọn bộ môn</option>
+                      {disciplines.map((d) => (
+                        <option key={d._id} value={d._id}>
+                          {d.name}
+                        </option>
+                      ))}
+                    </select>
+                    {errors.disciplineId && (
+                      <span className="text-red-500 text-sm mt-1">
+                        {errors.disciplineId.message}
+                      </span>
+                    )}
+                  </>
                 )}
               </div>
 

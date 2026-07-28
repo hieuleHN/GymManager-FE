@@ -98,7 +98,6 @@ export function ExpenseManagement() {
     };
     fetchEquipmentCost();
   }, [selectedClub]);
-
   const getCategoryIcon = (category: Expense['category']) => {
     switch (category) {
       case 'equipment': return <Wrench className="w-5 h-5" />;

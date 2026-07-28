@@ -38,6 +38,14 @@ export function AttendanceScanner() {
     const [scanResult, setScanResult] = useState<{ success: boolean; message: string } | null>(null);
     const [history, setHistory] = useState<CheckInRecord[]>([]);
     const [isCameraActive, setIsCameraActive] = useState<boolean>(false);
+    const [staffResult, setStaffResult] = useState<{
+        active: boolean; name: string; job?: string; phone?: string;
+        shift?: { type: string; start: string; end: string } | null;
+        status: string; checkInTime?: string; checkOutTime?: string;
+        minutesLate?: number; minutesEarly?: number; overtime?: number; totalMinutes?: number;
+        todayBonus?: number; todayPenalty?: number;
+        message: string;
+    } | null>(null);
 
     // Khối lưu trữ thông tin hội viên hiện tại đang chờ xác nhận
     const [scannedCustomer, setScannedCustomer] = useState<ScannedCustomer | null>(null);
@@ -78,6 +86,8 @@ export function AttendanceScanner() {
         setLoading(true);
         setScanResult(null);
 
+        // Thử check-in hội viên trước
+        let memberSuccess = false;
         try {
             const response = await axios.post(`${getApiUrl()}/api/checkin/verify`, {
                 token: tokenString
@@ -97,57 +107,71 @@ export function AttendanceScanner() {
             };
 
             setScannedCustomer(matchedInfo);
-
-            // LẬP TỨC GHI NHỚ VÀO BỘ NHỚ ĐỆM ĐỂ PHỤC VỤ CHỐNG LỖI HIỂN THỊ
-            lastScannedRef.current = {
-                memberCode: verifiedCode,
-                fullName: verifiedName
-            };
+            lastScannedRef.current = { memberCode: verifiedCode, fullName: verifiedName };
 
             if (scannerRef.current) {
                 scannerRef.current.clear().catch(() => { });
                 setIsCameraActive(false);
             }
-
+            memberSuccess = true;
         } catch (err: any) {
-            const resData = err.response?.data;
-            const customerData = resData?.customer || resData?.member || resData?.user || resData?.data;
-            const errMsg = resData?.error || resData?.message || 'Mã QR không hợp lệ hoặc đã hết hạn';
+            memberSuccess = false;
+        }
 
-            // XỬ LÝ DỮ LIỆU THÔNG MINH KHI GẶP LỖI (VÍ DỤ LỖI TRÙNG):
-            // Lần lượt lấy từ: Backend trả về -> Nếu trống lấy từ bộ nhớ đệm Ref vừa quét -> Nếu trống lấy từ lịch sử
-            let failedCode = customerData?.memberCode || customerData?.code || customerData?.id || '';
-            let failedName = customerData?.fullName || customerData?.customerName || customerData?.name || '';
+        if (!memberSuccess) {
+            // Thử check-in/out nhân viên
+            try {
+                const staffRes = await axios.post(`${getApiUrl()}/api/staff-attendance/verify`, {
+                    token: tokenString
+                });
 
-            if (!failedName && lastScannedRef.current) {
-                failedCode = lastScannedRef.current.memberCode;
-                failedName = lastScannedRef.current.fullName;
-            } else if (!failedName && history.length > 0) {
-                const historicalMatch = history.find(h => h.memberCode && h.memberCode !== 'QR-LỖI');
-                if (historicalMatch) {
-                    failedCode = historicalMatch.memberCode;
-                    failedName = historicalMatch.customerName;
+                const staffData = staffRes.data;
+                const staffName = staffData.staff?.fullName || 'Nhân viên';
+                const staffMsg = staffData.message || 'Thành công';
+                const staffJob = staffData.staff?.job || '';
+                const staffPhone = staffData.staff?.phone || '';
+
+                let fullMsg = staffMsg;
+                if (staffData.minutesLate) fullMsg += ` (muộn ${staffData.minutesLate}p)`;
+                if (staffData.minutesEarly) fullMsg += ` (về sớm ${staffData.minutesEarly}p)`;
+                if (staffData.overtime) fullMsg += ` (tăng ca ${staffData.overtime}p)`;
+                if (staffData.totalMinutes) fullMsg += ` - Tổng: ${Math.floor(staffData.totalMinutes / 60)}h${staffData.totalMinutes % 60}p`;
+
+                setHistory(prev => [{
+                    id: Math.random().toString(),
+                    memberCode: 'NV',
+                    customerName: `${staffName}${staffJob ? ` (${staffJob})` : ''}`,
+                    time: new Date().toLocaleTimeString('vi-VN'),
+                    status: 'success',
+                    message: fullMsg
+                }, ...prev]);
+
+                setStaffResult({ active: true, name: staffName, job: staffJob, phone: staffPhone, shift: staffData.shift, status: staffData.status, checkInTime: staffData.checkInTime, checkOutTime: staffData.checkOutTime, minutesLate: staffData.minutesLate, minutesEarly: staffData.minutesEarly, overtime: staffData.overtime, totalMinutes: staffData.totalMinutes, todayBonus: staffData.todayBonus, todayPenalty: staffData.todayPenalty, message: fullMsg });
+                setTimeout(() => setStaffResult(null), 5000);
+
+                if (scannerRef.current) {
+                    scannerRef.current.clear().catch(() => { });
+                    setIsCameraActive(false);
                 }
+            } catch (staffErr: any) {
+                const resData = (staffErr as any).response?.data;
+                const staffErrMsg = resData?.error || resData?.message || 'Mã QR không hợp lệ hoặc đã hết hạn';
+                const staffErrName = resData?.staff?.fullName || 'Nhân viên';
+
+                setScanResult({
+                    success: false,
+                    message: staffErrName ? `${staffErrName}: ${staffErrMsg}` : staffErrMsg
+                });
+
+                setHistory(prev => [{
+                    id: Math.random().toString(),
+                    memberCode: 'NV',
+                    customerName: `${staffErrName}${resData?.staff?.job ? ` (${resData.staff.job})` : ''}`,
+                    time: new Date().toLocaleTimeString('vi-VN'),
+                    status: 'failed',
+                    message: staffErrName ? `${staffErrName}: ${staffErrMsg}` : staffErrMsg
+                }, ...prev]);
             }
-
-            const finalCode = failedCode || 'QR-LỖI';
-            const finalName = failedName || 'Mã QR không xác định';
-
-            // Hiển thị thông điệp lỗi rõ ràng kèm Tên + Mã hội viên lên thanh cảnh báo đỏ đầu trang
-            setScanResult({
-                success: false,
-                message: failedName ? `${finalName} (${finalCode}): ${errMsg}` : errMsg
-            });
-
-            // Đẩy bản ghi lỗi vào lịch sử, định dạng chuẩn xác thông tin để tránh trùng lặp
-            setHistory(prev => [{
-                id: Math.random().toString(),
-                memberCode: finalCode,
-                customerName: finalName,
-                time: new Date().toLocaleTimeString('vi-VN'),
-                status: 'failed',
-                message: failedName ? `${finalName} (${finalCode}) ${errMsg.toLowerCase()}` : errMsg
-            }, ...prev]);
         } subSequence: {
             setLoading(false);
         }
@@ -243,7 +267,7 @@ export function AttendanceScanner() {
                         <UserCheck className="w-8 h-8 text-indigo-600" />
                         Điểm danh QR
                     </h1>
-                    <p className="text-sm text-slate-600 font-medium">Quét nhận diện hội viên hoặc nhập đối chiếu dữ liệu vào cửa tự động</p>
+                    <p className="text-sm text-slate-600 font-medium">Quét QR hội viên (check-in) / QR nhân viên (chấm công)</p>
                 </div>
 
                 {/* Khối thanh thông báo lỗi sắc nét đầu trang */}
@@ -368,16 +392,19 @@ export function AttendanceScanner() {
                                         <div key={item.id} className="bg-slate-50 border border-slate-200 p-3.5 rounded-xl flex items-center justify-between text-xs shadow-sm w-full animate-[fadeIn_0.2s_ease-out]">
                                             <div className="space-y-1">
                                                 {/* Tiêu đề dòng hiển thị Họ tên thật + Thẻ mã số đồng bộ */}
-                                                <div className="font-bold text-slate-900 text-sm flex items-center gap-2">
-                                                    <span>{item.customerName}</span>
-                                                    <span className="text-[10px] font-mono text-purple-700 bg-purple-100 px-2 py-0.5 rounded font-black">
-                                                        Mã: {item.memberCode}
-                                                    </span>
-                                                </div>
-                                                {/* Câu thông báo nội dung chi tiết dạng chuỗi tường minh */}
-                                                <div className={`text-[11px] font-semibold leading-relaxed ${item.status === 'success' ? 'text-emerald-600' : 'text-red-600'}`}>
-                                                    {item.message}
-                                                </div>
+                                        <div className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                                            <span>{item.customerName}</span>
+                                            {item.memberCode === 'NV' ? (
+                                                <span className="text-[10px] font-mono text-blue-700 bg-blue-100 px-2 py-0.5 rounded font-black">NV</span>
+                                            ) : (
+                                                <span className="text-[10px] font-mono text-purple-700 bg-purple-100 px-2 py-0.5 rounded font-black">
+                                                    Mã: {item.memberCode}
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div className={`text-[11px] font-semibold leading-relaxed ${item.status === 'success' ? 'text-emerald-600' : 'text-red-600'}`}>
+                                            {item.message}
+                                        </div>
                                             </div>
                                             <div className="text-right space-y-1 shrink-0 ml-4">
                                                 <div className="text-[11px] text-slate-700 font-mono font-bold">{item.time}</div>
@@ -392,6 +419,87 @@ export function AttendanceScanner() {
                     </div>
                 </div>
             </div>
+
+            {/* OVERLAY POPUP THÔNG BÁO STAFF CHECK-IN/OUT */}
+            {staffResult?.active && (
+                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in">
+                    <div className={`bg-white border max-w-sm w-full rounded-2xl p-6 shadow-2xl flex flex-col items-center text-center mx-4 border-t-4 animate-[slideDown_0.3s_cubic-bezier(0.16,1,0.3,1)] ${staffResult.status === 'checked-out' ? 'border-t-blue-500' : 'border-t-emerald-500'}`}>
+                        <div className={`w-14 h-14 border-4 rounded-full flex items-center justify-center mb-4 ${staffResult.status === 'checked-out' ? 'bg-blue-50 border-blue-500' : 'bg-emerald-50 border-emerald-500'}`}>
+                            <UserCheck className={`w-6 h-6 stroke-[3] ${staffResult.status === 'checked-out' ? 'text-blue-500' : 'text-emerald-500'}`} />
+                        </div>
+                        <h2 className="text-xl font-extrabold text-slate-900 tracking-tight">
+                            {staffResult.status === 'checked-out' ? 'Check-out' : 'Check-in'}
+                        </h2>
+                        <p className="text-lg font-extrabold text-slate-900 mt-1">{staffResult.name}</p>
+                        {staffResult.job && <p className="text-sm text-slate-500">{staffResult.job}</p>}
+                        {staffResult.phone && <p className="text-xs text-slate-400 mt-0.5">{staffResult.phone}</p>}
+
+                        <div className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3.5 mt-4 space-y-1.5 text-left text-xs">
+                            {staffResult.shift && (
+                                <div className="flex justify-between">
+                                    <span className="text-slate-500">Ca:</span>
+                                    <span className="font-semibold text-slate-800">
+                                        {staffResult.shift.type === 'morning-noon' ? 'Sáng-Trưa' : 'Chiều-Tối'}
+                                        ({staffResult.shift.start}-{staffResult.shift.end})
+                                    </span>
+                                </div>
+                            )}
+                            {staffResult.checkInTime && (
+                                <div className="flex justify-between">
+                                    <span className="text-slate-500">Giờ vào:</span>
+                                    <span className="font-semibold text-slate-800">{new Date(staffResult.checkInTime).toLocaleTimeString('vi-VN')}</span>
+                                </div>
+                            )}
+                            {staffResult.checkOutTime && (
+                                <div className="flex justify-between">
+                                    <span className="text-slate-500">Giờ ra:</span>
+                                    <span className="font-semibold text-slate-800">{new Date(staffResult.checkOutTime).toLocaleTimeString('vi-VN')}</span>
+                                </div>
+                            )}
+                            {staffResult.minutesLate ? (
+                                <div className="flex justify-between text-red-600 font-semibold">
+                                    <span>Đi muộn:</span>
+                                    <span>{staffResult.minutesLate} phút</span>
+                                </div>
+                            ) : null}
+                            {staffResult.minutesEarly ? (
+                                <div className="flex justify-between text-amber-600 font-semibold">
+                                    <span>Về sớm:</span>
+                                    <span>{staffResult.minutesEarly} phút</span>
+                                </div>
+                            ) : null}
+                            {staffResult.overtime ? (
+                                <div className="flex justify-between text-green-600 font-semibold">
+                                    <span>Tăng ca:</span>
+                                    <span>{staffResult.overtime} phút</span>
+                                </div>
+                            ) : null}
+                            {staffResult.totalMinutes ? (
+                                <div className="flex justify-between border-t border-slate-200 pt-1.5 mt-1.5 font-bold text-slate-800">
+                                    <span>Tổng thời gian:</span>
+                                    <span>{Math.floor(staffResult.totalMinutes / 60)}h{staffResult.totalMinutes % 60}p</span>
+                                </div>
+                            ) : null}
+                            {staffResult.status === 'checked-out' && (
+                                <>
+                                    {staffResult.todayBonus ? (
+                                        <div className="flex justify-between text-emerald-600 font-semibold">
+                                            <span>Thưởng hôm nay:</span>
+                                            <span>+{staffResult.todayBonus.toLocaleString('vi-VN')}₫</span>
+                                        </div>
+                                    ) : null}
+                                    {staffResult.todayPenalty ? (
+                                        <div className="flex justify-between text-red-600 font-semibold">
+                                            <span>Phạt hôm nay:</span>
+                                            <span>-{staffResult.todayPenalty.toLocaleString('vi-VN')}₫</span>
+                                        </div>
+                                    ) : null}
+                                </>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* OVERLAY POPUP THÔNG BÁO THÀNH CÔNG RỚT TỪ TRÊN XUỐNG */}
             {successAnimation?.active && (
