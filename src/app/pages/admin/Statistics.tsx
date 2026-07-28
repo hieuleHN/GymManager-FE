@@ -67,7 +67,6 @@ const fallbackFinance = {
     { name: 'Vitamin', price: 100_000, quantity: 95, revenue: 9_500_000 },
   ],
 };
-const fallbackFinance = emptyFinance;
 
 export function Statistics() {
   const [tab, setTab] = useState<'finance' | 'operations' | 'activity'>('finance');
