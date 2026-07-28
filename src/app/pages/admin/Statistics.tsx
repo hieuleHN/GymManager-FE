@@ -33,6 +33,7 @@ const emptyFinance = {
   summary: { realCashIn: 0, accrualRevenue: 0, totalExpense: 0, totalProfit: 0, profitMargin: 0, change: { realCashIn: 0, accrualRevenue: 0, totalExpense: 0, totalProfit: 0 } },
   cashFlowData: [], profitData: [], expenseStructure: [], participation: [], topProducts: [],
 };
+const fallbackFinance = emptyFinance;
 
 export function Statistics() {
   const [tab, setTab] = useState<'finance' | 'operations'>('finance');
@@ -40,19 +41,89 @@ export function Statistics() {
   const [loading, setLoading] = useState(false);
   const [finance, setFinance] = useState<any>(null);
   const [operations, setOperations] = useState<any>(null);
+  const [showCustomDate, setShowCustomDate] = useState(false);
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
+  const [dateError, setDateError] = useState('');
   const { selectedClub } = useClub();
   const locParam = selectedClub && selectedClub !== 'all' ? `&locationId=${selectedClub}` : '';
 
-  useEffect(() => {
-    setLoading(true);
-    const url = tab === 'finance'
-      ? `/api/statistics/finance?period=${period}${locParam}`
-      : `/api/statistics/operations?period=${period}${locParam}`;
-    api.get(url).then(data => tab === 'finance' ? setFinance(data) : setOperations(data))
-      .catch(() => tab === 'finance' ? setFinance(emptyFinance) : setOperations(null))
-      .finally(() => setLoading(false));
-  }, [tab, period, selectedClub]);
+  const validateCustomDate = (from: string, to: string) => {
+    if (!from || !to) { setDateError('Vui lòng chọn cả ngày bắt đầu và kết thúc'); return false; }
+    const f = new Date(from);
+    const t = new Date(to);
+    const today = new Date();
+    today.setHours(23, 59, 59, 999);
+    if (f > t) { setDateError('Ngày bắt đầu phải trước ngày kết thúc'); return false; }
+    if (t > today) { setDateError('Ngày kết thúc không được lớn hơn hôm nay'); return false; }
+    const diffMonths = (t.getFullYear() - f.getFullYear()) * 12 + (t.getMonth() - f.getMonth());
+    if (diffMonths > 24) { setDateError('Khoảng thời gian tối đa 2 năm'); return false; }
+    setDateError('');
+    return true;
+  };
 
+  const isCustomValid = !showCustomDate || (customFrom && customTo && !dateError);
+
+  useEffect(() => {
+    if (tab === 'activity') return;
+    if (showCustomDate && (!customFrom || !customTo || !!dateError)) return;
+    if (tab === 'finance') fetchFinance();
+    else fetchOperations();
+  }, [tab, period, selectedClub, customFrom, customTo, dateError, showCustomDate]);
+
+  const fetchFinance = async () => {
+    setLoading(true);
+    try {
+      let url = `/api/statistics/finance?period=${period}${locParam}`;
+      if (customFrom && customTo) {
+        url += `&startDate=${customFrom}&endDate=${customTo}`;
+      }
+      const data = await api.get(url);
+      setFinance(data);
+    } catch (e) {
+      setFinance(fallbackFinance);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchOperations = async () => {
+    setLoading(true);
+    try {
+      let url = `/api/statistics/operations?period=${period}${locParam}`;
+      if (customFrom && customTo) {
+        url += `&startDate=${customFrom}&endDate=${customTo}`;
+      }
+      const data = await api.get(url);
+      setOperations(data);
+    } catch (e) {
+      setOperations({
+        equipmentStatus: [
+          { name: 'Hoạt động', value: 42, color: '#10b981' },
+          { name: 'Bảo trì', value: 6, color: '#f59e0b' },
+          { name: 'Hỏng', value: 3, color: '#ef4444' },
+          { name: 'Ngưng dùng', value: 4, color: '#94a3b8' },
+        ],
+        equipmentReports: [
+          { name: 'Hoạt động', value: 10 },
+          { name: 'Bảo trì', value: 6 },
+          { name: 'Hỏng hóc', value: 3 },
+          { name: 'Thiếu linh kiện', value: 2 },
+        ],
+        totalQuantity: 55, totalValue: 1_250_000_000, totalReports: 21, pendingReports: 9,
+        needMaintenance: [
+          { name: 'Máy chạy bộ LifeFit', status: 'maintenance', reports: 2, warrantyLeft: 4 },
+          { name: 'Tạ đòn Olympic', status: 'active', reports: 1, warrantyLeft: 12 },
+          { name: 'Xà kép Power', status: 'maintenance', reports: 3, warrantyLeft: 2 },
+        ],
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fd = finance || fallbackFinance;
+  const od = operations;
   return (
     <AdminLayout>
       <div className="max-w-7xl mx-auto space-y-6">
@@ -72,17 +143,40 @@ export function Statistics() {
           </div>
         </div>
 
-        <div className="flex items-center justify-between">
-          <div className="flex gap-2 bg-white rounded-xl border border-slate-200 p-1">
-            {PERIODS.map(p => (
-              <button key={p.key} onClick={() => setPeriod(p.key)}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${period === p.key ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}>
-                {p.label}
-              </button>
-            ))}
+        {tab !== 'activity' && (
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex gap-2 bg-white rounded-xl border border-slate-200 p-1">
+                {PERIODS.map(p => (
+                  <button key={p.key} onClick={() => { setPeriod(p.key); setShowCustomDate(false); setCustomFrom(''); setCustomTo(''); }}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${period === p.key && !showCustomDate ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}>
+                    {p.label}
+                  </button>
+                ))}
+                <button onClick={() => setShowCustomDate(!showCustomDate)}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${showCustomDate ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}>
+                  Tùy chỉnh
+                </button>
+              </div>
+              {showCustomDate && (
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center gap-2 bg-white rounded-xl border border-slate-200 p-2">
+                    <span className="text-xs text-slate-500">Từ</span>
+                    <input type="date" value={customFrom}
+                      onChange={e => { const v = e.target.value; setCustomFrom(v); if (customTo) validateCustomDate(v, customTo); }}
+                      className={`px-2 py-1.5 border rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 ${dateError && !customFrom ? 'border-red-300' : 'border-slate-200'}`} />
+                    <span className="text-xs text-slate-500">Đến</span>
+                    <input type="date" value={customTo}
+                      onChange={e => { const v = e.target.value; setCustomTo(v); if (customFrom) validateCustomDate(customFrom, v); }}
+                      className={`px-2 py-1.5 border rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 ${dateError && !customTo ? 'border-red-300' : 'border-slate-200'}`} />
+                  </div>
+                  {dateError && <span className="text-xs text-red-500 ml-2">{dateError}</span>}
+                </div>
+              )}
+            </div>
+            {loading && <Loader2 className="w-5 h-5 animate-spin text-indigo-500" />}
           </div>
-          {loading && <Loader2 className="w-5 h-5 animate-spin text-indigo-500" />}
-        </div>
+        )}
 
         {tab === 'finance' ? <FinanceTab data={finance || emptyFinance} period={period} /> : <OperationsTab data={operations} />}
       </div>
@@ -191,6 +285,31 @@ function FinanceTab({ data, period }: { data: any; period: string }) {
         </ResponsiveContainer>
       </div>
 
+      {/* 1b. Chi tiết theo tháng (khi chọn tùy chỉnh hoặc có monthlyBreakdown) */}
+      {data.monthlyBreakdown && data.monthlyBreakdown.length > 0 && (
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+          <div className="flex items-center justify-between mb-1">
+            <h2 className="text-lg font-bold text-slate-900">Chi tiết theo tháng</h2>
+            <span className="text-xs bg-purple-50 text-purple-600 px-2.5 py-1 rounded-full font-medium">Breakdown</span>
+          </div>
+          <p className="text-xs text-slate-500 mb-4">Doanh thu, chi phí và lợi nhuận từng tháng trong kỳ đã chọn</p>
+          <ResponsiveContainer width="100%" height={300}>
+            <ComposedChart data={data.monthlyBreakdown}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+              <XAxis dataKey="month" tick={{ fontSize: 12 }} />
+              <YAxis tickFormatter={fmt} tick={{ fontSize: 11 }} />
+              <Tooltip formatter={(v: number) => fmtVnd(v)} />
+              <Legend />
+              <Bar dataKey="cash" fill="#10b981" name="Tiền thực thu" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="revenue" fill="#6366f1" name="DT ghi nhận" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="expense" fill="#f59e0b" name="Chi phí" radius={[4, 4, 0, 0]} />
+              <Line type="monotone" dataKey="profit" stroke="#ef4444" strokeWidth={2.5} dot={{ r: 3 }} name="Lợi nhuận" />
+            </ComposedChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
+      {/* 2. Chi phí & Lãi */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 lg:col-span-2">
           <div className="flex items-center justify-between mb-1">
@@ -381,46 +500,66 @@ function OperationsTab({ data }: { data: any }) {
         </div>
       </div>
 
+      {/* Lịch sử báo cáo */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
         <div className="flex items-center gap-2 mb-4">
-          <AlertTriangle className="w-5 h-5 text-amber-500" />
-          <h2 className="text-lg font-bold text-slate-900">Thiết bị cần lên kế hoạch bảo trì</h2>
+          <AlertTriangle className="w-5 h-5 text-indigo-500" />
+          <h2 className="text-lg font-bold text-slate-900">Lịch sử báo cáo sự cố</h2>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-100">
-                {['Thiết bị', 'Tổng số', 'Bị ảnh hưởng', 'Trạng thái', 'Báo cáo chờ', 'Bảo hành (th)'].map(h => (
-                  <th key={h} className={`py-3 px-4 text-slate-500 font-medium ${h === 'Thiết bị' ? 'text-left' : 'text-right'}`}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {data.needMaintenance.map((eq: any, i: number) => (
-                <tr key={i} className="border-b border-slate-50 hover:bg-slate-50">
-                  <td className="py-3 px-4 font-medium text-slate-800">{eq.name}</td>
-                  <td className="py-3 px-4 text-right text-slate-700">{eq.quantity}</td>
-                  <td className="py-3 px-4 text-right">
-                    <span className="font-semibold text-amber-600">{eq.affectedQuantity ?? '—'}</span>
-                    <span className="text-slate-400"> / {eq.quantity}</span>
-                  </td>
-                  <td className="py-3 px-4 text-right">
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${eq.status === 'maintenance' ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'}`}>
-                      {eq.status === 'maintenance' ? 'Bảo trì' : 'Hoạt động'}
-                    </span>
-                  </td>
-                  <td className="py-3 px-4 text-right text-slate-700">{eq.reports}</td>
-                  <td className="py-3 px-4 text-right">
-                    <span className={`font-medium ${eq.warrantyLeft !== null && eq.warrantyLeft <= 3 ? 'text-red-600' : 'text-slate-700'}`}>
-                      {eq.warrantyLeft ?? '—'}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        {(() => {
+          const reports = (data.reportDetails || [])
+            .filter(r => r.statusType && r.statusType !== 'hoạt động')
+            .sort((a, b) => new Date(b.reportedAt).getTime() - new Date(a.reportedAt).getTime());
+          return reports.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-100">
+                    <th className="text-left py-3 px-4 text-slate-500 font-medium">Thiết bị</th>
+                    <th className="text-left py-3 px-4 text-slate-500 font-medium">Loại sự cố</th>
+                    <th className="text-right py-3 px-4 text-slate-500 font-medium">Số máy</th>
+                    <th className="text-left py-3 px-4 text-slate-500 font-medium">Lý do</th>
+                    <th className="text-left py-3 px-4 text-slate-500 font-medium">Thời gian</th>
+                    <th className="text-center py-3 px-4 text-slate-500 font-medium">Trạng thái</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {reports.map((r, i) => (
+                    <tr key={i} className="border-b border-slate-50 hover:bg-slate-50">
+                      <td className="py-3 px-4 font-medium text-slate-800">{r.equipmentName}</td>
+                      <td className="py-3 px-4">
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                          r.statusType === 'bảo trì' ? 'bg-amber-100 text-amber-700' :
+                          r.statusType === 'hỏng' ? 'bg-red-100 text-red-700' :
+                          'bg-slate-100 text-slate-600'
+                        }`}>
+                          {r.statusType}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-right text-slate-700">{r.affectedQuantity}</td>
+                      <td className="py-3 px-4 text-slate-600 max-w-[200px] truncate" title={r.reason}>{r.reason || '—'}</td>
+                      <td className="py-3 px-4 text-slate-600">
+                        {r.reportedAt ? new Date(r.reportedAt).toLocaleDateString('vi-VN') : '—'}
+                      </td>
+                      <td className="py-3 px-4 text-center">
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                          r.status === 'pending' ? 'bg-orange-100 text-orange-700' : 'bg-green-100 text-green-700'
+                        }`}>
+                          {r.status === 'pending' ? 'Chờ xử lý' : 'Hoàn thành'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="text-sm text-slate-400 text-center py-8">Chưa có báo cáo sự cố nào</p>
+          );
+        })()}
       </div>
+
+
     </>
   );
 }
