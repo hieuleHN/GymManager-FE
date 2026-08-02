@@ -1,5 +1,6 @@
 
 import { useState, useRef, useEffect } from "react";
+import { useForm } from "react-hook-form";
 
 import {
   UploadCloud,
@@ -28,13 +29,12 @@ export function Recruitment() {
   // Thêm state để lưu danh sách công việc gọi từ DB
   const [jobOptions, setJobOptions] = useState<any[]>([]);
 
-  const [formData, setFormData] = useState({
-    fullName: "",
-    email: "",
-    phone: "",
-    position: "",
-    description: "",
-  });
+  const {
+    register,
+    handleSubmit: formHandleSubmit,
+    formState: { errors },
+    reset,
+  } = useForm<RecruitmentFormData>();
 
   // Gọi API lấy danh sách công việc khi load trang
   useEffect(() => {
@@ -59,20 +59,17 @@ export function Recruitment() {
         setJobOptions(validJobs);
       } catch (error) {
         console.error("Lỗi khi kéo dữ liệu công việc:", error);
+        setJobOptions([
+          { name: "Huấn luyện viên (PT)" },
+          { name: "Lễ tân" },
+          { name: "Sale / Tư vấn viên" },
+          { name: "Quản lý câu lạc bộ" },
+        ]);
       }
     };
 
     fetchJobs();
   }, []);
-
-  const handleChange = (
-    e: React.ChangeEvent<
-      HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
-    >,
-  ) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
-  };
-
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {

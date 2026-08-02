@@ -16,6 +16,7 @@ import {
   QrCode,
   Calendar,
   Check,
+  FileText,
   XCircle,
   Loader2,
   AlertCircle,
@@ -210,6 +211,7 @@ export function Layout() {
     },
     { name: "Gói tập", href: "/packages", icon: CreditCard },
     { name: "Huấn luyện viên", href: "/trainers", icon: Users },
+    { name: "Bài viết", href: "/articles", icon: FileText },
   ];
 
   if (user) {
