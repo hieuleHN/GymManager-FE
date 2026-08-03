@@ -84,86 +84,181 @@ export async function exportFinanceExcel(
   ws1.getCell(9, 1).font = { bold: true };
   setColWidths(ws1, [25, 20, 15, 12]);
 
-  // ── Sheet 2: Dòng tiền & Doanh thu ──
+  // ── Sheet 2: Dòng tiền & Doanh thu chi tiết ──
   const ws2 = wb.addWorksheet('Dòng tiền & Doanh thu');
-  ws2.mergeCells('A1:E1');
+  ws2.mergeCells('A1:F1');
   ws2.getCell('A1').value = 'Dòng tiền thực thu vs Doanh thu ghi nhận';
   ws2.getCell('A1').font = { bold: true, size: 13 };
 
-  addTableHeader(ws2, 3, ['Tháng', 'Tiền thực thu', 'DT ghi nhận', 'Chi phí', 'Lợi nhuận']);
+  // Bảng dòng tiền bên trái (A-C)
+  addTableHeader(ws2, 3, ['Tháng', 'DT thực thu', 'DT ghi nhận']);
   cashFlow.forEach((cf: any, i: number) => {
-    const pd = profit[i] || {};
-    addDataRow(ws2, 4 + i, [cf.month, cf.cash, cf.revenue, pd.expense ?? 0, pd.profit ?? 0], [1, 2, 3, 4]);
+    addDataRow(ws2, 4 + i, [cf.month, cf.cash, cf.revenue], [1, 2]);
   });
   if (cashFlow.length > 0) {
     const tRow = 4 + cashFlow.length;
-    const totals = cashFlow.reduce((a: any, cf: any, i: number) => {
-      const pd = profit[i] || {};
-      return { cash: a.cash + (cf.cash || 0), rev: a.rev + (cf.revenue || 0), exp: a.exp + (pd.expense || 0), prof: a.prof + (pd.profit || 0) };
-    }, { cash: 0, rev: 0, exp: 0, prof: 0 });
-    addTotalRow(ws2, tRow, ['TỔNG CỘNG', totals.cash, totals.rev, totals.exp, totals.prof], [1, 2, 3, 4]);
+    const totals = cashFlow.reduce((a: any, cf: any) => {
+      return { cash: a.cash + (cf.cash || 0), rev: a.rev + (cf.revenue || 0) };
+    }, { cash: 0, rev: 0 });
+    addTotalRow(ws2, tRow, ['TỔNG CỘNG', totals.cash, totals.rev], [1, 2]);
   }
-  setColWidths(ws2, [12, 18, 18, 18, 18]);
+
+  // Bảng doanh thu chi tiết bên phải (E-I)
+  const revenueDetails = data?.revenueDetails || [];
+  const detailStartCol = 5; // cột E
+  ws2.getCell(3, detailStartCol).value = 'Loại dịch vụ';
+  ws2.getCell(3, detailStartCol + 1).value = 'Tên';
+  ws2.getCell(3, detailStartCol + 2).value = 'Khách hàng';
+  ws2.getCell(3, detailStartCol + 3).value = 'Số tiền';
+  ws2.getCell(3, detailStartCol + 4).value = 'Ngày';
+  for (let c = detailStartCol; c <= detailStartCol + 4; c++) {
+    const cell = ws2.getCell(3, c);
+    cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4F46E5' } };
+    cell.alignment = { horizontal: 'center', vertical: 'middle' };
+  }
+
+  revenueDetails.forEach((rd: any, i: number) => {
+    const dateStr = rd.date ? new Date(rd.date).toLocaleDateString('vi-VN') : '';
+    const row = 4 + i;
+    const vals = [rd.type, rd.name, rd.customerName || '', rd.amount, dateStr];
+    vals.forEach((v, ci) => {
+      const cell = ws2.getCell(row, detailStartCol + ci);
+      cell.value = v;
+      cell.border = { bottom: { style: 'thin', color: { argb: 'FFF1F5F9' } } };
+      if (ci === 3 && typeof v === 'number') cell.numFmt = '#,##0';
+    });
+  });
+  if (revenueDetails.length > 0) {
+    const totalRev = revenueDetails.reduce((s: number, r: any) => s + (r.amount || 0), 0);
+    const tRow = 4 + revenueDetails.length;
+    ['TỔNG CỘNG', '', '', totalRev, ''].forEach((v, ci) => {
+      const cell = ws2.getCell(tRow, detailStartCol + ci);
+      cell.value = v;
+      cell.font = { bold: true };
+      cell.border = { bottom: { style: 'medium', color: { argb: 'FFCBD5E1' } } };
+      if (ci === 3 && typeof v === 'number') cell.numFmt = '#,##0';
+    });
+  }
+
+  setColWidths(ws2, [12, 18, 18, 4, 25, 22, 20, 18, 15]);
 
   // ── Sheet 3: Chi phí & Lợi nhuận ──
   const ws3 = wb.addWorksheet('Chi phí & Lợi nhuận');
-  ws3.mergeCells('A1:D1');
+  ws3.mergeCells('A1:H1');
   ws3.getCell('A1').value = 'Chi phí & Lợi nhuận theo tháng';
   ws3.getCell('A1').font = { bold: true, size: 13 };
 
-  addTableHeader(ws3, 3, ['Tháng', 'Doanh thu', 'Chi phí', 'Lợi nhuận']);
+  // Bảng bên trái (A-C): Chi phí theo tháng
+  addTableHeader(ws3, 3, ['Tháng', 'Chi phí', 'Lợi nhuận']);
   profit.forEach((p: any, i: number) => {
-    addDataRow(ws3, 4 + i, [p.month, p.revenue, p.expense, p.profit], [1, 2, 3]);
+    addDataRow(ws3, 4 + i, [p.month, p.expense, p.profit], [1, 2]);
   });
   if (profit.length > 0) {
     const tRow = 4 + profit.length;
-    const pt = profit.reduce((a: any, p: any) => ({ r: a.r + p.revenue, e: a.e + p.expense, p: a.p + p.profit }), { r: 0, e: 0, p: 0 });
-    addTotalRow(ws3, tRow, ['TỔNG CỘNG', pt.r, pt.e, pt.p], [1, 2, 3]);
+    const pt = profit.reduce((a: any, p: any) => ({ e: a.e + p.expense, p: a.p + p.profit }), { e: 0, p: 0 });
+    addTotalRow(ws3, tRow, ['TỔNG CỘNG', pt.e, pt.p], [1, 2]);
   }
-  setColWidths(ws3, [12, 18, 18, 18]);
 
-  // ── Sheet 4: Cơ cấu chi phí ──
+  // Bảng bên phải (E-G): Cơ cấu chi phí
+  const expDetailStartCol = 5;
+  ws3.getCell(3, expDetailStartCol).value = 'Loại chi phí';
+  ws3.getCell(3, expDetailStartCol + 1).value = 'Số tiền';
+  ws3.getCell(3, expDetailStartCol + 2).value = 'Tỷ trọng (%)';
+  for (let c = expDetailStartCol; c <= expDetailStartCol + 2; c++) {
+    const cell = ws3.getCell(3, c);
+    cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4F46E5' } };
+    cell.alignment = { horizontal: 'center', vertical: 'middle' };
+  }
+  const totalExp = expense.reduce((sum: number, e: any) => sum + e.value, 0);
+  expense.forEach((e: any, i: number) => {
+    const row = 4 + i;
+    [e.name, e.value, totalExp > 0 ? Math.round((e.value / totalExp) * 100) : 0].forEach((v, ci) => {
+      const cell = ws3.getCell(row, expDetailStartCol + ci);
+      cell.value = v;
+      cell.border = { bottom: { style: 'thin', color: { argb: 'FFF1F5F9' } } };
+      if (ci === 1 && typeof v === 'number') cell.numFmt = '#,##0';
+    });
+  });
   if (expense.length > 0) {
-    const ws4 = wb.addWorksheet('Cơ cấu chi phí');
-    ws4.mergeCells('A1:C1');
-    ws4.getCell('A1').value = 'Cơ cấu chi phí';
+    const tRow = 4 + expense.length;
+    ['TỔNG CỘNG', totalExp, 100].forEach((v, ci) => {
+      const cell = ws3.getCell(tRow, expDetailStartCol + ci);
+      cell.value = v;
+      cell.font = { bold: true };
+      cell.border = { bottom: { style: 'medium', color: { argb: 'FFCBD5E1' } } };
+      if (ci === 1 && typeof v === 'number') cell.numFmt = '#,##0';
+    });
+  }
+
+  setColWidths(ws3, [12, 18, 18, 4, 22, 18, 15]);
+
+  // ── Sheet 4: Doanh số gói & Tỉ lệ tham gia + Top sản phẩm ──
+  const participation = data?.participation || [];
+  const hasParticipation = participation.length > 0;
+  const hasTopProducts = topProducts.length > 0;
+  if (hasParticipation || hasTopProducts) {
+    const ws4 = wb.addWorksheet('Doanh số gói & Tỉ lệ tham gia');
+    ws4.mergeCells('A1:L1');
+    ws4.getCell('A1').value = 'Doanh số gói tập, Tỉ lệ tham gia & Top sản phẩm';
     ws4.getCell('A1').font = { bold: true, size: 13 };
 
-    const totalExp = expense.reduce((sum: number, e: any) => sum + e.value, 0);
-    addTableHeader(ws4, 3, ['Loại chi phí', 'Số tiền', 'Tỷ trọng (%)']);
-    expense.forEach((e: any, i: number) => {
-      addDataRow(ws4, 4 + i, [e.name, e.value, totalExp > 0 ? Math.round((e.value / totalExp) * 100) : 0], [1]);
+    // Bảng bên trái (A-E): Doanh số gói
+    addTableHeader(ws4, 3, ['Gói tập', 'Đã bán', 'Doanh thu', 'TB phiên/người', 'Tỉ lệ tham gia (%)']);
+    participation.forEach((p: any, i: number) => {
+      const avgSessions = p.participation || 0;
+      const participationRate = Math.min(100, Math.round(avgSessions / 20 * 100));
+      addDataRow(ws4, 4 + i, [p.package, p.sales, p.revenue, avgSessions, participationRate], [2]);
     });
-    addTotalRow(ws4, 4 + expense.length, ['TỔNG CỘNG', totalExp, 100], [1]);
-    setColWidths(ws4, [22, 18, 15]);
+    if (hasParticipation) {
+      const tRow = 4 + participation.length;
+      const totals = participation.reduce((a: any, p: any) => ({
+        sales: a.sales + (p.sales || 0),
+        revenue: a.revenue + (p.revenue || 0),
+      }), { sales: 0, revenue: 0 });
+      addTotalRow(ws4, tRow, ['TỔNG CỘNG', totals.sales, totals.revenue, '', ''], [2]);
+    }
+
+    // Bảng bên phải (G-L): Top sản phẩm
+    const topStartCol = 7;
+    ws4.getCell(3, topStartCol).value = 'Sản phẩm';
+    ws4.getCell(3, topStartCol + 1).value = 'Đơn giá';
+    ws4.getCell(3, topStartCol + 2).value = 'Giá vốn';
+    ws4.getCell(3, topStartCol + 3).value = 'SL bán';
+    ws4.getCell(3, topStartCol + 4).value = 'Doanh thu';
+    ws4.getCell(3, topStartCol + 5).value = 'Lợi nhuận';
+    for (let c = topStartCol; c <= topStartCol + 5; c++) {
+      const cell = ws4.getCell(3, c);
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4F46E5' } };
+      cell.alignment = { horizontal: 'center', vertical: 'middle' };
+    }
+    topProducts.forEach((p: any, i: number) => {
+      const row = 4 + i;
+      [p.name, p.price, p.costPrice, p.quantity, p.revenue, p.profit].forEach((v, ci) => {
+        const cell = ws4.getCell(row, topStartCol + ci);
+        cell.value = v;
+        cell.border = { bottom: { style: 'thin', color: { argb: 'FFF1F5F9' } } };
+        if ([1, 2, 4, 5].includes(ci) && typeof v === 'number') cell.numFmt = '#,##0';
+      });
+    });
+
+    setColWidths(ws4, [22, 12, 18, 16, 18, 4, 18, 15, 15, 10, 18, 18]);
   }
 
-  // ── Sheet 5: Top sản phẩm ──
-  if (topProducts.length > 0) {
-    const ws5 = wb.addWorksheet('Top sản phẩm');
+  // ── Sheet 5: Khấu hao ──
+  if (depreciation.length > 0) {
+    const ws5 = wb.addWorksheet('Khấu hao thiết bị');
     ws5.mergeCells('A1:F1');
-    ws5.getCell('A1').value = 'Top sản phẩm bán chạy';
+    ws5.getCell('A1').value = 'Chi tiết khấu hao thiết bị';
     ws5.getCell('A1').font = { bold: true, size: 13 };
 
-    addTableHeader(ws5, 3, ['Sản phẩm', 'Đơn giá', 'Giá vốn', 'SL bán', 'Doanh thu', 'Lợi nhuận']);
-    topProducts.forEach((p: any, i: number) => {
-      addDataRow(ws5, 4 + i, [p.name, p.price, p.costPrice, p.quantity, p.revenue, p.profit], [1, 2, 4, 5]);
-    });
-    setColWidths(ws5, [18, 15, 15, 10, 18, 18]);
-  }
-
-  // ── Sheet 6: Khấu hao ──
-  if (depreciation.length > 0) {
-    const ws6 = wb.addWorksheet('Khấu hao thiết bị');
-    ws6.mergeCells('A1:F1');
-    ws6.getCell('A1').value = 'Chi tiết khấu hao thiết bị';
-    ws6.getCell('A1').font = { bold: true, size: 13 };
-
-    addTableHeader(ws6, 3, ['Thiết bị', 'Nguyên giá', 'KH/tháng', 'Tháng đã dùng', 'Đã khấu hao', 'Giá trị còn lại']);
+    addTableHeader(ws5, 3, ['Thiết bị', 'Nguyên giá', 'KH/tháng', 'Tháng đã dùng', 'Đã khấu hao', 'Giá trị còn lại']);
     depreciation.forEach((d: any, i: number) => {
-      addDataRow(ws6, 4 + i, [d.name, d.total, d.monthlyDepreciation, d.monthsActive, d.totalDepreciated, d.remainingValue], [1, 2, 4, 5]);
+      addDataRow(ws5, 4 + i, [d.name, d.total, d.monthlyDepreciation, d.monthsActive, d.totalDepreciated, d.remainingValue], [1, 2, 4, 5]);
     });
-    setColWidths(ws6, [20, 16, 16, 15, 16, 16]);
+    setColWidths(ws5, [20, 16, 16, 15, 16, 16]);
   }
 
   // ── Sheet 7: Biểu đồ (nhúng hình PNG) ──

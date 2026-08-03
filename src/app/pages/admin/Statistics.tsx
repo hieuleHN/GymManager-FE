@@ -36,37 +36,16 @@ const MONTHS = ["T1", "T2", "T3", "T4", "T5", "T6", "T7", "T8", "T9", "T10", "T1
 // ---------- Fallback data (khi BE chưa có dữ liệu) ----------
 const fallbackFinance = {
   summary: {
-    cashRevenue: 680_000_000, accrualRevenue: 720_000_000, realCashIn: 1_050_000_000,
-    totalExpense: 280_000_000, totalProfit: 440_000_000, profitMargin: 61,
+    cashRevenue: 0, accrualRevenue: 0, realCashIn: 0,
+    totalExpense: 0, totalProfit: 0, profitMargin: 0,
     change: { realCashIn: 0, accrualRevenue: 0, totalExpense: 0, totalProfit: 0 },
   },
-  cashFlowData: MONTHS.map((m, i) => ({ month: m, cash: [120, 150, 140, 180, 200, 230, 210, 250, 240, 270, 260, 290][i] * 1000_000, revenue: [130, 160, 150, 190, 210, 240, 220, 260, 250, 280, 270, 300][i] * 1000_000 })),
-  profitData: MONTHS.map((m, i) => { const rev = [130, 160, 150, 190, 210, 240, 220, 260, 250, 280, 270, 300][i] * 1000_000; const exp = [50, 60, 55, 70, 65, 80, 75, 85, 80, 90, 85, 95][i] * 1000_000; return { month: m, revenue: rev, expense: exp, profit: rev - exp }; }),
-  expenseStructure: [
-    { name: 'Thiết bị', value: 120_000_000 },
-    { name: 'Tiện ích', value: 80_000_000 },
-    { name: 'Thuế/Phí', value: 50_000_000 },
-    { name: 'Khác', value: 30_000_000 },
-  ],
-  packageSalesData: [
-    { package: '1 tháng', sales: 120, revenue: 120_000_000 },
-    { package: '3 tháng', sales: 280, revenue: 560_000_000 },
-    { package: '6 tháng', sales: 350, revenue: 1_050_000_000 },
-    { package: '12 tháng', sales: 550, revenue: 2_750_000_000 },
-  ],
-  participation: [
-    { package: '1 tháng', sales: 120, revenue: 120_000_000, participation: 18 },
-    { package: '3 tháng', sales: 280, revenue: 560_000_000, participation: 34 },
-    { package: '6 tháng', sales: 350, revenue: 1_050_000_000, participation: 52 },
-    { package: '12 tháng', sales: 550, revenue: 2_750_000_000, participation: 88 },
-  ],
-  topProducts: [
-    { name: 'Whey Protein', price: 300_000, quantity: 85, revenue: 25_500_000 },
-    { name: 'BCAA', price: 200_000, quantity: 62, revenue: 12_400_000 },
-    { name: 'Pre-Workout', price: 300_000, quantity: 48, revenue: 14_400_000 },
-    { name: 'Creatine', price: 150_000, quantity: 72, revenue: 10_800_000 },
-    { name: 'Vitamin', price: 100_000, quantity: 95, revenue: 9_500_000 },
-  ],
+  cashFlowData: MONTHS.map(m => ({ month: m, cash: 0, revenue: 0 })),
+  profitData: MONTHS.map(m => ({ month: m, revenue: 0, expense: 0, profit: 0 })),
+  expenseStructure: [],
+  packageSalesData: [],
+  participation: [],
+  topProducts: [],
 };
 
 export function Statistics() {
@@ -402,27 +381,33 @@ function FinanceTab({ data, period, customFrom, customTo, onStatClick }: { data:
 
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
           <h2 className="text-lg font-bold text-slate-900 mb-4">Cơ cấu chi phí</h2>
-          <ResponsiveContainer width="100%" height={200}>
-            <PieChart>
-              <Pie data={data.expenseStructure} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={3}>
-                {data.expenseStructure.map((_, i) => (
-                  <Cell key={i} fill={COLORS[i % COLORS.length]} />
+          {data.expenseStructure.length > 0 ? (
+            <>
+              <ResponsiveContainer width="100%" height={200}>
+                <PieChart>
+                  <Pie data={data.expenseStructure} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={3}>
+                    {data.expenseStructure.map((_: any, i: number) => (
+                      <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(v: number) => fmtVnd(v)} />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="space-y-1.5 mt-2">
+                {data.expenseStructure.map((item: any, i: number) => (
+                  <div key={i} className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
+                      <span className="text-slate-600">{item.name}</span>
+                    </div>
+                    <span className="font-medium text-slate-800">{fmtVnd(item.value)}</span>
+                  </div>
                 ))}
-              </Pie>
-              <Tooltip formatter={(v: number) => fmtVnd(v)} />
-            </PieChart>
-          </ResponsiveContainer>
-          <div className="space-y-1.5 mt-2">
-            {data.expenseStructure.map((item, i) => (
-              <div key={i} className="flex items-center justify-between text-xs">
-                <div className="flex items-center gap-2">
-                  <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
-                  <span className="text-slate-600">{item.name}</span>
-                </div>
-                <span className="font-medium text-slate-800">{fmtVnd(item.value)}</span>
               </div>
-            ))}
-          </div>
+            </>
+          ) : (
+            <div className="flex items-center justify-center h-[200px] text-sm text-slate-400">Chưa có chi phí nào</div>
+          )}
         </div>
       </div>
 
@@ -433,18 +418,22 @@ function FinanceTab({ data, period, customFrom, customTo, onStatClick }: { data:
           <span className="text-xs bg-purple-50 text-purple-600 px-2.5 py-1 rounded-full font-medium">Số lượng & Lượt/ HV</span>
         </div>
         <p className="text-xs text-slate-500 mb-4">Gói nào mang lại nhiều tiền nhất và mức độ chăm chỉ của hội viên</p>
-        <ResponsiveContainer width="100%" height={300}>
-          <ComposedChart data={data.participation} layout="vertical">
-            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-            <XAxis type="number" tick={{ fontSize: 11 }} />
-            <YAxis type="category" dataKey="package" tick={{ fontSize: 12 }} width={80} />
-            <Tooltip formatter={(v: number, n) => n === 'revenue' ? fmtVnd(v) : [v, '']} />
-            <Legend />
-            <Bar dataKey="sales" fill="#6366f1" name="Số gói bán" radius={[0, 4, 4, 0]} barSize={14} />
-            <Bar dataKey="revenue" fill="#8b5cf6" name="Doanh thu" radius={[0, 4, 4, 0]} barSize={14} />
-            <Line type="monotone" dataKey="participation" stroke="#f59e0b" strokeWidth={2.5} dot={{ r: 4 }} name="Lượt tham gia / HV" />
-          </ComposedChart>
-        </ResponsiveContainer>
+        {data.participation?.length > 0 ? (
+          <ResponsiveContainer width="100%" height={300}>
+            <ComposedChart data={data.participation} layout="vertical">
+              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+              <XAxis type="number" tick={{ fontSize: 11 }} />
+              <YAxis type="category" dataKey="package" tick={{ fontSize: 12 }} width={80} />
+              <Tooltip formatter={(v: number, n) => n === 'revenue' ? fmtVnd(v) : [v, '']} />
+              <Legend />
+              <Bar dataKey="sales" fill="#6366f1" name="Số gói bán" radius={[0, 4, 4, 0]} barSize={14} />
+              <Bar dataKey="revenue" fill="#8b5cf6" name="Doanh thu" radius={[0, 4, 4, 0]} barSize={14} />
+              <Line type="monotone" dataKey="participation" stroke="#f59e0b" strokeWidth={2.5} dot={{ r: 4 }} name="Lượt tham gia / HV" />
+            </ComposedChart>
+          </ResponsiveContainer>
+        ) : (
+          <div className="flex items-center justify-center h-[300px] text-sm text-slate-400">Chưa có dữ liệu gói tập</div>
+        )}
       </div>
 
       {/* 4. Top sản phẩm bán chạy */}
@@ -453,25 +442,26 @@ function FinanceTab({ data, period, customFrom, customTo, onStatClick }: { data:
           <h2 className="text-lg font-bold text-slate-900">Top sản phẩm bán chạy</h2>
           <span className="text-xs bg-orange-50 text-orange-600 px-2.5 py-1 rounded-full font-medium flex items-center gap-1"><ShoppingBag className="w-3 h-3" /> Hàng phụ trợ</span>
         </div>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={data.topProducts} layout="vertical">
-              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-              <XAxis type="number" tickFormatter={fmt} tick={{ fontSize: 11 }} />
-              <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={90} />
-              <Tooltip formatter={(v: number) => fmtVnd(v)} />
-              <Bar dataKey="revenue" name="Doanh thu" radius={[0, 4, 4, 0]}>
-                {data.topProducts.map((_, i) => (
-                  <Cell key={i} fill={COLORS[i % COLORS.length]} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-100">
-                  <th className="text-left py-3 px-2 text-slate-500 font-medium">Sản phẩm</th>
+        {data.topProducts?.length > 0 ? (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <ResponsiveContainer width="100%" height={260}>
+              <BarChart data={data.topProducts} layout="vertical">
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                <XAxis type="number" tickFormatter={fmt} tick={{ fontSize: 11 }} />
+                <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={90} />
+                <Tooltip formatter={(v: number) => fmtVnd(v)} />
+                <Bar dataKey="revenue" name="Doanh thu" radius={[0, 4, 4, 0]}>
+                  {data.topProducts.map((_: any, i: number) => (
+                    <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-100">
+                    <th className="text-left py-3 px-2 text-slate-500 font-medium">Sản phẩm</th>
                   <th className="text-right py-3 px-2 text-slate-500 font-medium">SL</th>
                   <th className="text-right py-3 px-2 text-slate-500 font-medium">Doanh thu</th>
                   <th className="text-right py-3 px-2 text-slate-500 font-medium">Lợi nhuận</th>
@@ -503,6 +493,9 @@ function FinanceTab({ data, period, customFrom, customTo, onStatClick }: { data:
             </table>
           </div>
         </div>
+        ) : (
+          <div className="flex items-center justify-center h-[260px] text-sm text-slate-400">Chưa có sản phẩm nào</div>
+        )}
       </div>
     </>
   );
