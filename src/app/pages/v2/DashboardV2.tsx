@@ -7,13 +7,27 @@ import {
   TrendingUp,
 } from "lucide-react";
 
+interface DashboardStats {
+  totalRevenue: number;
+  totalCustomers: number;
+  activeBookings: number;
+  revenueGrowth: number;
+}
+
 export const DashboardV2: React.FC = () => {
+  const [stats, setStats] = useState<DashboardStats | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   useEffect(() => {
     setTimeout(() => {
+      setStats({
+        totalRevenue: 125000000,
+        totalCustomers: 1420,
+        activeBookings: 320,
+        revenueGrowth: 15.5,
+      });
       setIsLoading(false);
-    }, 1000);
+    }, 1500);
   }, []);
 
   if (isLoading) {
@@ -44,7 +58,38 @@ export const DashboardV2: React.FC = () => {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8"></div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col">
+          <div className="flex justify-between items-start mb-4">
+            <div className="p-3 bg-green-50 text-green-600 rounded-xl">
+              <DollarSign className="w-6 h-6" />
+            </div>
+            <span className="text-sm font-medium text-green-500 bg-green-50 px-2 py-1 rounded-md">
+              +{stats?.revenueGrowth}%
+            </span>
+          </div>
+          <h3 className="text-slate-500 text-sm font-medium mb-1">
+            Tổng doanh thu
+          </h3>
+          <p className="text-2xl font-bold text-slate-900">
+            {stats?.totalRevenue.toLocaleString("vi-VN")} ₫
+          </p>
+        </div>
+
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col">
+          <div className="flex justify-between items-start mb-4">
+            <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
+              <Users className="w-6 h-6" />
+            </div>
+          </div>
+          <h3 className="text-slate-500 text-sm font-medium mb-1">
+            Hội viên đang hoạt động
+          </h3>
+          <p className="text-2xl font-bold text-slate-900">
+            {stats?.totalCustomers}
+          </p>
+        </div>
+      </div>
     </div>
   );
 };
