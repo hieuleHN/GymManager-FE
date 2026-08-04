@@ -119,6 +119,7 @@ export function BookingStatusV2() {
         setError('');
         try {
             const params = new URLSearchParams();
+            params.append('limit', '200');
             if (statusFilter !== 'ALL') params.append('status', statusFilter);
             if (dateFilter) params.append('date', dateFilter);
             if (searchTerm.trim()) params.append('search', searchTerm.trim());
