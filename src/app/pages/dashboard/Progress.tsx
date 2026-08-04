@@ -7,9 +7,10 @@ import { getApiUrl } from '../../context/AuthContext';
 // Cấu trúc dữ liệu check-in thô nhận về trực tiếp từ API Backend
 interface RawCheckIn {
   _id?: string;
-  checkInTime: string;   // Có thể là định dạng giờ "17:50:00" hoặc chuỗi ISO date "2026-07-16T17:50:00.000Z"
-  dateStr?: string;       // Định dạng ngày "DD/MM/YYYY" (nếu Backend có trả về)
-  createdAt?: string;    // Thời gian tạo bản ghi trong MongoDB làm phương án dự phòng
+  checkInTime: string;   // Giờ check-in định dạng "HH:mm:ss"
+  checkInDate?: string;  // Chuỗi ngày tĩnh "YYYY-MM-DD" chuẩn GMT+7 từ Backend
+  dateStr?: string;      // Định dạng ngày "DD/MM/YYYY" để so khớp ở Frontend
+  createdAt?: string;    // Thời gian tạo bản ghi
   packageName?: string;
   trainerName?: string;
   duration?: string;
@@ -68,39 +69,45 @@ export function Progress() {
         return;
       }
 
-      // ĐỒNG BỘ: Đã đổi sang endpoint /api/checkin/history trùng khớp hoàn toàn với Backend
       const response = await axios.get(`${getApiUrl()}/api/checkin/history`, {
         headers: { Authorization: `Bearer ${userToken}` }
       });
 
       if (response.data) {
-        // Hỗ trợ cả trường hợp API trả về mảng trực tiếp hoặc bọc trong object { history: [...] }
         const rawHistory = Array.isArray(response.data) ? response.data : (response.data.history || []);
 
-        // Tiến hành chuẩn hóa dữ liệu ngày tháng từ DB trả về để Frontend dễ dàng so khớp
+        // Tiến hành chuẩn hóa dữ liệu ngày tháng từ DB trả về
         const formattedHistory: RawCheckIn[] = rawHistory.map((item: any) => {
-          // Lấy mốc thời gian thực tế từ thuộc tính của Database (ưu tiên checkInTime hoặc createdAt)
+          let calculatedDateStr = '';
+          let calculatedTimeStr = '';
+
+          // Ưu tiên lấy checkInDate tĩnh dạng "YYYY-MM-DD", chuyển trực tiếp sang "DD/MM/YYYY"
+          if (item.checkInDate && /^\d{4}-\d{2}-\d{2}$/.test(item.checkInDate)) {
+            const [year, month, day] = item.checkInDate.split('-');
+            calculatedDateStr = `${day}/${month}/${year}`;
+          }
+
           const timeValue = item.checkInTime || item.createdAt;
-          if (!timeValue) return item;
+          if (timeValue) {
+            const d = new Date(timeValue);
 
-          const d = new Date(timeValue);
+            if (!calculatedDateStr) {
+              const dd = String(d.getDate()).padStart(2, '0');
+              const mm = String(d.getMonth() + 1).padStart(2, '0');
+              const yyyy = d.getFullYear();
+              calculatedDateStr = `${dd}/${mm}/${yyyy}`;
+            }
 
-          // Trích xuất Ngày/Tháng/Năm
-          const dd = String(d.getDate()).padStart(2, '0');
-          const mm = String(d.getMonth() + 1).padStart(2, '0');
-          const yyyy = d.getFullYear();
-          const calculatedDateStr = `${dd}/${mm}/${yyyy}`;
-
-          // Trích xuất Giờ:Phút:Giây quét mã thành công
-          const hours = String(d.getHours()).padStart(2, '0');
-          const minutes = String(d.getMinutes()).padStart(2, '0');
-          const seconds = String(d.getSeconds()).padStart(2, '0');
-          const calculatedTimeStr = `${hours}:${minutes}:${seconds}`;
+            const hours = String(d.getHours()).padStart(2, '0');
+            const minutes = String(d.getMinutes()).padStart(2, '0');
+            const seconds = String(d.getSeconds()).padStart(2, '0');
+            calculatedTimeStr = `${hours}:${minutes}:${seconds}`;
+          }
 
           return {
             ...item,
-            dateStr: calculatedDateStr, // Ép chuẩn định dạng DD/MM/YYYY để so khớp tự động
-            checkInTime: calculatedTimeStr, // Giờ quét cửa thực tế
+            dateStr: calculatedDateStr,
+            checkInTime: calculatedTimeStr || item.checkInTime || 'Đã ghi nhận',
             packageName: item.packageName || 'Gói Thẻ Hội Viên Tiêu Chuẩn',
             trainerName: item.trainerName || 'Hệ thống tự động ghi nhận',
             duration: item.duration || '60 phút',
@@ -124,16 +131,13 @@ export function Progress() {
   const buildTrainingMatrix = () => {
     const today = new Date();
     const currentYear = today.getFullYear();
-    const currentMonth = today.getMonth(); // 0 - 11
+    const currentMonth = today.getMonth();
 
-    // Tìm ngày đầu tiên của tháng hiện tại
     const firstDayOfMonth = new Date(currentYear, currentMonth, 1);
 
-    // Xác định thứ của ngày mùng 1 (0 là Chủ Nhật, chuyển đổi về quy ước: T2=0, T3=1... CN=6)
     let startDayOfWeek = firstDayOfMonth.getDay();
     startDayOfWeek = startDayOfWeek === 0 ? 6 : startDayOfWeek - 1;
 
-    // Lùi ngày bắt đầu về đúng Thứ 2 của tuần chứa ngày mùng 1 đầu tháng
     const startDate = new Date(firstDayOfMonth);
     startDate.setDate(startDate.getDate() - startDayOfWeek);
 
@@ -141,7 +145,6 @@ export function Progress() {
     const dayLabels = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
     let latestSession: CheckedInDay | null = null;
 
-    // Chạy vòng lặp vẽ đủ 5 tuần
     for (let w = 0; w < 5; w++) {
       const daysInWeek: (CheckedInDay | null)[] = [];
 
@@ -149,18 +152,15 @@ export function Progress() {
         const currentDate = new Date(startDate);
         currentDate.setDate(startDate.getDate() + (w * 7 + d));
 
-        // Định dạng chuỗi ngày DD/MM/YYYY để tiến hành đối chiếu
         const dd = String(currentDate.getDate()).padStart(2, '0');
         const mm = String(currentDate.getMonth() + 1).padStart(2, '0');
         const yyyy = currentDate.getFullYear();
         const dateStr = `${dd}/${mm}/${yyyy}`;
 
-        // Kiểm tra xem ngày này đã qua hoặc là ngày hôm nay chưa (so với thời gian thực tế của máy tính)
         const cleanToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
         const cleanCurrent = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate());
         const isPast = cleanCurrent <= cleanToday;
 
-        // KIỂM TRA ĐỒNG BỘ: So khớp ngày hiện tại với danh sách Check-in thực tế lấy từ Database
         const matchedCheckIn = checkInList.find(c => c.dateStr === dateStr);
 
         const dayObj: CheckedInDay = {
@@ -168,12 +168,11 @@ export function Progress() {
           dayOfWeek: dayLabels[d],
           weekLabel: `Tuần ${w + 1}`,
           isPast,
-          ...(matchedCheckIn || {}) // Tự động hợp nhất dữ liệu chi tiết nếu khớp ngày quét
+          ...(matchedCheckIn || {})
         };
 
         daysInWeek.push(dayObj);
 
-        // Giữ lại bản ghi check-in mới nhất để tự động chọn hiển thị giáo án lên màn hình
         if (matchedCheckIn) {
           latestSession = dayObj;
         }
@@ -187,7 +186,6 @@ export function Progress() {
 
     setTrainingHistory(tempWeeks);
 
-    // Chỉ tự động chọn buổi mới nhất một lần duy nhất khi khởi tạo
     if (latestSession && !selectedSession) {
       setSelectedSession(latestSession);
     }
@@ -209,9 +207,9 @@ export function Progress() {
     week.days.forEach(day => {
       if (day) {
         if (day.checkInTime) {
-          attendedCount++; // Tích xanh: Đã quét QR thành công
+          attendedCount++;
         } else if (day.isPast) {
-          missedCount++;   // Tích đỏ: Ngày đã qua mà không có lịch sử check-in trong DB
+          missedCount++;
         }
       }
     });

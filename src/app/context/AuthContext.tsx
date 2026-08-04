@@ -62,7 +62,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       username: data.user.username || data.user.account,
       fullName,
       name: fullName,
-      role: data.user.role || role,
+      role: data.user.role || 'member',
       token: data.token,
       isStaff: data.user.isStaff,
       isAdmin: data.user.isAdmin,

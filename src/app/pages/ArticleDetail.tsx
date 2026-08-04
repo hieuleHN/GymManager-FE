@@ -1,43 +1,68 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router';
-import { ArrowLeft, Calendar, Eye, Clock, User, ChevronRight } from 'lucide-react';
-import { api } from '../../lib/api';
+import { Calendar, Eye, ArrowLeft, ChevronRight, FileText, User } from 'lucide-react';
+import { getApiUrl } from '../context/AuthContext';
 
-const API_URL = '';
+interface Article {
+  _id: string;
+  title: string;
+  content: string;
+  image: string;
+  category: string;
+  authorName: string;
+  views: number;
+  publishedAt: string;
+  createdAt: string;
+}
 
-const CATEGORY_LABELS: Record<string, string> = {
+const categoryLabels: Record<string, string> = {
   'tin-tuc': 'Tin tức',
   'meo-tap': 'Mẹo tập',
   'dinh-duong': 'Dinh dưỡng',
   'su-kien': 'Sự kiện',
-  'khac': 'Khác',
+  'khac': 'Khác'
 };
 
 export function ArticleDetail() {
   const { id } = useParams();
-  const [article, setArticle] = useState<any>(null);
-  const [related, setRelated] = useState<any[]>([]);
+  const [article, setArticle] = useState<Article | null>(null);
+  const [related, setRelated] = useState<Article[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!id) return;
-    setLoading(true);
-    api.get<any>(`/api/articles/${id}`)
-      .then(data => {
-        setArticle(data);
-        api.get<any>(`/api/articles/${id}/related?category=${data.category || 'tin-tuc'}&limit=4`)
-          .then(rel => setRelated(rel || []))
-          .catch(() => {});
-        api.post(`/api/articles/${id}/view`).catch(() => {});
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    fetchArticle();
+    window.scrollTo(0, 0);
   }, [id]);
+
+  const fetchArticle = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${getApiUrl()}/api/articles/${id}`);
+      const data = await res.json();
+      setArticle(data);
+
+      await fetch(`${getApiUrl()}/api/articles/${id}/view`, { method: 'POST' });
+
+      if (data.category) {
+        const relRes = await fetch(`${getApiUrl()}/api/articles/${id}/related?category=${data.category}&limit=3`);
+        const relData = await relRes.json();
+        setRelated(Array.isArray(relData) ? relData : []);
+      }
+    } catch { }
+    setLoading(false);
+  };
+
+  const formatDate = (dateStr: string) => {
+    return new Date(dateStr).toLocaleDateString('vi-VN', {
+      year: 'numeric', month: 'long', day: 'numeric'
+    });
+  };
 
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <p className="text-slate-500">Đang tải...</p>
+        <div className="animate-spin w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full" />
       </div>
     );
   }
@@ -46,96 +71,106 @@ export function ArticleDetail() {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
         <div className="text-center">
-          <h2 className="text-2xl font-bold text-slate-900 mb-2">Không tìm thấy bài viết</h2>
-          <Link to="/" className="text-indigo-600 hover:underline">Về trang chủ</Link>
+          <FileText className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+          <p className="text-slate-500 text-lg mb-4">Không tìm thấy bài viết</p>
+          <Link to="/articles" className="text-indigo-600 hover:text-indigo-800 font-medium">
+            Quay lại danh sách
+          </Link>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 py-12">
-      <div className="max-w-4xl mx-auto px-4">
-        <Link to="/" className="inline-flex items-center gap-2 text-sm text-slate-500 hover:text-indigo-600 mb-8 transition-colors">
-          <ArrowLeft className="w-4 h-4" />
-          Quay lại trang chủ
-        </Link>
+    <div className="min-h-screen bg-slate-50">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <nav className="flex items-center gap-2 text-sm text-slate-500 mb-8">
+          <Link to="/" className="hover:text-indigo-600">Trang chủ</Link>
+          <ChevronRight className="w-4 h-4" />
+          <Link to="/articles" className="hover:text-indigo-600">Bài viết</Link>
+          <ChevronRight className="w-4 h-4" />
+          <span className="text-slate-900 font-medium truncate max-w-[200px]">{article.title}</span>
+        </nav>
 
         <article className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
           {article.image && (
-            <div className="w-full h-[400px] overflow-hidden">
-              <img src={`${API_URL}${article.image}`} alt={article.title}
-                className="w-full h-full object-cover" />
+            <div className="h-72 md:h-96 overflow-hidden">
+              <img src={article.image} alt={article.title} className="w-full h-full object-cover" />
             </div>
           )}
-          <div className="p-8 lg:p-12">
-            <div className="flex items-center gap-3 mb-4">
-              <span className="px-3 py-1 text-xs font-semibold rounded-full bg-indigo-100 text-indigo-700">
-                {CATEGORY_LABELS[article.category] || article.category}
+
+          <div className="p-8 md:p-12">
+            <div className="flex items-center gap-3 mb-6">
+              <span className="inline-block text-xs font-semibold px-3 py-1 rounded-full bg-indigo-100 text-indigo-700">
+                {categoryLabels[article.category] || 'Khác'}
               </span>
-              {article.status === 'published' && (
-                <span className="px-3 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-700">
-                  Đã đăng
-                </span>
-              )}
+              <span className="text-xs text-slate-400 flex items-center gap-1">
+                <Calendar className="w-3.5 h-3.5" />
+                {formatDate(article.publishedAt || article.createdAt)}
+              </span>
+              <span className="text-xs text-slate-400 flex items-center gap-1">
+                <Eye className="w-3.5 h-3.5" />
+                {article.views} lượt xem
+              </span>
             </div>
 
-            <h1 className="text-3xl lg:text-4xl font-extrabold text-slate-900 mb-6 leading-tight">
+            <h1 className="text-3xl md:text-4xl font-extrabold text-slate-900 mb-6">
               {article.title}
             </h1>
 
-            <div className="flex flex-wrap items-center gap-4 text-sm text-slate-500 mb-8 pb-8 border-b border-slate-100">
-              <span className="flex items-center gap-1.5">
+            {article.authorName && (
+              <div className="flex items-center gap-2 text-sm text-slate-500 mb-8 pb-8 border-b border-slate-100">
                 <User className="w-4 h-4" />
-                {article.authorName || 'Admin'}
-              </span>
-              <span className="flex items-center gap-1.5">
-                <Calendar className="w-4 h-4" />
-                {new Date(article.createdAt).toLocaleDateString('vi-VN', {
-                  year: 'numeric', month: 'long', day: 'numeric'
-                })}
-              </span>
-              <span className="flex items-center gap-1.5">
-                <Eye className="w-4 h-4" />
-                {article.views || 0} lượt xem
-              </span>
-              {article.publishedAt && (
-                <span className="flex items-center gap-1.5">
-                  <Clock className="w-4 h-4" />
-                  Đăng lúc: {new Date(article.publishedAt).toLocaleDateString('vi-VN')}
-                </span>
-              )}
-            </div>
+                <span>{article.authorName}</span>
+              </div>
+            )}
 
-            <div className="prose prose-lg max-w-none text-slate-700 leading-relaxed whitespace-pre-wrap">
-              {article.content}
+            <div
+              className="prose prose-lg max-w-none text-slate-700 leading-relaxed"
+              dangerouslySetInnerHTML={{ __html: article.content }}
+            />
+
+            <div className="mt-10 pt-6 border-t border-slate-100">
+              <Link
+                to="/articles"
+                className="inline-flex items-center gap-2 text-indigo-600 hover:text-indigo-800 font-medium"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                Quay lại danh sách bài viết
+              </Link>
             </div>
           </div>
         </article>
 
         {related.length > 0 && (
-          <div className="mt-12">
+          <section className="mt-12">
             <h2 className="text-2xl font-bold text-slate-900 mb-6">Bài viết liên quan</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              {related.map(r => (
-                <Link key={r._id} to={`/articles/${r._id}`}
-                  className="bg-white rounded-xl border border-slate-200 overflow-hidden hover:shadow-md transition-shadow">
-                  {r.image && (
-                    <div className="h-40 overflow-hidden">
-                      <img src={`${API_URL}${r.image}`} alt={r.title} className="w-full h-full object-cover" />
-                    </div>
-                  )}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {related.map((item) => (
+                <Link
+                  key={item._id}
+                  to={`/articles/${item._id}`}
+                  className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-md transition-shadow group"
+                >
+                  <div className="h-36 bg-slate-100 overflow-hidden">
+                    {item.image ? (
+                      <img src={item.image} alt={item.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-slate-300">
+                        <FileText className="w-8 h-8" />
+                      </div>
+                    )}
+                  </div>
                   <div className="p-4">
-                    <span className="text-xs font-semibold text-indigo-600">{CATEGORY_LABELS[r.category]}</span>
-                    <h3 className="text-sm font-bold text-slate-900 mt-1 line-clamp-2">{r.title}</h3>
-                    <div className="flex items-center gap-2 text-xs text-slate-400 mt-2">
-                      <Eye className="w-3 h-3" />{r.views || 0}
-                    </div>
+                    <h3 className="font-bold text-slate-900 mb-2 line-clamp-2 group-hover:text-indigo-600 transition-colors">
+                      {item.title}
+                    </h3>
+                    <p className="text-xs text-slate-500">{formatDate(item.publishedAt || item.createdAt)}</p>
                   </div>
                 </Link>
               ))}
             </div>
-          </div>
+          </section>
         )}
       </div>
     </div>

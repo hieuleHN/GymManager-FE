@@ -1,7 +1,7 @@
-import MemberQR from './pages/MemberQR'; // Nhúng màn hình QR vào route
+import MemberQR from './pages/MemberQR';
+import { StaffQR } from './pages/StaffQR';
 import { AttendanceScanner } from './pages/admin/AttendanceScanner';
 import { createBrowserRouter, Navigate, useLocation } from 'react-router';
-import { RouteErrorBoundary } from '../lib/ErrorBoundary';
 import { Layout } from './components/Layout';
 import { Home } from './pages/Home';
 import { Learn } from './pages/Learn';
@@ -17,6 +17,7 @@ import { PackageCheckout } from './pages/PackageCheckout';
 import { Contract } from './pages/Contract';
 import { Payment } from './pages/Payment';
 import { MyPackages } from './pages/dashboard/MyPackages';
+import { PackageUpgrade } from './pages/dashboard/PackageUpgrade';
 import { TransactionHistory } from './pages/dashboard/TransactionHistory';
 import { Schedule } from './pages/dashboard/Schedule';
 import { BookSchedule } from './pages/dashboard/BookSchedule';
@@ -40,11 +41,12 @@ import { Services } from './pages/admin/Services';
 import { ServiceHistory } from './pages/admin/ServiceHistory';
 import { AttendanceHistory } from './pages/admin/AttendanceHistory';
 import { StaffList } from './pages/admin/StaffList';
-import { StaffShift } from './pages/admin/StaffShift';
 import { StaffSalary } from './pages/admin/StaffSalary';
 import { StaffSalaryHistory } from './pages/admin/StaffSalaryHistory';
 import { AddStaff } from './pages/admin/AddStaff';
 import { StaffPermissions } from './pages/admin/StaffPermissions';
+import { StaffWallet } from './pages/admin/StaffWallet';
+import { StaffCheckIn } from './pages/admin/StaffCheckIn';
 import { JobList } from './pages/admin/JobList';
 import { AddJob } from './pages/admin/AddJob';
 import { EditJob } from './pages/admin/EditJob';
@@ -75,11 +77,34 @@ import { Tasks } from './pages/admin/Tasks';
 import { Invoices } from './pages/admin/Invoices';
 import { BookingManagement } from './pages/admin/BookingManagement';
 import { PostManagement } from './pages/admin/PostManagement';
-import { AdminCommunity } from './pages/admin/AdminCommunity';
-import { AdminMessages } from './pages/admin/AdminMessages';
-import { AdminStats } from './pages/dashboard/AdminStats';
+import { ArticleManagement } from './pages/admin/ArticleManagement';
+import { Recruitment } from './pages/Recruitment';
 import { Articles } from './pages/Articles';
 import { ArticleDetail } from './pages/ArticleDetail';
+import { AdminCommunity } from './pages/admin/AdminCommunity';
+import { AdminMessages } from './pages/admin/AdminMessages';
+
+// IMPORT TRANG THỐNG KÊ BIỂU ĐỒ ADMIN
+import { AdminStats } from './pages/dashboard/AdminStats';
+import { LockerIssues } from './pages/dashboard/LockerIssues';
+
+// Khai báo RouteErrorBoundary dự phòng
+const RouteErrorBoundary = () => {
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 p-6 text-center">
+      <div className="max-w-md p-8 bg-white rounded-2xl shadow-sm border border-slate-100">
+        <h2 className="text-2xl font-bold text-slate-950 mb-3">Đã xảy ra sự cố!</h2>
+        <p className="text-slate-500 text-sm mb-6">Trang web gặp sự cố nhỏ khi tải tài nguyên hệ thống. Vui lòng thử tải lại trang.</p>
+        <button
+          onClick={() => window.location.reload()}
+          className="px-5 py-2.5 bg-indigo-600 text-white font-semibold text-sm rounded-xl hover:bg-indigo-700 transition-all"
+        >
+          Tải lại trang
+        </button>
+      </div>
+    </div>
+  );
+};
 
 const routeFeatures: Record<string, string> = {
   '/admin/dashboard': 'statistics',
@@ -109,8 +134,6 @@ const routeFeatures: Record<string, string> = {
   '/admin/staff/salary-history': 'salary',
   '/admin/staff/add': 'staff',
   '/admin/staff/permissions': 'permissions',
-  '/admin/staff/:id/edit': 'staff',
-  '/admin/staff/shifts': 'staff',
   '/admin/jobs': 'tasks',
   '/admin/jobs/add': 'tasks',
   '/admin/jobs/:id/edit': 'tasks',
@@ -129,6 +152,8 @@ const routeFeatures: Record<string, string> = {
   '/admin/tasks': 'tasks',
   '/admin/bookings': 'schedule',
   '/admin/invoices': 'payment',
+  '/admin/posts': 'services',
+  '/admin/articles': 'services',
   '/admin/community': 'services',
   '/admin/messages': 'services'
 };
@@ -145,10 +170,8 @@ function ProtectedRoute({ children, role }: { children: React.ReactNode, role?: 
   if (role === 'staff' && !isStaff) return <Navigate to="/" replace />;
   if (role === 'member' && isStaff) return <Navigate to="/admin/dashboard" replace />;
 
-  // Check feature permission for staff routes
   if (role === 'staff' && isStaff) {
     const path = location.pathname;
-    // Find matching feature for this route
     const feature = routeFeatures[path] || Object.entries(routeFeatures).find(([key]) => {
       if (key.includes(':id')) {
         const pattern = key.replace(/:id/g, '[^/]+');
@@ -182,14 +205,16 @@ export const router = createBrowserRouter([
       { path: 'clubs/:id', Component: ClubDetail },
       { path: 'disciplines/:id', Component: DisciplineDetail },
       { path: 'auth', Component: Auth },
+      { path: 'recruitment', Component: Recruitment },
       { path: 'articles', Component: Articles },
       { path: 'articles/:id', Component: ArticleDetail },
-
-      // ĐÃ TỐI ƯU TẠI ĐÂY: Đưa trang QR vào làm con của Layout 
-      // để khi mở trang này, thanh menu Navbar màu trắng ở trên vẫn giữ cố định!
       {
         path: 'dashboard/qr',
         element: <ProtectedRoute role="member"><MemberQR /></ProtectedRoute>
+      },
+      {
+        path: 'staff-qr',
+        element: <ProtectedRoute role="staff"><StaffQR /></ProtectedRoute>
       }
     ],
   },
@@ -200,6 +225,10 @@ export const router = createBrowserRouter([
   {
     path: '/dashboard/my-packages',
     element: <ProtectedRoute role="member"><MyPackages /></ProtectedRoute>
+  },
+  {
+    path: '/dashboard/upgrade/:registrationId',
+    element: <ProtectedRoute role="member"><PackageUpgrade /></ProtectedRoute>
   },
   {
     path: '/dashboard/history',
@@ -258,12 +287,16 @@ export const router = createBrowserRouter([
     element: <ProtectedRoute role="member"><Settings /></ProtectedRoute>
   },
   {
+    path: '/dashboard/locker-issues',
+    element: <ProtectedRoute role="staff"><LockerIssues /></ProtectedRoute>
+  },
+  {
     path: '/admin/dashboard',
     element: <ProtectedRoute role="staff"><AdminDashboard /></ProtectedRoute>
   },
   {
     path: '/admin/admin-stats',
-    element: <ProtectedRoute role="staff"><AdminStats /></ProtectedRoute>
+    element: <Navigate to="/admin/statistics" replace />
   },
   {
     path: '/admin/customers',
@@ -326,6 +359,10 @@ export const router = createBrowserRouter([
     element: <ProtectedRoute role="staff"><AttendanceHistory /></ProtectedRoute>
   },
   {
+    path: '/admin/staff-attendance',
+    element: <ProtectedRoute role="staff"><StaffCheckIn /></ProtectedRoute>
+  },
+  {
     path: '/admin/products',
     element: <ProtectedRoute role="staff"><ProductList /></ProtectedRoute>
   },
@@ -362,12 +399,8 @@ export const router = createBrowserRouter([
     element: <ProtectedRoute role="staff"><StaffPermissions /></ProtectedRoute>
   },
   {
-    path: '/admin/staff/:id/edit',
-    element: <ProtectedRoute role="staff"><AddStaff /></ProtectedRoute>
-  },
-  {
-    path: '/admin/staff/shifts',
-    element: <ProtectedRoute role="staff"><StaffShift /></ProtectedRoute>
+    path: '/admin/wallet',
+    element: <ProtectedRoute role="staff"><StaffWallet /></ProtectedRoute>
   },
   {
     path: '/admin/jobs',
@@ -384,6 +417,7 @@ export const router = createBrowserRouter([
     path: '/admin/statistics',
     element: <ProtectedRoute role="staff"><Statistics /></ProtectedRoute>
   },
+  
   {
     path: '/admin/clubs',
     element: <ProtectedRoute role="staff"><ClubManagement /></ProtectedRoute>
@@ -443,6 +477,10 @@ export const router = createBrowserRouter([
   {
     path: '/admin/posts',
     element: <ProtectedRoute role="staff"><PostManagement /></ProtectedRoute>
+  },
+  {
+    path: '/admin/articles',
+    element: <ProtectedRoute role="staff"><ArticleManagement /></ProtectedRoute>
   },
   {
     path: '/admin/community',

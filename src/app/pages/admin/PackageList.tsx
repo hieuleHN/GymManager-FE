@@ -17,6 +17,8 @@ interface PackageItem {
   name: string;
   unitPrice: number;
   disciplineId: Discipline | string;
+  combo?: boolean;
+  disciplines?: Discipline[];
   features: string[];
   durations: { months: number; discount: number }[];
   ptSessionsPerMonth?: number;
@@ -128,16 +130,17 @@ export function PackageList() {
     }
   };
 
-  const getDisciplineName = (disciplineId: Discipline | string): string => {
-    if (
-      typeof disciplineId === "object" &&
-      disciplineId !== null &&
-      "name" in disciplineId
-    ) {
-      return (disciplineId as Discipline).name;
+  const getDisciplineName = (pkg: PackageItem): string => {
+    if (pkg.combo) return "Combo";
+    const dId = pkg.disciplineId;
+    if (typeof dId === "object" && dId !== null && "name" in dId) {
+      return (dId as Discipline).name;
     }
-    const found = disciplines.find((d) => d._id === disciplineId);
-    return found ? found.name : "N/A";
+    if (typeof dId === "string") {
+      const found = disciplines.find((d) => d._id === dId);
+      return found ? found.name : "N/A";
+    }
+    return "N/A";
   };
 
   return (
@@ -202,7 +205,7 @@ export function PackageList() {
                 <div className="p-6 pt-3">
                   <div className="mb-4">
                     <p className="text-sm text-indigo-600 font-semibold mb-1">
-                      {getDisciplineName(pkg.disciplineId)}
+                      {getDisciplineName(pkg)}
                     </p>
                     <h3 className="text-2xl font-bold text-slate-900 mb-2">
                       {pkg.name}
@@ -217,6 +220,15 @@ export function PackageList() {
                       <p className="text-xs text-indigo-600 font-semibold mt-1">
                         {pkg.isFullMonth ? 'PT: Full tháng' : `PT: ${pkg.ptSessionsPerMonth} buổi/tháng`}
                       </p>
+                    )}
+                    {pkg.combo && pkg.disciplines && pkg.disciplines.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {pkg.disciplines.map((d) => (
+                          <span key={d._id} className="px-2 py-0.5 text-xs bg-indigo-100 text-indigo-700 rounded-full">
+                            {d.name}
+                          </span>
+                        ))}
+                      </div>
                     )}
                   </div>
 
