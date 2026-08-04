@@ -23,12 +23,16 @@ interface EquipmentItem {
     unitPrice: number;
     totalValue: number;
     supplier: string;
+    supplierPhone: string;
+    supplierAddress: string;
+    purchaser: string;
     location: string;
     status: 'ACTIVE' | 'INACTIVE' | 'DISCONTINUED';
     statusLabel?: string;
     condition: 'GOOD' | 'MAINTENANCE' | 'DAMAGED' | 'REPAIRING';
     conditionLabel?: string;
     warrantyExpired?: boolean;
+    warrantyMonths: number;
     pendingReportCount: number;
     purchaseDateLabel: string;
     nextMaintenanceDate: string | null;
@@ -123,6 +127,7 @@ export function EquipmentListV2() {
         setError('');
         try {
             const params = new URLSearchParams();
+            params.append('limit', '200');
             if (searchTerm.trim()) params.append('search', searchTerm.trim());
             if (categoryFilter !== 'ALL') params.append('category', categoryFilter);
             if (statusFilter !== 'ALL') params.append('status', statusFilter);
@@ -200,11 +205,11 @@ export function EquipmentListV2() {
             underMaintenance: String(item.underMaintenance),
             unitPrice: String(item.unitPrice),
             supplier: item.supplier,
-            supplierPhone: '',
-            supplierAddress: '',
-            purchaser: '',
+            supplierPhone: item.supplierPhone,
+            supplierAddress: item.supplierAddress,
+            purchaser: item.purchaser,
             purchaseDate: item.purchaseDateLabel || toInputDate(new Date()),
-            warrantyMonths: '12',
+            warrantyMonths: String(item.warrantyMonths ?? 12),
             location: item.location,
             nextMaintenanceDate: item.nextMaintenanceDate ? toInputDate(new Date(item.nextMaintenanceDate)) : '',
             description: item.description
@@ -570,7 +575,7 @@ export function EquipmentListV2() {
                             </div>
                             <div>
                                 <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Số lượng</label>
-                                <input type="number" min="1" max={reportTarget.availableQuantity} value={report.affectedQuantity} onChange={(e) => setReport({ ...report, affectedQuantity: e.target.value })} className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500" />
+                                <input type="number" min="1" max={report.reportType === 'DAMAGE' || report.reportType === 'MAINTENANCE' ? reportTarget.availableQuantity : reportTarget.quantity} value={report.affectedQuantity} onChange={(e) => setReport({ ...report, affectedQuantity: e.target.value })} className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500" />
                             </div>
                         </div>
                         <div className="mt-3">
