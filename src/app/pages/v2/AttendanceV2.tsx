@@ -4,7 +4,7 @@ import { AdminLayout } from '../../components/AdminLayout';
 import { getApiUrl, getAuthHeaders } from '../../context/AuthContext';
 import {
     CheckCircle2, AlertTriangle, Loader2, Search, CalendarCheck2, Users,
-    UserX, UserCheck, ScanLine, Clock, History, Dumbbell, Phone, X, Check
+    UserX, UserCheck, ScanLine, Clock, History, Phone, X, Check
 } from 'lucide-react';
 
 interface AttendanceRecord {
@@ -43,6 +43,23 @@ interface TrendItem {
     count: number;
 }
 
+interface LookupPackage {
+    _id: string;
+    packageName: string;
+    status: string;
+    paymentStatus: string;
+    endDate: string;
+    remainingDays: number;
+    valid: boolean;
+}
+
+interface LookupResult {
+    customerName: string;
+    customerPhone: string;
+    customerId: string | null;
+    memberships: LookupPackage[];
+}
+
 export function AttendanceV2() {
     const navigate = useNavigate();
     const [records, setRecords] = useState<AttendanceRecord[]>([]);
@@ -50,11 +67,14 @@ export function AttendanceV2() {
     const [summary, setSummary] = useState<SummaryData>({ total: 0, activeMembersCount: 0, notCheckedIn: 0, rate: 0 });
     const [trend, setTrend] = useState<TrendItem[]>([]);
     const [phone, setPhone] = useState('');
+    const [lookupResult, setLookupResult] = useState<LookupResult | null>(null);
+    const [lookupError, setLookupError] = useState('');
+    const [lookuping, setLookuping] = useState(false);
+    const [confirming, setConfirming] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [banner, setBanner] = useState('');
-    const [checking, setChecking] = useState(false);
 
     const fetchAll = async () => {
         setLoading(true);
@@ -90,27 +110,57 @@ export function AttendanceV2() {
         setTimeout(() => setBanner(''), 4000);
     };
 
-    const handleCheckIn = async () => {
-        if (!phone.trim()) {
-            window.alert('Vui lòng nhập số điện thoại hội viên');
+    const isValidPhone = (value: string) => /^0\d{9,10}$/.test(value.trim());
+
+    const handleLookup = async () => {
+        const phoneValue = phone.trim();
+        setLookupError('');
+        setLookupResult(null);
+        if (!phoneValue) {
+            setLookupError('Vui lòng nhập số điện thoại hội viên');
             return;
         }
-        setChecking(true);
+        if (!isValidPhone(phoneValue)) {
+            setLookupError('Số điện thoại không hợp lệ (phải bắt đầu bằng 0 và có 10-11 chữ số)');
+            return;
+        }
+        setLookuping(true);
+        try {
+            const res = await fetch(`${getApiUrl()}/api/v2/attendance/lookup`, {
+                method: 'POST',
+                headers: getAuthHeaders(),
+                body: JSON.stringify({ phone: phoneValue })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.message || 'Không tìm thấy hội viên');
+            setLookupResult(data.data);
+        } catch (err: any) {
+            setLookupError(err.message);
+        } finally {
+            setLookuping(false);
+        }
+    };
+
+    const handleConfirmCheckIn = async () => {
+        if (!lookupResult) return;
+        setLookupError('');
+        setConfirming(true);
         try {
             const res = await fetch(`${getApiUrl()}/api/v2/attendance/check-in`, {
                 method: 'POST',
                 headers: getAuthHeaders(),
-                body: JSON.stringify({ customerPhone: phone.trim(), method: 'MANUAL' })
+                body: JSON.stringify({ customerPhone: lookupResult.customerPhone, method: 'MANUAL' })
             });
             const data = await res.json();
             if (!res.ok) throw new Error(data.message || 'Điểm danh thất bại');
             showBanner(data.message || 'Điểm danh thành công');
             setPhone('');
+            setLookupResult(null);
             fetchAll();
         } catch (err: any) {
-            window.alert(err.message);
+            setLookupError(err.message);
         } finally {
-            setChecking(false);
+            setConfirming(false);
         }
     };
 
@@ -137,6 +187,7 @@ export function AttendanceV2() {
     );
 
     const maxTrendCount = Math.max(...trend.map(item => item.count), 1);
+    const hasValidPackage = !!lookupResult?.memberships.some(m => m.valid);
 
     return (
         <AdminLayout>
@@ -206,19 +257,76 @@ export function AttendanceV2() {
                                         placeholder="Nhập số điện thoại hội viên..."
                                         value={phone}
                                         onChange={(e) => setPhone(e.target.value)}
-                                        onKeyDown={(e) => { if (e.key === 'Enter') handleCheckIn(); }}
+                                        onKeyDown={(e) => { if (e.key === 'Enter') handleLookup(); }}
                                         className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                                     />
                                 </div>
                                 <button
-                                    onClick={handleCheckIn}
-                                    disabled={checking}
-                                    className="flex items-center justify-center gap-2 px-6 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-bold shadow-sm hover:bg-indigo-700 disabled:opacity-60 transition-all"
+                                    onClick={handleLookup}
+                                    disabled={lookuping}
+                                    className="flex items-center justify-center gap-2 px-6 py-2.5 bg-slate-800 text-white rounded-xl text-sm font-bold shadow-sm hover:bg-slate-900 disabled:opacity-60 transition-all"
                                 >
-                                    {checking ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserCheck className="w-4 h-4" />}
-                                    {checking ? 'Đang xử lý...' : 'Điểm danh'}
+                                    {lookuping ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+                                    {lookuping ? 'Đang tra cứu...' : 'Tra cứu'}
                                 </button>
                             </div>
+
+                            {lookupError && (
+                                <div className="mt-4 bg-red-50 border border-red-200 text-red-700 p-3 rounded-xl text-sm flex items-center gap-2">
+                                    <AlertTriangle className="w-4 h-4 text-red-600" /> {lookupError}
+                                </div>
+                            )}
+
+                            {lookupResult && (
+                                <div className="mt-4 bg-slate-50 border border-slate-200 rounded-xl p-4">
+                                    <div className="flex items-center justify-between mb-3">
+                                        <div>
+                                            <p className="font-bold text-slate-900">{lookupResult.customerName}</p>
+                                            <p className="text-xs text-slate-400">{lookupResult.customerPhone}</p>
+                                        </div>
+                                        <button
+                                            onClick={() => { setLookupResult(null); setLookupError(''); }}
+                                            className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded-lg"
+                                            title="Đóng"
+                                        >
+                                            <X className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                    <div className="space-y-2 mb-4">
+                                        {lookupResult.memberships.map(m => (
+                                            <div key={m._id} className="flex items-center justify-between bg-white border border-slate-100 rounded-lg px-3 py-2">
+                                                <div>
+                                                    <p className="text-sm font-semibold text-slate-800">{m.packageName}</p>
+                                                    <p className="text-xs text-slate-400">
+                                                        Hết hạn: {new Date(m.endDate).toLocaleDateString('vi-VN')}
+                                                    </p>
+                                                </div>
+                                                <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${m.valid
+                                                    ? 'bg-emerald-100 text-emerald-700'
+                                                    : 'bg-red-100 text-red-600'
+                                                }`}>
+                                                    {m.valid ? `Còn ${m.remainingDays} ngày` : 'Hết hiệu lực'}
+                                                </span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    {hasValidPackage ? (
+                                        <button
+                                            onClick={handleConfirmCheckIn}
+                                            disabled={confirming}
+                                            className="w-full flex items-center justify-center gap-2 px-6 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-bold shadow-sm hover:bg-indigo-700 disabled:opacity-60 transition-all"
+                                        >
+                                            {confirming ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserCheck className="w-4 h-4" />}
+                                            {confirming ? 'Đang xử lý...' : 'Xác nhận điểm danh'}
+                                        </button>
+                                    ) : (
+                                        <div className="flex items-center gap-2 text-red-600 text-sm font-semibold">
+                                            <UserX className="w-4 h-4" /> Hội viên không có gói tập còn hiệu lực
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
                             <p className="text-xs text-slate-400 mt-3">
                                 Hệ thống tự kiểm tra gói tập còn hiệu lực & chặn điểm danh trùng trong ngày.
                             </p>
