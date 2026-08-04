@@ -1,7 +1,15 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { BarChart3, TrendingUp } from "lucide-react";
 
 export const StatisticsV2 = () => {
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setTimeout(() => {
+      setLoading(false);
+    }, 1200);
+  }, []);
+
   return (
     <div className="p-8 bg-white rounded-2xl shadow-sm border border-slate-100 mt-6">
       <div className="flex items-center justify-between mb-6">
@@ -29,11 +37,20 @@ export const StatisticsV2 = () => {
       </div>
 
       <div className="h-80 bg-slate-50 rounded-xl border-2 border-dashed border-slate-200 flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-slate-500 font-medium mb-2">
-            Khu vực render biểu đồ Chart.js
+        {loading ? (
+          <p className="text-indigo-500 font-medium animate-pulse">
+            Đang tải dữ liệu biểu đồ...
           </p>
-        </div>
+        ) : (
+          <div className="text-center">
+            <p className="text-slate-500 font-medium mb-2">
+              Dữ liệu đã sẵn sàng
+            </p>
+            <p className="text-sm text-slate-400">
+              Khu vực nhúng component Recharts (Sẽ update sau)
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );
