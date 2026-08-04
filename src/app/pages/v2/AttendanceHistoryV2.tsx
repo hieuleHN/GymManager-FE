@@ -9,9 +9,14 @@ import {
 
 const STATUS_FILTERS = [
     { key: 'ALL', label: 'Tất cả' },
-    { key: 'SUCCESS', label: 'Thành công' },
-    { key: 'MANUAL', label: 'Thủ công' },
+    { key: 'SUCCESS', label: 'Hợp lệ' },
     { key: 'FAILED', label: 'Không hợp lệ' }
+];
+
+const METHOD_FILTERS = [
+    { key: 'ALL', label: 'Mọi hình thức' },
+    { key: 'QR', label: 'Quét QR' },
+    { key: 'MANUAL', label: 'Nhập tay' }
 ];
 
 const STATUS_STYLES: Record<string, string> = {
@@ -58,6 +63,7 @@ export function AttendanceHistoryV2() {
     const [records, setRecords] = useState<HistoryRecord[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [statusFilter, setStatusFilter] = useState('ALL');
+    const [methodFilter, setMethodFilter] = useState('ALL');
     const [dateFilter, setDateFilter] = useState('');
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
@@ -94,8 +100,9 @@ export function AttendanceHistoryV2() {
             record.customerPhone?.includes(searchTerm) ||
             record.packageName?.toLowerCase().includes(searchTerm.toLowerCase());
         const matchesStatus = statusFilter === 'ALL' || record.status === statusFilter;
+        const matchesMethod = methodFilter === 'ALL' || record.method === methodFilter;
         const matchesDate = !dateFilter || record.dateLabel === dateFilter;
-        return matchesSearch && matchesStatus && matchesDate;
+        return matchesSearch && matchesStatus && matchesMethod && matchesDate;
     });
 
     const successCount = filteredRecords.filter(r => r.status === 'SUCCESS' || r.status === 'MANUAL').length;
@@ -242,12 +249,27 @@ export function AttendanceHistoryV2() {
                         </div>
                         <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
                             <Filter className="w-4 h-4 text-slate-400" />
+                            {METHOD_FILTERS.map(item => (
+                                <button
+                                    key={item.key}
+                                    onClick={() => setMethodFilter(item.key)}
+                                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${methodFilter === item.key
+                                        ? 'bg-indigo-600 text-white'
+                                        : 'text-slate-500 hover:bg-slate-100'
+                                    }`}
+                                >
+                                    {item.label}
+                                </button>
+                            ))}
+                        </div>
+                        <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
+                            <Filter className="w-4 h-4 text-slate-400" />
                             {STATUS_FILTERS.map(item => (
                                 <button
                                     key={item.key}
                                     onClick={() => setStatusFilter(item.key)}
                                     className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${statusFilter === item.key
-                                        ? 'bg-indigo-600 text-white'
+                                        ? 'bg-emerald-600 text-white'
                                         : 'text-slate-500 hover:bg-slate-100'
                                     }`}
                                 >
@@ -381,8 +403,7 @@ export function AttendanceHistoryV2() {
                                     onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}
                                     className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                                 >
-                                    <option value="SUCCESS">Thành công</option>
-                                    <option value="MANUAL">Thủ công</option>
+                                    <option value="SUCCESS">Hợp lệ</option>
                                     <option value="FAILED">Không hợp lệ</option>
                                 </select>
                             </div>
