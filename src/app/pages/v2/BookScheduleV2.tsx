@@ -101,8 +101,13 @@ export function BookScheduleV2() {
     };
 
     const handleLookup = async () => {
-        if (!phone.trim()) {
+        const phoneValue = phone.trim();
+        if (!phoneValue) {
             toast.error('Vui lòng nhập số điện thoại khách hàng!');
+            return;
+        }
+        if (!/^0\d{9,10}$/.test(phoneValue)) {
+            toast.error('Số điện thoại không hợp lệ (phải bắt đầu bằng 0 và có 10-11 chữ số)!');
             return;
         }
         setLookingUp(true);
@@ -111,14 +116,16 @@ export function BookScheduleV2() {
             const res = await fetch(`${getApiUrl()}/api/v2/bookings/lookup`, {
                 method: 'POST',
                 headers: getAuthHeaders(),
-                body: JSON.stringify({ phone: phone.trim() })
+                body: JSON.stringify({ phone: phoneValue })
             });
             const data = await res.json();
             if (!res.ok) throw new Error(data.message || 'Tra cứu thất bại');
             setLookedUp(data.data);
-            if (data.data.memberships?.length > 0) {
-                setPackageId(data.data.memberships[0]._id);
-                setPackageName(data.data.memberships[0].packageName);
+            const memberships = data.data.memberships || [];
+            const validMembership = memberships.find(m => m.valid) || memberships[0];
+            if (validMembership) {
+                setPackageId(validMembership._id);
+                setPackageName(validMembership.packageName);
             }
             toast.success(`Đã tìm thấy "${data.data.customerName}"`);
         } catch (err: any) {
