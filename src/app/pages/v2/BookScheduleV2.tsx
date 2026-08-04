@@ -474,6 +474,11 @@ export function BookScheduleV2() {
                     onChange={(e) => setPrice(e.target.value)}
                     className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   />
+                  {Number(price) > 0 && (
+                    <p className="text-xs text-emerald-600 font-medium mt-1 ml-1">
+                      Hiển thị: {Number(price).toLocaleString("vi-VN")} ₫
+                    </p>
+                  )}
                 </div>
                 <div className="md:col-span-2">
                   <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">
