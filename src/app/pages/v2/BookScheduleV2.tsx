@@ -215,6 +215,12 @@ export function BookScheduleV2() {
       toast.error("Giờ kết thúc phải sau giờ bắt đầu!");
       return;
     }
+
+    const confirmMsg = `Xác nhận đặt lịch cho ${lookedUp.customerName} lúc ${startTime} ngày ${date}?`;
+    if (!window.confirm(confirmMsg)) {
+      return;
+    }
+
     setSubmitting(true);
     try {
       const trainer = trainers.find((t) => t._id === trainerId);
