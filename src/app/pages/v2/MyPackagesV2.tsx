@@ -698,8 +698,8 @@ export function MyPackages() {
                 const alreadyRegistered = registrations.some(
                   (r) =>
                     r.package_id?._id === pkg._id &&
-                    (r.status === "đang hoạt động..." ||
-                      r.status === "còn 10 ngày..."),
+                    (r.status === "đang hoạt động" ||
+                      r.status === "còn 10 ngày"),
                 );
                 return (
                   <div
@@ -742,7 +742,7 @@ export function MyPackages() {
                             borderRadius: 2,
                           }}
                         >
-                          Đăng ký ngay bây giờ
+                          Đăng ký ngay
                         </Button>
                       </Link>
                     )}
@@ -758,7 +758,7 @@ export function MyPackages() {
             <div className="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-xl">
               <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center">
                 <h3 className="font-bold text-lg text-slate-900">
-                  Gia hạn gói tập của bạn
+                  Gia hạn gói tập
                 </h3>
                 <button
                   type="button"
@@ -811,15 +811,23 @@ export function MyPackages() {
                     borderRadius: 2,
                   }}
                 >
-                  Tới trang thanh toán và tiếp theo
+                  Tới trang thanh toán
                 </Button>
-
+                <Button
+                  fullWidth
+                  variant="contained"
+                  onClick={handleExecuteRenew}
+                  sx={{
+                    bgcolor: "#4f46e5",
+                    textTransform: "none",
+                    borderRadius: 2,
+                  }}
+                >
+                  tới
+                </Button>
               </div>
-
             </div>
-
           </div>
-          
         )}
       </div>
     </DashboardLayout>
