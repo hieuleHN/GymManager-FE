@@ -391,13 +391,276 @@ export function MyPackagesV2() {
                 <div className="flex justify-between items-center">
                     <div>
                         <h1 className="text-2xl font-bold text-slate-900">Gói Hội Viên V2</h1>
-                        <p className="text-slate-500 text-sm mt-1">Theo dõi gói tập của hội viên, hạn sử dụng, buổi PT và thanh toán</p>
                     </div>
                     <div className="flex gap-2">
                         <button
                             onClick={handleRefreshStatus}
                             disabled={refreshing}
                             className="flex items-center gap-2 px-4 py-2.5 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 disabled:opacity-60 transition-all"
+                  </div>
+
+                  <div className="space-y-3 mb-4">
+                    {reg.payment_status === "chờ thanh toán" && (
+                      <div className="flex items-center gap-2 text-sm bg-amber-50 border border-amber-200 px-3 py-2 rounded-lg">
+                        <AlertTriangle className="w-4 h-4 text-amber-600" />
+                        <span className="text-amber-700">
+                          Chờ thanh toán — vui lòng thanh toán để kích hoạt gói tập
+                        </span>
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-2 text-sm">
+                      <Calendar className="w-4 h-4 text-slate-400" />
+                      <span className="text-slate-600 font-medium">
+                        Hạn sử dụng: đến {formatDate(reg.end_date)}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2 text-sm">
+                      <MapPin className="w-4 h-4 text-slate-400" />
+                      <span className="text-slate-600">
+                        {reg.locationId?.title ||
+                          reg.locationId?.name ||
+                          customer?.locationId?.title ||
+                          customer?.locationId?.name ||
+                          "Đang cập nhật"}
+                      </span>
+                    </div>
+
+                    {reg.end_date && (
+                      <div className="px-3 py-2 rounded-lg bg-indigo-50 inline-block border border-indigo-100">
+                        <p className="text-sm text-indigo-700">
+                          Còn lại{" "}
+                          <span className="font-bold text-indigo-900">
+                            {daysRemaining(reg.end_date)} ngày
+                          </span>
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {reg.ptSessionsPerMonth > 0 && (
+                    <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-green-50 border border-green-200 mb-2">
+                      <Calendar className="w-4 h-4 text-green-600" />
+                      <span className="text-sm text-green-800 font-medium">
+                        {reg.isFullMonth
+                          ? 'Không giới hạn buổi tập HLV'
+                          : `${reg.ptSessionsPerMonth} buổi tập HLV / tháng`
+                        }
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-3">
+                    {(reg.payment_status === 'chờ thanh toán' || reg.payment_status === 'pending') ? (
+                      <Button fullWidth variant="contained" size="small"
+                        onClick={() => navigate('/payment', { state: { package: reg.package_id, registration: reg, customer, durationMonths: reg.duration_months, totalPrice: reg.total_price } })}
+                        sx={{ textTransform: 'none', borderRadius: 2, bgcolor: '#d97706', '&:hover': { bgcolor: '#b45309' } }}>
+                        Thanh toán ngay
+                      </Button>
+                    ) : reg.payment_status !== 'chờ thanh toán' ? (
+                      <>
+                        {reg.status === 'chờ xác nhận' && (
+                          <div className="col-span-2 flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800 mb-1">
+                            <Clock className="w-4 h-4 shrink-0" />
+                            <span>Đang chờ quản lý xác nhận</span>
+                          </div>
+                        )}
+                      </>
+                    ) : null}
+                    
+                    
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {paidPendingRegistrations.length > 0 && (
+          <div>
+            <h2 className="text-2xl font-bold text-slate-900 mb-4">Đã thanh toán - chờ xác nhận</h2>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {paidPendingRegistrations.map((reg) => (
+                <div key={reg._id} className="bg-white rounded-2xl shadow-sm border-l-4 border-amber-400 overflow-hidden">
+                  <div className="p-6">
+                    <div className="flex items-start justify-between mb-4">
+                      <div>
+                        <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-700 mb-2">
+                          <Clock className="w-3 h-3" />
+                          Đã thanh toán - chờ duyệt
+                        </span>
+                        <h3 className="text-2xl font-bold text-slate-900">{reg.package_id?.name || 'Đã xóa'}</h3>
+                        {reg.package_id?.disciplineId?.name && (
+                          <p className="text-sm text-indigo-600 font-medium mt-1">{reg.package_id.disciplineId.name}</p>
+                        )}
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm text-slate-600">Giá trị</p>
+                        <p className="text-xl font-bold text-indigo-600">{formatPrice(reg.total_price)}</p>
+                      </div>
+                    </div>
+                    <div className="space-y-3 mb-4">
+                      <div className="flex items-center gap-2 text-sm">
+                        <Calendar className="w-4 h-4 text-slate-400" />
+                        <span className="text-slate-600">
+                          {formatDate(reg.start_date)} - {formatDate(reg.end_date)}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 text-sm">
+                        <MapPin className="w-4 h-4 text-slate-400" />
+                        <span className="text-slate-600">{reg.locationId?.title || 'Đang cập nhật'}</span>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <a href={`${getApiUrl()}/api/user-packages/${reg._id}/contract-pdf?token=${encodeURIComponent(JSON.parse(localStorage.getItem('auth_user') || '{}').token || '')}`} target="_blank" rel="noopener noreferrer" className="block col-span-2">
+                        <Button fullWidth variant="outlined" size="small"
+                          sx={{ textTransform: 'none', borderRadius: 2, color: '#4f46e5', borderColor: '#4f46e5' }}>
+                          Xem hợp đồng (PDF)
+                        </Button>
+                      </a>
+                      <Link to="/packages">
+                        <Button fullWidth variant="outlined" size="small"
+                          sx={{ textTransform: 'none', borderRadius: 2, color: '#4f46e5', borderColor: '#4f46e5' }}>
+                          Xem gói tập
+                        </Button>
+                      </Link>
+                      <Button fullWidth variant="contained" size="small"
+                        onClick={() => navigate(`/packages/${reg.package_id?._id}`)}
+                        sx={{ textTransform: 'none', borderRadius: 2, bgcolor: '#4f46e5', '&:hover': { bgcolor: '#4338ca' } }}>
+                        Gia hạn
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {pendingRegistrations.length > 0 && (
+          <div>
+            <h2 className="text-2xl font-bold text-slate-900 mb-4">Đăng ký chờ thanh toán</h2>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {pendingRegistrations.map((reg) => (
+                <div key={reg._id} className="bg-white rounded-2xl shadow-sm border-l-4 border-amber-400 overflow-hidden">
+                  <div className="p-6">
+                    <div className="flex items-start justify-between mb-4">
+                      <div>
+                        <span className="inline-block px-3 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-700 mb-2">
+                          {reg.status}
+                        </span>
+                        <h3 className="text-2xl font-bold text-slate-900">{reg.package_id?.name || 'Đã xóa'}</h3>
+                        {reg.package_id?.disciplineId?.name && (
+                          <p className="text-sm text-indigo-600 font-medium mt-1">{reg.package_id.disciplineId.name}</p>
+                        )}
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm text-slate-600">Giá trị</p>
+                        <p className="text-xl font-bold text-indigo-600">{formatPrice(reg.total_price)}</p>
+                      </div>
+                    </div>
+                    <div className="space-y-3 mb-4">
+                      <div className="flex items-center gap-2 text-sm">
+                        <Calendar className="w-4 h-4 text-slate-400" />
+                        <span className="text-slate-600">
+                          {formatDate(reg.start_date)} - {formatDate(reg.end_date)}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 text-sm">
+                        <MapPin className="w-4 h-4 text-slate-400" />
+                        <span className="text-slate-600">{reg.locationId?.title || 'Đang cập nhật'}</span>
+                      </div>
+                      {reg.payment_expires_at && (
+                        <div className="px-3 py-2 rounded-lg bg-amber-50 border border-amber-200">
+                          <p className="text-sm text-amber-800">
+                            Hạn thanh toán: {formatDate(reg.payment_expires_at)}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex gap-3">
+                      {reg.payment_status === 'pending' && (
+                        <Button fullWidth variant="contained" size="small"
+                          onClick={() => navigate('/payment', {
+                            state: {
+                              package: reg.package_id,
+                              registration: reg,
+                              customer,
+                              durationMonths: reg.duration_months,
+                              totalPrice: reg.total_price
+                            }
+                          })}
+                          sx={{ textTransform: 'none', borderRadius: 2, bgcolor: '#d97706', '&:hover': { bgcolor: '#b45309' } }}>
+                          Thanh toán ngay
+                        </Button>
+                      )}
+                      <Button fullWidth variant="outlined" size="small"
+                        onClick={() => navigate('/packages')}
+                        sx={{ textTransform: 'none', borderRadius: 2 }}>
+                        Hủy
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {otherPackages.length > 0 && (
+          <div>
+            <h2 className="text-2xl font-bold text-slate-900 mb-4">
+              Các gói tập khác
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {otherPackages.map((pkg) => {
+                const alreadyRegistered = registrations.some(
+                  (r) =>
+                    r.package_id?._id === pkg._id &&
+                    (r.status === "đang hoạt động" ||
+                      r.status === "còn 10 ngày"),
+                );
+                return (
+                  <div
+                    key={pkg._id}
+                    className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100"
+                  >
+                    <div className="mb-4">
+                      {pkg.disciplineId && (
+                        <p className="text-sm text-indigo-600 font-semibold mb-1">
+                          {pkg.disciplineId.name}
+                        </p>
+                      )}
+                      <h3 className="text-xl font-bold text-slate-900 mb-2">
+                        {pkg.name}
+                      </h3>
+                      <p className="text-2xl font-bold text-slate-900">
+                        {formatPrice(pkg.unitPrice)}
+                        <span className="text-sm text-slate-500 font-normal">
+                          /tháng
+                        </span>
+                      </p>
+                    </div>
+                    {alreadyRegistered ? (
+                      <Button
+                        fullWidth
+                        variant="outlined"
+                        disabled
+                        sx={{ textTransform: "none", borderRadius: 2 }}
+                      >
+                        Đã đăng ký
+                      </Button>
+                    ) : (
+                      <Link to={`/packages/${pkg._id}`}>
+                        <Button
+                          fullWidth
+                          variant="contained"
+                          sx={{
+                            bgcolor: "#4f46e5",
+                            textTransform: "none",
+                            borderRadius: 2,
+                          }}
                         >
                             <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} /> Cập nhật trạng thái
                         </button>
