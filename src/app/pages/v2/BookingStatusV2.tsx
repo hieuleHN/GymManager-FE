@@ -418,8 +418,16 @@ export function BookingStatusV2() {
                   placeholder="Tìm mã, tên, SĐT..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="pl-9 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
+                {searchTerm && (
+                  <button
+                    onClick={() => setSearchTerm("")}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
               </div>
               <input
                 type="date"
@@ -432,11 +440,14 @@ export function BookingStatusV2() {
                   setDateFilter("");
                   setStatusFilter("ALL");
                   setSearchTerm("");
+                  fetchAll();
                 }}
                 className="p-2 bg-slate-100 text-slate-600 rounded-xl hover:bg-slate-200"
-                title="Đặt lại bộ lọc"
+                title="Làm mới dữ liệu"
               >
-                <RefreshCw className="w-4 h-4" />
+                <RefreshCw
+                  className={`w-4 h-4 ${loading ? "animate-spin" : ""}`}
+                />
               </button>
             </div>
           </div>
