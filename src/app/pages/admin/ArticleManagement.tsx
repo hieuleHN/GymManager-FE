@@ -61,7 +61,7 @@ export function ArticleManagement() {
     setLoading(true);
     try {
       const params = new URLSearchParams({ page: String(page), limit: '20' });
-      if (statusFilter !== 'all') params.append('status', statusFilter);
+      params.append('status', statusFilter);
       if (categoryFilter !== 'all') params.append('category', categoryFilter);
       const res = await fetch(`${getApiUrl()}/api/articles?${params}`, {
         headers: getAuthHeaders()

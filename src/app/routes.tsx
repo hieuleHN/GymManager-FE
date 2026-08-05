@@ -45,7 +45,6 @@ import { StaffSalary } from './pages/admin/StaffSalary';
 import { StaffSalaryHistory } from './pages/admin/StaffSalaryHistory';
 import { AddStaff } from './pages/admin/AddStaff';
 import { StaffPermissions } from './pages/admin/StaffPermissions';
-import { StaffWallet } from './pages/admin/StaffWallet';
 import { StaffCheckIn } from './pages/admin/StaffCheckIn';
 import { JobList } from './pages/admin/JobList';
 import { AddJob } from './pages/admin/AddJob';
@@ -133,6 +132,7 @@ const routeFeatures: Record<string, string> = {
   '/admin/staff/salary': 'salary',
   '/admin/staff/salary-history': 'salary',
   '/admin/staff/add': 'staff',
+  '/admin/staff/:id/edit': 'staff',
   '/admin/staff/permissions': 'permissions',
   '/admin/jobs': 'tasks',
   '/admin/jobs/add': 'tasks',
@@ -395,12 +395,12 @@ export const router = createBrowserRouter([
     element: <ProtectedRoute role="staff"><AddStaff /></ProtectedRoute>
   },
   {
-    path: '/admin/staff/permissions',
-    element: <ProtectedRoute role="staff"><StaffPermissions /></ProtectedRoute>
+    path: '/admin/staff/:id/edit',
+    element: <ProtectedRoute role="staff"><AddStaff /></ProtectedRoute>
   },
   {
-    path: '/admin/wallet',
-    element: <ProtectedRoute role="staff"><StaffWallet /></ProtectedRoute>
+    path: '/admin/staff/permissions',
+    element: <ProtectedRoute role="staff"><StaffPermissions /></ProtectedRoute>
   },
   {
     path: '/admin/jobs',
