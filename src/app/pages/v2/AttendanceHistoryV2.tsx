@@ -209,10 +209,6 @@ export function AttendanceHistoryV2() {
                         <p className="text-3xl font-black text-emerald-600">{successCount}</p>
                     </div>
                     <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
-                        <p className="text-xs font-bold text-slate-400 uppercase mb-1">Thông tin</p>
-                        <p className="text-3xl font-black text-emerald-600">{successCount}</p>
-                    </div>
-                    <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
                         <p className="text-xs font-bold text-slate-400 uppercase mb-1">Không hợp lệ</p>
                         <p className="text-3xl font-black text-red-500">{failedCount}</p>
                     </div>
