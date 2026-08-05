@@ -233,6 +233,13 @@ export function AttendanceV2() {
                             <div className="h-full bg-indigo-500 rounded-full" style={{ width: `${summary.rate}%` }} />
                         </div>
                     </div>
+                    <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
+                        <p className="text-xs font-bold text-slate-400 uppercase mb-1">Dánh sách</p>
+                        <p className="text-3xl font-black text-indigo-600">{summary.rate}%</p>
+                        <div className="mt-2 w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                            <div className="h-full bg-indigo-500 rounded-full" style={{ width: `${summary.rate}%` }} />
+                        </div>
+                    </div>
                 </div>
 
                 {banner && (
