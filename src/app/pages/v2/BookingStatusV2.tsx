@@ -526,8 +526,11 @@ export function BookingStatusV2() {
                       </td>
                       <td className="p-4">
                         <span
-                          className={`px-2.5 py-1 rounded-full text-xs font-bold ${STATUS_STYLES[b.status] || "bg-slate-100 text-slate-500"}`}
+                          className={`flex items-center gap-1.5 px-2.5 py-1 w-fit rounded-full text-xs font-bold ${STATUS_STYLES[b.status] || "bg-slate-100 text-slate-500"}`}
                         >
+                          {b.status === "PENDING" && (
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                          )}
                           {b.statusLabel || STATUS_LABELS[b.status] || b.status}
                         </span>
                       </td>
