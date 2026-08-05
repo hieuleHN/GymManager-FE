@@ -212,6 +212,11 @@ export function AttendanceV2() {
                         <p className="text-xs text-slate-400 mt-1">lượt điểm danh</p>
                     </div>
                     <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
+                        <p className="text-xs font-bold text-slate-400 uppercase mb-1">Xem điểm danh</p>
+                        <p className="text-3xl font-black text-emerald-600">{summary.total}</p>
+                        <p className="text-xs text-slate-400 mt-1">Xem điểm danh</p>
+                    </div>
+                    <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
                         <p className="text-xs font-bold text-slate-400 uppercase mb-1">Hội viên hoạt động</p>
                         <p className="text-3xl font-black text-slate-900">{summary.activeMembersCount}</p>
                         <p className="text-xs text-slate-400 mt-1">có gói còn hiệu lực</p>
@@ -255,6 +260,17 @@ export function AttendanceV2() {
                                     <input
                                         type="tel"
                                         placeholder="Nhập số điện thoại hội viên..."
+                                        value={phone}
+                                        onChange={(e) => setPhone(e.target.value)}
+                                        onKeyDown={(e) => { if (e.key === 'Enter') handleLookup(); }}
+                                        className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                    />
+                                </div>
+                                <div className="relative flex-1">
+                                    <Phone className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                    <input
+                                        type="tel"
+                                        placeholder="Nhập số điện thoại hội viên(rõ ràng chi tiết)..."
                                         value={phone}
                                         onChange={(e) => setPhone(e.target.value)}
                                         onKeyDown={(e) => { if (e.key === 'Enter') handleLookup(); }}
