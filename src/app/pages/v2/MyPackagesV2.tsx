@@ -420,14 +420,6 @@ export function MyPackages() {
             Gói tập của tôi
           </h1>
           <p className="text-slate-600">Quản lý các gói tập đang sử dụng</p>
-          <div className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-indigo-50 border border-indigo-100 rounded-xl">
-          <span className="text-sm text-indigo-600 font-medium">
-            Tổng số gói đang quản lý:
-          </span>
-          <span className="text-lg font-bold text-indigo-800">
-            {activePackageCount}
-          </span>
-        </div>
         </div>
 
         {displayRegistrations.length === 0 ? (
@@ -820,18 +812,6 @@ export function MyPackages() {
                   }}
                 >
                   Tới trang thanh toán
-                </Button>
-                <Button
-                  fullWidth
-                  variant="contained"
-                  onClick={handleExecuteRenew}
-                  sx={{
-                    bgcolor: "#4f46e5",
-                    textTransform: "none",
-                    borderRadius: 2,
-                  }}
-                >
-                  tới
                 </Button>
               </div>
             </div>
