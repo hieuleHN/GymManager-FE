@@ -27,18 +27,26 @@ export function EditEquipment() {
   const { selectedClub } = useClub();
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [priceDisplay, setPriceDisplay] = useState('');
 
   const {
     register,
     handleSubmit: formHandleSubmit,
     reset,
     watch,
+    setValue,
     formState: { errors }
   } = useForm<EquipmentFormData>();
 
   const unitPrice = Number(watch('unitPrice')) || 0;
   const quantity = Number(watch('quantity')) || 0;
   const calculatedTotal = unitPrice * quantity;
+
+  const formatPriceInput = (value: string) => {
+    const raw = value.replace(/[^0-9]/g, '');
+    setPriceDisplay(raw ? Number(raw).toLocaleString('vi-VN') : '');
+    setValue('unitPrice', raw, { shouldValidate: true });
+  };
 
   useEffect(() => {
     if (!id) return;
@@ -47,17 +55,19 @@ export function EditEquipment() {
       .then(res => res.json())
       .then(data => {
         const item = data?.data || data;
+        const price = item.unitPrice?.toString() || '';
+        setPriceDisplay(price ? Number(price).toLocaleString('vi-VN') : '');
         reset({
           name: item.name || '',
           description: item.description || '',
-          unitPrice: item.unitPrice?.toString() || '',
+          unitPrice: price,
           quantity: item.quantity?.toString() || '',
+          warranty_period: item.warranty_period?.toString() || '12',
+          total: item.total?.toString() || '',
           supplier: item.supplier || '',
           phone: item.phone || '',
           address: item.address || '',
-          purchaser: item.purchaser || '',
-          warranty_period: item.warranty_period?.toString() || '12',
-          total: item.total?.toString() || ''
+          purchaser: item.purchaser || ''
         });
       })
       .catch(() => {
@@ -75,12 +85,12 @@ export function EditEquipment() {
         description: data.description.trim(),
         unitPrice: parseFloat(data.unitPrice),
         quantity: parseInt(data.quantity),
-        supplier: data.supplier.trim(),
-        phone: data.phone.trim(),
-        address: data.address.trim(),
-        purchaser: data.purchaser.trim(),
         warranty_period: parseInt(data.warranty_period) || 12,
-        total: calculatedTotal
+        total: calculatedTotal,
+        supplier: data.supplier?.trim() || '',
+        phone: data.phone?.trim() || '',
+        address: data.address?.trim() || '',
+        purchaser: data.purchaser?.trim() || ''
       };
       if (selectedClub !== 'all') {
         body.location_id = selectedClub;
@@ -156,13 +166,17 @@ export function EditEquipment() {
                     Đơn giá <span className="text-red-500">*</span>
                   </label>
                   <input
-                    type="number"
-                    {...register('unitPrice', {
-                      required: 'Vui lòng nhập đơn giá',
-                      validate: (value) => Number(value) > 0 || 'Đơn giá phải lớn hơn 0'
-                    })}
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="0"
+                    value={priceDisplay}
+                    onChange={(e) => formatPriceInput(e.target.value)}
                     className={`w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 ${errors.unitPrice ? 'border-red-500' : 'border-slate-200'}`}
                   />
+                  <input type="hidden" {...register('unitPrice', {
+                    required: 'Vui lòng nhập đơn giá',
+                    validate: (value) => Number(value) > 0 || 'Đơn giá phải lớn hơn 0'
+                  })} />
                   {errors.unitPrice && <span className="text-red-500 text-sm mt-1">{errors.unitPrice?.message}</span>}
                 </div>
 
@@ -191,18 +205,6 @@ export function EditEquipment() {
                     className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   />
                 </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Người mua <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    {...register('purchaser', { required: 'Vui lòng nhập người mua' })}
-                    className={`w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 ${errors.purchaser ? 'border-red-500' : 'border-slate-200'}`}
-                  />
-                  {errors.purchaser && <span className="text-red-500 text-sm mt-1">{errors.purchaser?.message}</span>}
-                </div>
               </div>
             </div>
 
@@ -212,50 +214,45 @@ export function EditEquipment() {
               <div className="space-y-6">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Nhà cung cấp <span className="text-red-500">*</span>
+                    Nhà cung cấp
                   </label>
                   <input
                     type="text"
-                    {...register('supplier', { required: 'Vui lòng nhập nhà cung cấp' })}
-                    className={`w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 ${errors.supplier ? 'border-red-500' : 'border-slate-200'}`}
+                    {...register('supplier')}
+                    className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   />
-                  {errors.supplier && <span className="text-red-500 text-sm mt-1">{errors.supplier?.message}</span>}
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Địa chỉ <span className="text-red-500">*</span>
+                    Địa chỉ
                   </label>
                   <textarea
-                    {...register('address', { required: 'Vui lòng nhập địa chỉ' })}
+                    {...register('address')}
                     rows={3}
-                    className={`w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 ${errors.address ? 'border-red-500' : 'border-slate-200'}`}
+                    className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   />
-                  {errors.address && <span className="text-red-500 text-sm mt-1">{errors.address?.message}</span>}
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Số điện thoại <span className="text-red-500">*</span>
+                    Số điện thoại
                   </label>
                   <input
                     type="tel"
-                    {...register('phone', { required: 'Vui lòng nhập số điện thoại' })}
-                    className={`w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 ${errors.phone ? 'border-red-500' : 'border-slate-200'}`}
+                    {...register('phone')}
+                    className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   />
-                  {errors.phone && <span className="text-red-500 text-sm mt-1">{errors.phone?.message}</span>}
                 </div>
 
-                <div className="pt-6 border-t border-slate-200">
+                <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Tổng tiền
+                    Người mua
                   </label>
                   <input
                     type="text"
-                    readOnly
-                    value={calculatedTotal > 0 ? calculatedTotal.toLocaleString('vi-VN') + 'đ' : ''}
-                    className="w-full p-3 border border-slate-200 rounded-xl bg-slate-50 text-slate-700 font-semibold"
-                    placeholder="Đơn giá × Số lượng"
+                    {...register('purchaser')}
+                    className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   />
                 </div>
               </div>

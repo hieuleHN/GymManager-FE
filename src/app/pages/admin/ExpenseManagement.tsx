@@ -22,6 +22,7 @@ interface ExpenseFormData {
   amount: string;
   date: string;
   note: string;
+  locationId: string;
 }
 
 export function ExpenseManagement() {
@@ -40,7 +41,7 @@ export function ExpenseManagement() {
   const [equipmentCost, setEquipmentCost] = useState(0);
 
   const { register, handleSubmit: onFormSubmit, formState: { errors }, reset } = useForm<ExpenseFormData>({
-    defaultValues: { category: 'equipment', description: '', amount: '', date: '', note: '' }
+    defaultValues: { category: 'equipment', description: '', amount: '', date: '', note: '', locationId: '' }
   });
 
   const fetchExpenses = async (p = page) => {
@@ -140,7 +141,7 @@ export function ExpenseManagement() {
 
   const openAdd = () => {
     setEditing(null);
-    reset();
+    reset({ category: 'equipment', description: '', amount: '', date: '', note: '', locationId: selectedClub === 'all' ? '' : selectedClub });
     setShowModal(true);
   };
 
@@ -152,6 +153,7 @@ export function ExpenseManagement() {
       amount: exp.amount.toString(),
       date: exp.date ? exp.date.split('T')[0] : '',
       note: exp.note || '',
+      locationId: (exp as any).locationId || '',
     });
     setShowModal(true);
   };
@@ -166,7 +168,8 @@ export function ExpenseManagement() {
         date: data.date,
         note: data.note,
       };
-      if (!editing && selectedClub && selectedClub !== 'all') body.locationId = selectedClub;
+      const clubId = data.locationId || selectedClub;
+      if (!editing && clubId && clubId !== 'all') body.locationId = clubId;
       const url = editing ? `/api/expenses/${editing._id}` : '/api/expenses';
       const method = editing ? 'PUT' : 'POST';
       const res = await fetch(url, { method, headers, body: JSON.stringify(body) });
@@ -300,6 +303,17 @@ export function ExpenseManagement() {
             </div>
             <form onSubmit={onFormSubmit(onSubmit)}>
               <div className="p-6 space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Câu lạc bộ <span className="text-red-500">*</span></label>
+                  <select {...register('locationId', { required: 'Vui lòng chọn câu lạc bộ' })}
+                    className={`w-full px-4 py-3 border ${errors.locationId ? 'border-red-400' : 'border-slate-300'} rounded-lg focus:ring-2 focus:ring-indigo-500`}>
+                    <option value="">Chọn câu lạc bộ</option>
+                    {clubs.map((c: any) => (
+                      <option key={c._id} value={c._id}>{c.name || c.address}</option>
+                    ))}
+                  </select>
+                  {errors.locationId && <span className="text-red-500 text-sm mt-1">{errors.locationId.message}</span>}
+                </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">Loại chi phí <span className="text-red-500">*</span></label>
                   <select {...register('category')}

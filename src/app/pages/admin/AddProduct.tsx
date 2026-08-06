@@ -15,11 +15,12 @@ interface AddProductFormData {
   description: string;
   importDate: string;
   expiryDate: string;
+  location_id: string;
 }
 
 export function AddProduct() {
   const navigate = useNavigate();
-  const { selectedClub } = useClub();
+  const { selectedClub, clubs } = useClub();
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -37,7 +38,8 @@ export function AddProduct() {
 
   const onSubmit = async () => {
     const formData = getValues();
-    if (selectedClub === 'all') {
+    const clubId = formData.location_id || selectedClub;
+    if (clubId === 'all' || !clubId) {
       toast.error('Vui lòng chọn cơ sở!');
       return;
     }
@@ -51,7 +53,7 @@ export function AddProduct() {
       fd.append('description', formData.description);
       fd.append('importDate', formData.importDate);
       fd.append('expiryDate', formData.expiryDate);
-      fd.append('location_id', selectedClub);
+      fd.append('location_id', clubId);
       if (imageFile) fd.append('image', imageFile);
 
       const res = await fetch('/api/products', {
@@ -93,6 +95,23 @@ export function AddProduct() {
                 onChange={(e) => setImageFile(e.target.files?.[0] || null)}
                 className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                Câu lạc bộ <span className="text-red-500">*</span>
+              </label>
+              <select
+                {...register('location_id', { required: 'Vui lòng chọn câu lạc bộ' })}
+                defaultValue={selectedClub === 'all' ? '' : selectedClub}
+                className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="">Chọn câu lạc bộ</option>
+                {clubs.map((c: any) => (
+                  <option key={c._id} value={c._id}>{c.name || c.address}</option>
+                ))}
+              </select>
+              {errors.location_id && <p className="text-red-500 text-sm mt-1">{errors.location_id.message}</p>}
             </div>
 
             <div>

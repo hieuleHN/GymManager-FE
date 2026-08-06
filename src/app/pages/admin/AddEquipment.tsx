@@ -13,36 +13,41 @@ interface EquipmentFormData {
   description: string;
   unitPrice: string;
   quantity: string;
+  warranty_period: string;
+  total: string;
+  location_id: string;
   supplier: string;
   phone: string;
   address: string;
   purchaser: string;
-  warranty_period: string;
-  total: string;
 }
 
 export function AddEquipment() {
   const navigate = useNavigate();
-  const { selectedClub } = useClub();
+  const { selectedClub, clubs } = useClub();
   const [submitting, setSubmitting] = useState(false);
-  const { register, handleSubmit, watch, formState: { errors } } = useForm<EquipmentFormData>({
+  const [priceDisplay, setPriceDisplay] = useState('');
+  const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<EquipmentFormData>({
     defaultValues: {
       name: '',
       description: '',
       unitPrice: '',
       quantity: '',
-      supplier: '',
-      phone: '',
-      address: '',
-      purchaser: '',
       warranty_period: '12',
-      total: ''
+      total: '',
+      location_id: selectedClub === 'all' ? '' : selectedClub,
     }
   });
 
   const unitPrice = Number(watch('unitPrice')) || 0;
   const quantity = Number(watch('quantity')) || 0;
   const calculatedTotal = unitPrice * quantity;
+
+  const formatPriceInput = (value: string) => {
+    const raw = value.replace(/[^0-9]/g, '');
+    setPriceDisplay(raw ? Number(raw).toLocaleString('vi-VN') : '');
+    setValue('unitPrice', raw, { shouldValidate: true });
+  };
 
   const onSubmit = async (data: EquipmentFormData) => {
     setSubmitting(true);
@@ -52,16 +57,14 @@ export function AddEquipment() {
         description: data.description.trim(),
         unitPrice: parseFloat(data.unitPrice),
         quantity: parseInt(data.quantity),
+        warranty_period: parseInt(data.warranty_period) || 12,
+        total: calculatedTotal,
+        location_id: data.location_id || undefined,
         supplier: data.supplier.trim(),
         phone: data.phone.trim(),
         address: data.address.trim(),
         purchaser: data.purchaser.trim(),
-        warranty_period: parseInt(data.warranty_period) || 12,
-        total: calculatedTotal
       };
-      if (selectedClub !== 'all') {
-        body.location_id = selectedClub;
-      }
 
       const res = await fetch('/api/equipments', {
         method: 'POST',
@@ -108,9 +111,7 @@ export function AddEquipment() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Mô tả
-                  </label>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Mô tả</label>
                   <textarea
                     {...register('description')}
                     rows={3}
@@ -120,16 +121,35 @@ export function AddEquipment() {
 
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">
+                    Câu lạc bộ
+                  </label>
+                  <select
+                    {...register('location_id')}
+                    className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    <option value="">Tất cả câu lạc bộ</option>
+                    {clubs.map((c: any) => (
+                      <option key={c._id} value={c._id}>{c.name || c.address}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
                     Đơn giá <span className="text-red-500">*</span>
                   </label>
                   <input
-                    type="number"
-                    {...register('unitPrice', {
-                      required: 'Vui lòng nhập đơn giá',
-                      validate: (v) => Number(v) > 0 || 'Đơn giá phải lớn hơn 0'
-                    })}
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="0"
+                    value={priceDisplay}
+                    onChange={(e) => formatPriceInput(e.target.value)}
                     className={`w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 ${errors.unitPrice ? 'border-red-500' : 'border-slate-200'}`}
                   />
+                  <input type="hidden" {...register('unitPrice', {
+                    required: 'Vui lòng nhập đơn giá',
+                    validate: (v) => Number(v) > 0 || 'Đơn giá phải lớn hơn 0'
+                  })} />
                   {errors.unitPrice && <span className="text-red-500 text-sm mt-1">{errors.unitPrice.message}</span>}
                 </div>
 
@@ -158,18 +178,6 @@ export function AddEquipment() {
                     className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   />
                 </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Người mua <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    {...register('purchaser', { required: 'Vui lòng nhập người mua' })}
-                    className={`w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 ${errors.purchaser ? 'border-red-500' : 'border-slate-200'}`}
-                  />
-                  {errors.purchaser && <span className="text-red-500 text-sm mt-1">{errors.purchaser.message}</span>}
-                </div>
               </div>
             </div>
 
@@ -186,7 +194,7 @@ export function AddEquipment() {
                     {...register('supplier', { required: 'Vui lòng nhập nhà cung cấp' })}
                     className={`w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 ${errors.supplier ? 'border-red-500' : 'border-slate-200'}`}
                   />
-                  {errors.supplier && <span className="text-red-500 text-sm mt-1">{errors.supplier.message}</span>}
+                  {errors.supplier && <span className="text-red-500 text-sm mt-1">{errors.supplier?.message}</span>}
                 </div>
 
                 <div>
@@ -198,7 +206,7 @@ export function AddEquipment() {
                     rows={3}
                     className={`w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 ${errors.address ? 'border-red-500' : 'border-slate-200'}`}
                   />
-                  {errors.address && <span className="text-red-500 text-sm mt-1">{errors.address.message}</span>}
+                  {errors.address && <span className="text-red-500 text-sm mt-1">{errors.address?.message}</span>}
                 </div>
 
                 <div>
@@ -210,26 +218,24 @@ export function AddEquipment() {
                     {...register('phone', { required: 'Vui lòng nhập số điện thoại' })}
                     className={`w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 ${errors.phone ? 'border-red-500' : 'border-slate-200'}`}
                   />
-                  {errors.phone && <span className="text-red-500 text-sm mt-1">{errors.phone.message}</span>}
+                  {errors.phone && <span className="text-red-500 text-sm mt-1">{errors.phone?.message}</span>}
                 </div>
 
-                <div className="pt-6 border-t border-slate-200">
+                <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Tổng tiền
+                    Người mua <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
-                    readOnly
-                    value={calculatedTotal > 0 ? calculatedTotal.toLocaleString('vi-VN') + 'đ' : ''}
-                    className="w-full p-3 border border-slate-200 rounded-xl bg-slate-50 text-slate-700 font-semibold"
-                    placeholder="Đơn giá × Số lượng"
+                    {...register('purchaser', { required: 'Vui lòng nhập người mua' })}
+                    className={`w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 ${errors.purchaser ? 'border-red-500' : 'border-slate-200'}`}
                   />
+                  {errors.purchaser && <span className="text-red-500 text-sm mt-1">{errors.purchaser?.message}</span>}
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Action Buttons */}
           <div className="flex justify-end gap-3 mt-6">
             <Button
               type="button"

@@ -3,6 +3,7 @@ import { AuthContext } from './AuthContext';
 
 interface Club {
   _id: string;
+  name?: string;
   address: string;
   phone?: string;
 }
