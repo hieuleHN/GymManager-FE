@@ -35,12 +35,19 @@ interface WorkShift {
     note: string;
 }
 
+interface LocationItem {
+    _id: string;
+    title?: string;
+    address?: string;
+}
+
 const initialShift = (): WorkShift => ({ dayOfWeek: 1, startTime: '08:00', endTime: '17:00', note: '' });
 
 export function EditStaffV2() {
     const navigate = useNavigate();
     const { id } = useParams<{ id: string }>();
     const [roles, setRoles] = useState<string[]>(DEFAULT_ROLES);
+    const [locations, setLocations] = useState<LocationItem[]>([]);
     const [pageLoading, setPageLoading] = useState(true);
     const [form, setForm] = useState({
         account: '',
@@ -52,6 +59,7 @@ export function EditStaffV2() {
         role: 'STAFF',
         startDate: new Date().toISOString().split('T')[0],
         address: '',
+        locationId: '',
         baseSalary: '',
         status: 'ACTIVE'
     });
@@ -66,6 +74,12 @@ export function EditStaffV2() {
             .then(res => res.json())
             .then(data => {
                 if (data?.data?.roles) setRoles(data.data.roles);
+            })
+            .catch(() => {});
+        fetch(`${getApiUrl()}/api/locations`)
+            .then(res => res.json())
+            .then(data => {
+                if (Array.isArray(data)) setLocations(data);
             })
             .catch(() => {});
     }, []);
@@ -88,6 +102,7 @@ export function EditStaffV2() {
                     role: staff.role || 'STAFF',
                     startDate: staff.startDate ? new Date(staff.startDate).toISOString().split('T')[0] : '',
                     address: staff.address || '',
+                    locationId: staff.locationId || '',
                     baseSalary: staff.baseSalary ? String(staff.baseSalary) : '',
                     status: staff.status || 'ACTIVE'
                 });
@@ -155,6 +170,7 @@ export function EditStaffV2() {
                 workSchedule,
                 startDate: form.startDate,
                 address: form.address,
+                locationId: form.locationId || null,
                 baseSalary: Number(form.baseSalary) || 0,
                 status: form.status
             };
@@ -287,6 +303,19 @@ export function EditStaffV2() {
                             >
                                 {roles.map(role => (
                                     <option key={role} value={role}>{role}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-slate-700 uppercase mb-2">Phòng Tập</label>
+                            <select
+                                value={form.locationId}
+                                onChange={(e) => setField('locationId', e.target.value)}
+                                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                            >
+                                <option value="">Chưa gán phòng tập</option>
+                                {locations.map(loc => (
+                                    <option key={loc._id} value={loc._id}>{loc.title || loc.address}</option>
                                 ))}
                             </select>
                         </div>

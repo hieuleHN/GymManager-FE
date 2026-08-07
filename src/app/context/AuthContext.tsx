@@ -137,10 +137,20 @@ export function getAuthHeaders() {
   const stored = localStorage.getItem('auth_user');
   if (!stored) return {};
   const user = JSON.parse(stored);
-  return {
+  const headers: Record<string, string> = {
     'Authorization': `Bearer ${user.token}`,
     'Content-Type': 'application/json'
   };
+  // Admin chọn phòng tập ở dropdown -> gắn header để backend lọc theo phòng tập đã chọn
+  if (user.isAdmin) {
+    try {
+      const selectedClub = localStorage.getItem('selected_club');
+      if (selectedClub && selectedClub !== 'all') {
+        headers['X-Location-Id'] = selectedClub;
+      }
+    } catch { /* ignore */ }
+  }
+  return headers;
 }
 
 export function getToken(): string | null {

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { AdminLayout } from '../../components/AdminLayout';
 import { getApiUrl, getAuthHeaders } from '../../context/AuthContext';
+import { useClub } from '../../context/ClubContext';
 import { Search, UserPlus, Edit, Trash2, CalendarDays, Loader2, AlertTriangle } from 'lucide-react';
 
 const ROLE_LABELS: Record<string, string> = {
@@ -46,6 +47,7 @@ interface SummaryData {
 
 export function StaffListV2() {
     const navigate = useNavigate();
+    const { selectedClub } = useClub();
     const [staff, setStaff] = useState<StaffItem[]>([]);
     const [summary, setSummary] = useState<SummaryData>({ total: 0, active: 0, inactive: 0 });
     const [roles, setRoles] = useState<string[]>(['ADMIN', 'MANAGER', 'PT', 'RECEPTIONIST', 'STAFF']);
@@ -90,7 +92,7 @@ export function StaffListV2() {
         fetchStaff();
         fetchRoles();
         fetchSummary();
-    }, []);
+    }, [selectedClub]);
 
     const filteredStaff = staff.filter(person => {
         const matchesSearch =

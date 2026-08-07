@@ -81,6 +81,13 @@ interface Membership {
     remainingDays: number;
     progressPercent: number;
     createdAt: string;
+    locationId?: any;
+}
+
+interface LocationItem {
+    _id: string;
+    title?: string;
+    address?: string;
 }
 
 interface SummaryData {
@@ -113,6 +120,7 @@ export function MyPackagesV2() {
     const [showRegister, setShowRegister] = useState(false);
     const [showDetail, setShowDetail] = useState<Membership | null>(null);
     const [showExtend, setShowExtend] = useState<Membership | null>(null);
+    const [locations, setLocations] = useState<LocationItem[]>([]);
     const [form, setForm] = useState({
         customerName: '',
         customerPhone: '',
@@ -123,6 +131,7 @@ export function MyPackagesV2() {
         totalPrice: '',
         paymentStatus: 'PAID',
         paymentMethod: 'CASH',
+        locationId: '',
         note: ''
     });
     const [extendForm, setExtendForm] = useState({ addMonths: '1', additionalPrice: '' });
@@ -160,10 +169,19 @@ export function MyPackagesV2() {
         } catch {}
     };
 
+    const fetchLocations = async () => {
+        try {
+            const res = await fetch(`${getApiUrl()}/api/locations`);
+            const data = await res.json();
+            if (Array.isArray(data)) setLocations(data);
+        } catch {}
+    };
+
     const refreshAll = () => {
         fetchMemberships();
         fetchSummary();
         fetchPackages();
+        fetchLocations();
     };
 
     useEffect(() => {
@@ -215,6 +233,7 @@ export function MyPackagesV2() {
             totalPrice: '',
             paymentStatus: 'PAID',
             paymentMethod: 'CASH',
+            locationId: '',
             note: ''
         });
         setModalError('');
@@ -262,6 +281,7 @@ export function MyPackagesV2() {
                     totalPrice: Number(form.totalPrice) || 0,
                     paymentStatus: form.paymentStatus,
                     paymentMethod: form.paymentMethod,
+                    locationId: form.locationId || null,
                     note: form.note
                 })
             });
@@ -685,6 +705,19 @@ export function MyPackagesV2() {
                                         <option key={pkg._id} value={pkg._id}>
                                             {pkg.name} — {formatVnd(pkg.effectivePrice ?? pkg.price)}đ / {pkg.durationMonths > 0 ? `${pkg.durationMonths} tháng` : `${pkg.durationDays} ngày`}
                                         </option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-slate-700 uppercase mb-2">Phòng Tập</label>
+                                <select
+                                    value={form.locationId}
+                                    onChange={(e) => setForm({ ...form, locationId: e.target.value })}
+                                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                >
+                                    <option value="">Chưa gán phòng tập</option>
+                                    {locations.map(loc => (
+                                        <option key={loc._id} value={loc._id}>{loc.title || loc.address}</option>
                                     ))}
                                 </select>
                             </div>
