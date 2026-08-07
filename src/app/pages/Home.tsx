@@ -44,6 +44,10 @@ export function Home() {
   const [siteSettings, setSiteSettings] = useState<any>(null);
   const [openFaq, setOpenFaq] = useState<number | null>(null);
 
+  // State bài viết & sự kiện từ Database
+  const [articles, setArticles] = useState<any[]>([]);
+  const [events, setEvents] = useState<any[]>([]);
+
   const formatPrice = (price: number) => {
     if (!price) return "0đ";
     return price.toLocaleString("vi-VN") + "đ";
@@ -105,6 +109,16 @@ export function Home() {
       .then((res) => res.json())
       .then((data) => {
         if (data?.data) setSiteSettings(data.data);
+      })
+      .catch(() => {});
+
+    // 5. Kéo bài viết từ Database
+    fetch(`${getApiUrl()}/api/articles?limit=6`)
+      .then((res) => res.json())
+      .then((data) => {
+        const list = data?.data || [];
+        setArticles(list.filter((a: any) => a.category !== 'su-kien'));
+        setEvents(list.filter((a: any) => a.category === 'su-kien'));
       })
       .catch(() => {});
   }, []);
@@ -686,39 +700,144 @@ export function Home() {
         </div>
       </section>
 
-      {/* ── BÀI VIẾT (CMS ADMIN) ── */}
-      {activeBlogs.length > 0 && (
+      {/* ── BÀI VIẾT TỪ DATABASE ── */}
+      {articles.length > 0 && (
         <section className="py-24 bg-white">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <h2 className="text-3xl font-bold text-center mb-16">
-              Kiến Thức & Cẩm Nang
-            </h2>
+            <div className="flex items-center justify-between mb-16">
+              <div>
+                <h2 className="text-3xl font-bold text-slate-900">
+                  Kiến Thức & Cẩm Nang
+                </h2>
+                <p className="text-slate-600 mt-2">
+                  Cập nhật kiến thức thể hình và dinh dưỡng mỗi ngày
+                </p>
+              </div>
+              <Link
+                to="/articles"
+                className="hidden sm:flex items-center gap-2 text-indigo-600 font-semibold hover:text-indigo-700 transition-colors"
+              >
+                Xem tất cả <ArrowRight className="w-4 h-4" />
+              </Link>
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-              {activeBlogs.slice(0, 3).map((blog: any, idx: number) => (
-                <div
-                  key={idx}
-                  className="rounded-2xl border border-slate-100 overflow-hidden shadow-sm hover:shadow-lg transition"
+              {articles.slice(0, 3).map((article: any) => (
+                <Link
+                  key={article._id}
+                  to={`/articles/${article._id}`}
+                  className="rounded-2xl border border-slate-100 overflow-hidden shadow-sm hover:shadow-lg transition group"
                 >
-                  <img
-                    src={
-                      blog.image ||
-                      "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?auto=format&fit=crop&q=80"
-                    }
-                    className="w-full h-48 object-cover"
-                  />
+                  <div className="h-48 bg-slate-100 overflow-hidden">
+                    {article.image ? (
+                      <img
+                        src={article.image}
+                        alt={article.title}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-slate-300 text-sm">
+                        ZenFitness
+                      </div>
+                    )}
+                  </div>
                   <div className="p-6">
-                    <span className="text-xs bg-indigo-50 text-indigo-600 px-3 py-1 rounded-full">
-                      {blog.category || "Gym"}
+                    <span className="text-xs bg-indigo-50 text-indigo-600 px-3 py-1 rounded-full font-semibold">
+                      {article.category === 'tin-tuc' ? 'Tin tức' :
+                       article.category === 'meo-tap' ? 'Mẹo tập' :
+                       article.category === 'dinh-duong' ? 'Dinh dưỡng' : 'Khác'}
                     </span>
-                    <h3 className="text-lg font-bold mt-4 mb-2">
-                      {blog.title}
+                    <h3 className="text-lg font-bold mt-4 mb-2 text-slate-900 group-hover:text-indigo-600 transition-colors line-clamp-2">
+                      {article.title}
                     </h3>
                     <p className="text-sm text-slate-600 line-clamp-3">
-                      {blog.excerpt}
+                      {(() => {
+                        if (article.excerpt) return article.excerpt;
+                        const tmp = document.createElement('div');
+                        tmp.innerHTML = article.content || '';
+                        return (tmp.textContent || tmp.innerText || '').slice(0, 150);
+                      })()}
                     </p>
                   </div>
-                </div>
+                </Link>
               ))}
+            </div>
+            <div className="text-center mt-10 sm:hidden">
+              <Link
+                to="/articles"
+                className="inline-flex items-center gap-2 text-indigo-600 font-semibold hover:text-indigo-700"
+              >
+                Xem tất cả <ArrowRight className="w-4 h-4" />
+              </Link>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* ── SỰ KIỆN TỪ DATABASE ── */}
+      {events.length > 0 && (
+        <section className="py-24 bg-slate-50 border-t border-slate-100">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex items-center justify-between mb-16">
+              <div>
+                <h2 className="text-3xl font-bold text-slate-900">
+                  Sự Kiện Nổi Bật
+                </h2>
+                <p className="text-slate-600 mt-2">
+                  Các sự kiện và hoạt động mới nhất tại ZENFITNESS
+                </p>
+              </div>
+              <Link
+                to="/articles?category=su-kien"
+                className="hidden sm:flex items-center gap-2 text-indigo-600 font-semibold hover:text-indigo-700 transition-colors"
+              >
+                Xem tất cả <ArrowRight className="w-4 h-4" />
+              </Link>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+              {events.slice(0, 3).map((event: any) => (
+                <Link
+                  key={event._id}
+                  to={`/articles/${event._id}`}
+                  className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-lg transition group"
+                >
+                  <div className="h-48 bg-slate-100 overflow-hidden">
+                    {event.image ? (
+                      <img
+                        src={event.image}
+                        alt={event.title}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center bg-purple-50">
+                        <span className="text-4xl">🎉</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="p-6">
+                    <span className="text-xs bg-purple-100 text-purple-700 px-3 py-1 rounded-full font-semibold">
+                      Sự kiện
+                    </span>
+                    <h3 className="text-lg font-bold mt-4 mb-2 text-slate-900 group-hover:text-indigo-600 transition-colors line-clamp-2">
+                      {event.title}
+                    </h3>
+                    <p className="text-sm text-slate-600 line-clamp-3">
+                      {(() => {
+                        const tmp = document.createElement('div');
+                        tmp.innerHTML = event.content || '';
+                        return tmp.textContent || tmp.innerText || '';
+                      })()}
+                    </p>
+                  </div>
+                </Link>
+              ))}
+            </div>
+            <div className="text-center mt-10 sm:hidden">
+              <Link
+                to="/articles?category=su-kien"
+                className="inline-flex items-center gap-2 text-indigo-600 font-semibold hover:text-indigo-700"
+              >
+                Xem tất cả <ArrowRight className="w-4 h-4" />
+              </Link>
             </div>
           </div>
         </section>

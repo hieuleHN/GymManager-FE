@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router';
+import { Link, useSearchParams } from 'react-router';
 import { Calendar, Eye, FileText } from 'lucide-react';
 import { getApiUrl } from '../context/AuthContext';
 
@@ -32,11 +32,12 @@ const categoryColors: Record<string, string> = {
 };
 
 export function Articles() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [articles, setArticles] = useState<Article[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [category, setCategory] = useState('');
+  const [category, setCategory] = useState(searchParams.get('category') || '');
 
   useEffect(() => {
     fetchArticles();
@@ -79,7 +80,7 @@ export function Articles() {
 
         <div className="flex flex-wrap gap-3 justify-center mb-10">
           <button
-            onClick={() => { setCategory(''); setPage(1); }}
+            onClick={() => { setCategory(''); setPage(1); setSearchParams({}); }}
             className={`px-5 py-2 rounded-full text-sm font-semibold transition-all ${!category ? 'bg-indigo-600 text-white shadow-md' : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'}`}
           >
             Tất cả
@@ -87,7 +88,7 @@ export function Articles() {
           {Object.entries(categoryLabels).map(([key, label]) => (
             <button
               key={key}
-              onClick={() => { setCategory(key); setPage(1); }}
+              onClick={() => { setCategory(key); setPage(1); setSearchParams({ category: key }); }}
               className={`px-5 py-2 rounded-full text-sm font-semibold transition-all ${category === key ? 'bg-indigo-600 text-white shadow-md' : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'}`}
             >
               {label}

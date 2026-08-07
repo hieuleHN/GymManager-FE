@@ -18,6 +18,7 @@ interface Staff {
   address: string;
   status: string;
   baseSalary: number;
+  avatar?: string;
 }
 
 export function StaffList() {
@@ -123,7 +124,20 @@ export function StaffList() {
                 {filteredStaff.map((person, index) => (
                   <tr key={person._id} className="border-b border-slate-100 hover:bg-slate-50">
                     <td className="px-6 py-4 text-sm text-slate-900">{index + 1}</td>
-                    <td className="px-6 py-4 text-sm font-medium text-slate-900">{person.fullName}</td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center shrink-0 overflow-hidden ring-2 ring-slate-100">
+                          {person.avatar ? (
+                            <img src={person.avatar} alt={person.fullName} className="w-full h-full object-cover" />
+                          ) : (
+                            <span className="text-sm font-bold text-indigo-600">
+                              {person.fullName?.charAt(0) || '?'}
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-sm font-medium text-slate-900">{person.fullName}</span>
+                      </div>
+                    </td>
                     <td className="px-6 py-4 text-sm text-slate-600">{person.account}</td>
                     <td className="px-6 py-4 text-sm text-indigo-600 font-semibold">{person.job?.name || 'Chưa xác định'}</td>
                     <td className="px-6 py-4 text-sm text-slate-600">{person.email}</td>

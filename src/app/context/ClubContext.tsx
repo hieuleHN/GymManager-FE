@@ -20,11 +20,29 @@ interface ClubContextType {
 const ClubContext = createContext<ClubContextType | undefined>(undefined);
 
 export function ClubProvider({ children }: { children: ReactNode }) {
-  const [selectedClub, setSelectedClub] = useState('all');
+  const [selectedClub, setSelectedClubState] = useState<string>(() => {
+    try {
+      return localStorage.getItem('selected_club') || 'all';
+    } catch {
+      return 'all';
+    }
+  });
   const [clubs, setClubs] = useState<Club[]>([]);
   const auth = useContext(AuthContext);
 
   const user = auth ? auth.user : null;
+
+  // Ghi localStorage NGAY LẬP TỨC khi chọn phòng tập (không qua useEffect)
+  // để getAuthHeaders() của các trang đọc được giá trị mới trong cùng lượt render,
+  // tránh việc phải load lại trang mới áp dụng phòng tập đã chọn.
+  const setSelectedClub = (id: string) => {
+    setSelectedClubState(id);
+    try {
+      localStorage.setItem('selected_club', id);
+    } catch {
+      /* ignore */
+    }
+  };
 
   useEffect(() => {
     if (user && user.isStaff && !user.isAdmin && user.locationId) {

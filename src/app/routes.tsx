@@ -45,7 +45,7 @@ import { StaffSalary } from './pages/admin/StaffSalary';
 import { StaffSalaryHistory } from './pages/admin/StaffSalaryHistory';
 import { AddStaff } from './pages/admin/AddStaff';
 import { StaffPermissions } from './pages/admin/StaffPermissions';
-import { StaffWallet } from './pages/admin/StaffWallet';
+import { StaffShift } from './pages/admin/StaffShift';
 import { StaffCheckIn } from './pages/admin/StaffCheckIn';
 import { JobList } from './pages/admin/JobList';
 import { AddJob } from './pages/admin/AddJob';
@@ -70,6 +70,7 @@ import { ExpenseManagement } from './pages/admin/ExpenseManagement';
 import { TrainerProfile } from './pages/admin/TrainerProfile';
 import { TrainingSchedule } from './pages/admin/TrainingSchedule';
 import { LockerManagement } from './pages/admin/LockerManagement';
+import { LockerManagementV2 } from './pages/v2/LockerManagementV2';
 import { ScheduleConfirmations } from './pages/admin/ScheduleConfirmations';
 import { Community } from './pages/dashboard/Community';
 import { Messages } from './pages/dashboard/Messages';
@@ -78,6 +79,7 @@ import { Invoices } from './pages/admin/Invoices';
 import { BookingManagement } from './pages/admin/BookingManagement';
 import { PostManagement } from './pages/admin/PostManagement';
 import { ArticleManagement } from './pages/admin/ArticleManagement';
+import { Recruitment } from './pages/Recruitment';
 import { Articles } from './pages/Articles';
 import { ArticleDetail } from './pages/ArticleDetail';
 import { AdminCommunity } from './pages/admin/AdminCommunity';
@@ -85,7 +87,6 @@ import { AdminMessages } from './pages/admin/AdminMessages';
 
 // IMPORT TRANG THỐNG KÊ BIỂU ĐỒ ADMIN
 import { AdminStats } from './pages/dashboard/AdminStats';
-import { LockerIssues } from './pages/dashboard/LockerIssues';
 
 // Khai báo RouteErrorBoundary dự phòng
 const RouteErrorBoundary = () => {
@@ -132,7 +133,9 @@ const routeFeatures: Record<string, string> = {
   '/admin/staff/salary': 'salary',
   '/admin/staff/salary-history': 'salary',
   '/admin/staff/add': 'staff',
+  '/admin/staff/:id/edit': 'staff',
   '/admin/staff/permissions': 'permissions',
+  '/admin/staff/shifts': 'staff',
   '/admin/jobs': 'tasks',
   '/admin/jobs/add': 'tasks',
   '/admin/jobs/:id/edit': 'tasks',
@@ -204,6 +207,7 @@ export const router = createBrowserRouter([
       { path: 'clubs/:id', Component: ClubDetail },
       { path: 'disciplines/:id', Component: DisciplineDetail },
       { path: 'auth', Component: Auth },
+      { path: 'recruitment', Component: Recruitment },
       { path: 'articles', Component: Articles },
       { path: 'articles/:id', Component: ArticleDetail },
       {
@@ -283,10 +287,6 @@ export const router = createBrowserRouter([
   {
     path: '/dashboard/settings',
     element: <ProtectedRoute role="member"><Settings /></ProtectedRoute>
-  },
-  {
-    path: '/dashboard/locker-issues',
-    element: <ProtectedRoute role="staff"><LockerIssues /></ProtectedRoute>
   },
   {
     path: '/admin/dashboard',
@@ -393,12 +393,16 @@ export const router = createBrowserRouter([
     element: <ProtectedRoute role="staff"><AddStaff /></ProtectedRoute>
   },
   {
+    path: '/admin/staff/:id/edit',
+    element: <ProtectedRoute role="staff"><AddStaff /></ProtectedRoute>
+  },
+  {
     path: '/admin/staff/permissions',
     element: <ProtectedRoute role="staff"><StaffPermissions /></ProtectedRoute>
   },
   {
-    path: '/admin/wallet',
-    element: <ProtectedRoute role="staff"><StaffWallet /></ProtectedRoute>
+    path: '/admin/staff/shifts',
+    element: <ProtectedRoute role="staff"><StaffShift /></ProtectedRoute>
   },
   {
     path: '/admin/jobs',
@@ -454,7 +458,7 @@ export const router = createBrowserRouter([
   },
   {
     path: '/admin/lockers',
-    element: <ProtectedRoute role="staff"><LockerManagement /></ProtectedRoute>
+    element: <ProtectedRoute role="staff"><LockerManagementV2 /></ProtectedRoute>
   },
   {
     path: '/admin/schedule-confirmations',

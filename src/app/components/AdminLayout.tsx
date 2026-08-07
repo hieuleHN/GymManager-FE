@@ -33,7 +33,7 @@ import {
   Plus,
   Building2,
   MessageCircle,
-  Wallet,
+  Camera,
   Clock
 } from 'lucide-react';
 import { useAuth, getApiUrl, getAuthHeaders } from '../context/AuthContext';
@@ -65,9 +65,42 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   const clubDropdownRef = useRef<HTMLDivElement>(null);
   const [isLoadingClubs, setIsLoadingClubs] = useState(false);
   const [showAddClubModal, setShowAddClubModal] = useState(false);
-  const [walletBalance, setWalletBalance] = useState(0);
+  const [staffAvatar, setStaffAvatar] = useState('');
 
   const isAdminUser = user?.isAdmin === true;
+
+  useEffect(() => {
+    if (!user?.isStaff || user?.isAdmin || !user?.id) { setStaffAvatar(''); return; }
+    fetch(`${getApiUrl()}/api/staff/${user.id}`, { headers: getAuthHeaders() })
+      .then(res => res.json())
+      .then(data => setStaffAvatar(data?.avatar || ''))
+      .catch(() => {});
+  }, [user, location.pathname]);
+
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user?.id) { e.target.value = ''; return; }
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const base64 = reader.result as string;
+      try {
+        const res = await fetch(`${getApiUrl()}/api/staff/${user.id}`, {
+          method: 'PUT',
+          headers: getAuthHeaders() as any,
+          body: JSON.stringify({ avatar: base64 })
+        });
+        if (res.ok) {
+          setStaffAvatar(base64);
+        } else {
+          alert('Không thể cập nhật ảnh đại diện');
+        }
+      } catch {
+        alert('Lỗi kết nối khi cập nhật ảnh');
+      }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
 
   useEffect(() => {
     if (!isAdminUser) return;
@@ -81,14 +114,6 @@ export function AdminLayout({ children }: AdminLayoutProps) {
       .catch(() => {})
       .finally(() => setIsLoadingClubs(false));
   }, [isAdminUser]);
-
-  useEffect(() => {
-    if (!hasPermission('wallet')) return;
-    fetch(`${getApiUrl()}/api/staff-wallet/balance`, { headers: getAuthHeaders() })
-      .then(res => res.json())
-      .then(data => setWalletBalance(data.balance || 0))
-      .catch(() => {});
-  }, []);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -255,15 +280,11 @@ export function AdminLayout({ children }: AdminLayoutProps) {
     { name: 'Quản lý chính sách', href: '/admin/policies', icon: FileText, feature: 'services' },
     { name: 'Giao diện Trang chủ', href: '/admin/homepage', icon: Globe, feature: 'services' },
     { name: 'Quản lý thanh toán', href: '/admin/payment', icon: CreditCard, feature: 'payment' },
-    { name: 'Ví điện tử', href: '/admin/wallet', icon: Wallet, feature: 'wallet' },
     { name: 'Quản lý tuyển dụng', href: '/admin/recruitment', icon: BriefcaseIcon, feature: 'staff' },
     { name: 'Quản lý chi phí', href: '/admin/expenses', icon: DollarSign, feature: 'statistics' },
     { name: 'Hồ sơ HLV', href: '/admin/trainer-profile', icon: UserCircle, feature: 'training' },
     { name: 'Lịch tập', href: '/admin/training-schedule', icon: Calendar, feature: 'training' },
-    // Admin/quản lý (isAdmin) vào trang duyệt-xử lý đầy đủ; HLV/nhân viên khác chỉ vào trang báo cáo sự cố.
-    user?.isAdmin
-      ? { name: 'Quản lý tủ đồ', href: '/admin/lockers', icon: Lock }
-      : { name: 'Báo cáo sự cố tủ đồ', href: '/dashboard/locker-issues', icon: Lock },
+    { name: 'Quản lý tủ đồ', href: '/admin/lockers', icon: Lock },
     { name: 'Xác nhận lịch tập', href: '/admin/schedule-confirmations', icon: CheckCircle, feature: 'schedule' },
     { name: 'Quản lý bài viết', href: '/admin/articles', icon: FileText, feature: 'services' }
   ];
@@ -307,13 +328,23 @@ export function AdminLayout({ children }: AdminLayoutProps) {
 
           <div className="p-6 border-b border-slate-200">
             <div className="flex items-center gap-4">
-              <div className="w-14 h-14 rounded-full bg-indigo-100 flex items-center justify-center ring-2 ring-indigo-100">
-                <span className="text-xl font-bold text-indigo-600">
-                  {user?.fullName?.charAt(0) ||
-                    user?.username?.charAt(0) ||
-                    "U"}
-                </span>
-              </div>
+              <label className="relative group cursor-pointer" title="Đổi ảnh đại diện">
+                <div className="w-14 h-14 rounded-full bg-indigo-100 flex items-center justify-center ring-2 ring-indigo-100 overflow-hidden">
+                  {staffAvatar ? (
+                    <img src={staffAvatar} alt={user?.fullName || 'User'} className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="text-xl font-bold text-indigo-600">
+                      {user?.fullName?.charAt(0) ||
+                        user?.username?.charAt(0) ||
+                        "U"}
+                    </span>
+                  )}
+                </div>
+                <div className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                  <Camera className="w-5 h-5 text-white" />
+                </div>
+                <input type="file" accept="image/*" onChange={handleAvatarChange} className="hidden" />
+              </label>
               <div>
                 <h3 className="font-bold text-slate-900">
                   {user?.fullName || user?.username}
@@ -430,12 +461,6 @@ export function AdminLayout({ children }: AdminLayoutProps) {
               )}
             </button>
             <div className="flex items-center gap-4">
-              {hasPermission('wallet') && (
-                <Link to="/admin/wallet" className="flex items-center gap-2 px-4 py-2 bg-emerald-50 border border-emerald-200 rounded-xl hover:bg-emerald-100 transition-colors text-sm">
-                  <Wallet className="w-4 h-4 text-emerald-600" />
-                  <span className="text-emerald-700 font-semibold">{walletBalance.toLocaleString('vi-VN')}₫</span>
-                </Link>
-              )}
               {isAdminUser && (
                 <div className="relative" ref={clubDropdownRef}>
                   <button

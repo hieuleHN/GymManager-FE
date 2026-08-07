@@ -134,7 +134,10 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   const handleNotificationClick = async (notif: any) => {
     await markAsRead(notif._id);
     setShowNotifications(false);
-    if (notif.type === 'booking_transferred') {
+    if (notif.type === 'new_article') {
+      const articleId = notif.relatedArticleId?._id || notif.relatedArticleId;
+      if (articleId) navigate(`/articles/${articleId}`);
+    } else if (notif.type === 'booking_transferred') {
       navigate('/dashboard/schedule');
     } else if (notif.type === 'wallet_topup' || notif.type === 'wallet_payment') {
       navigate('/dashboard/history');
@@ -156,6 +159,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
       case 'transfer_rejected': return <ArrowRightLeft className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />;
       case 'wallet_topup':
       case 'wallet_payment': return <Wallet className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" />;
+      case 'new_article': return <FileText className="w-5 h-5 text-blue-500 shrink-0 mt-0.5" />;
       default: return <Bell className="w-5 h-5 text-slate-500 shrink-0 mt-0.5" />;
     }
   };
@@ -259,7 +263,11 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                 <button onClick={handleBellClick}
                   className="p-2 rounded-lg hover:bg-slate-100 transition-colors relative">
                   <Bell className="w-5 h-5 text-slate-600" />
-                  {hasRedDot && <span className="absolute top-1.5 right-1.5 block h-2 w-2 rounded-full bg-red-500 ring-2 ring-white" />}
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-1.5 -right-1.5 block min-w-[18px] h-[18px] rounded-full bg-red-500 ring-2 ring-white text-white text-[10px] font-bold flex items-center justify-center px-1">
+                      {unreadCount > 99 ? '99+' : unreadCount}
+                    </span>
+                  )}
                 </button>
 
                 {showNotifications && (

@@ -112,18 +112,16 @@ export function StaffCheckIn() {
                   <div className="flex items-center justify-between">
                     <p className="font-medium text-sm">{r.staffId?.fullName || 'N/A'}</p>
                     <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-                      r.status === 'late' ? 'bg-red-100 text-red-600' :
-                      r.status === 'checked-out' ? 'bg-blue-100 text-blue-600' :
-                      'bg-green-100 text-green-600'
+                      r.status === 'checked-out' ? 'bg-blue-100 text-blue-600' : 'bg-green-100 text-green-600'
                     }`}>
-                      {r.status === 'late' ? 'Đi muộn' : r.status === 'checked-out' ? 'Đã ra' : 'Đã vào'}
+                      {r.status === 'checked-out' ? 'Đã ra' : 'Đã vào'}
                     </span>
                   </div>
                   <div className="text-xs text-slate-400 mt-1 space-y-0.5">
                     {r.shiftTimes && <p>Ca: {r.shiftId?.shift === 'morning-noon' ? 'Sáng-Trưa' : 'Chiều-Tối'} ({r.shiftTimes.start}-{r.shiftTimes.end})</p>}
-                    {r.checkInTime && <p>Vào: {new Date(r.checkInTime).toLocaleTimeString('vi-VN')}{r.minutesLate ? <span className="text-red-500 font-medium"> (muộn {r.minutesLate}p)</span> : ''}</p>}
-                    {r.checkOutTime && <p>Ra: {new Date(r.checkOutTime).toLocaleTimeString('vi-VN')}{r.minutesEarly ? <span className="text-amber-500 font-medium"> (về sớm {r.minutesEarly}p)</span> : ''}{r.overtime ? <span className="text-green-500 font-medium"> (tăng ca {r.overtime}p)</span> : ''}</p>}
-                    {r.totalMinutes ? <p className="font-medium text-slate-600">Tổng: {Math.floor(r.totalMinutes / 60)}h{r.totalMinutes % 60}p</p> : null}
+                    {r.checkInTime && <p>Giờ vào: {new Date(r.checkInTime).toLocaleTimeString('vi-VN')}</p>}
+                    {r.checkOutTime && <p>Giờ ra: {new Date(r.checkOutTime).toLocaleTimeString('vi-VN')}</p>}
+                    {r.totalMinutes ? <p className="font-medium text-slate-600">Tổng thời gian: {Math.floor(r.totalMinutes / 60)}h{r.totalMinutes % 60}p</p> : null}
                   </div>
                 </div>
               ))}
