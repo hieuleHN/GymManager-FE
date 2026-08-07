@@ -29,7 +29,7 @@ interface TrainerPerformance {
     sessions: number;
 }
 
-export function ActivityStats() {
+export function ActivityStats({ selectedClub }: { selectedClub?: string }) {
     const [loading, setLoading] = useState<boolean>(true);
     const [error, setError] = useState<string | null>(null);
 
@@ -55,7 +55,12 @@ export function ActivityStats() {
                 return;
             }
 
-            const response = await axios.get(`${getApiUrl()}/api/dashboard/admin-stats`, {
+            let url = `${getApiUrl()}/api/dashboard/admin-stats`;
+            if (selectedClub && selectedClub !== 'all') {
+                url += `?locationId=${selectedClub}`;
+            }
+
+            const response = await axios.get(url, {
                 headers: { Authorization: `Bearer ${userToken}` }
             });
 
@@ -77,7 +82,7 @@ export function ActivityStats() {
 
     useEffect(() => {
         fetchStatsFromDB();
-    }, []);
+    }, [selectedClub]);
 
     const maxGrowth = customerGrowth.length > 0 ? Math.max(...customerGrowth.map(d => d.count), 1) : 1;
     const maxCheckIn = checkInOfWeek.length > 0 ? Math.max(...checkInOfWeek.map(d => d.count), 1) : 1;
