@@ -43,7 +43,8 @@ export async function exportFinanceExcel(
   data: any,
   periodLabel: string,
   fileName: string,
-  chartImages?: { name: string; dataUrl: string }[]
+  chartImages?: { name: string; dataUrl: string }[],
+  clubName?: string
 ) {
   const wb = new ExcelJS.Workbook();
   wb.created = new Date();
@@ -63,7 +64,8 @@ export async function exportFinanceExcel(
   ws1.getCell('A1').alignment = { horizontal: 'center' };
 
   ws1.mergeCells('A2:D2');
-  ws1.getCell('A2').value = `Ngày xuất: ${new Date().toLocaleDateString('vi-VN')}`;
+  const clubLine = clubName && clubName !== 'Tất cả câu lạc bộ' ? `Cơ sở: ${clubName} | ` : '';
+  ws1.getCell('A2').value = `${clubLine}Ngày xuất: ${new Date().toLocaleDateString('vi-VN')}`;
   ws1.getCell('A2').font = { italic: true, size: 10, color: { argb: 'FF94A3B8' } };
   ws1.getCell('A2').alignment = { horizontal: 'center' };
 
@@ -621,7 +623,8 @@ export async function exportActivityExcel(
 export async function exportOperationsExcel(
   data: any,
   periodLabel: string,
-  fileName: string
+  fileName: string,
+  clubName?: string
 ) {
   const wb = new ExcelJS.Workbook();
   wb.created = new Date();
@@ -634,7 +637,8 @@ export async function exportOperationsExcel(
   ws1.getCell('A1').alignment = { horizontal: 'center' };
 
   ws1.mergeCells('A2:C2');
-  ws1.getCell('A2').value = `Ngày xuất: ${new Date().toLocaleDateString('vi-VN')}`;
+  const clubLine = clubName && clubName !== 'Tất cả câu lạc bộ' ? `Cơ sở: ${clubName} | ` : '';
+  ws1.getCell('A2').value = `${clubLine}Ngày xuất: ${new Date().toLocaleDateString('vi-VN')}`;
   ws1.getCell('A2').font = { italic: true, size: 10, color: { argb: 'FF94A3B8' } };
   ws1.getCell('A2').alignment = { horizontal: 'center' };
 

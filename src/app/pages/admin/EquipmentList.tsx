@@ -171,11 +171,7 @@ export function EquipmentList() {
                 <col style={{ width: '8%' }} />
                 <col style={{ width: '10%' }} />
                 <col style={{ width: '8%' }} />
-                <col style={{ width: '8%' }} />
-                <col style={{ width: '5%' }} />
-                <col style={{ width: '8%' }} />
-                <col style={{ width: '7%' }} />
-                <col style={{ width: '10%' }} />
+                <col style={{ width: '12%' }} />
               </colgroup>
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
@@ -183,10 +179,6 @@ export function EquipmentList() {
                   <th className="px-2 py-3 text-left text-sm font-bold text-slate-900 truncate">Mô tả</th>
                   <th className="px-2 py-3 text-left text-sm font-bold text-slate-900 truncate">Đơn giá</th>
                   <th className="px-2 py-3 text-left text-sm font-bold text-slate-900 truncate">Số lượng</th>
-                  <th className="px-2 py-3 text-left text-sm font-bold text-slate-900 truncate">Nhà cung cấp</th>
-                  <th className="px-2 py-3 text-left text-sm font-bold text-slate-900 truncate">Địa chỉ</th>
-                  <th className="px-2 py-3 text-left text-sm font-bold text-slate-900 truncate">SĐT</th>
-                  <th className="px-2 py-3 text-left text-sm font-bold text-slate-900 truncate">Người mua</th>
                   <th className="px-2 py-3 text-left text-sm font-bold text-slate-900 truncate">Bảo hành</th>
                   <th className="px-2 py-3 text-left text-sm font-bold text-slate-900 truncate">Tổng tiền</th>
                   <th className="px-2 py-3 text-left text-sm font-bold text-slate-900 truncate">Trạng thái</th>
@@ -202,10 +194,6 @@ export function EquipmentList() {
                       <td className="px-2 py-3 text-sm text-slate-600 truncate" title={item.description}>{item.description}</td>
                       <td className="px-2 py-3 text-sm text-slate-600 truncate" title={item.unitPrice?.toLocaleString('vi-VN')}>{item.unitPrice?.toLocaleString('vi-VN')}đ</td>
                       <td className="px-2 py-3 text-sm text-slate-600 truncate">{item.quantity}</td>
-                      <td className="px-2 py-3 text-sm text-slate-600 truncate" title={item.supplier}>{item.supplier}</td>
-                      <td className="px-2 py-3 text-sm text-slate-600 truncate" title={item.address}>{item.address}</td>
-                      <td className="px-2 py-3 text-sm text-slate-600 truncate" title={item.phone}>{item.phone}</td>
-                      <td className="px-2 py-3 text-sm text-slate-600 truncate" title={item.purchaser}>{item.purchaser}</td>
                       <td className="px-2 py-3 text-sm text-slate-600 truncate">{item.warranty_period} th</td>
                       <td className="px-2 py-3 text-sm font-semibold text-indigo-600 truncate">{item.total?.toLocaleString('vi-VN')}đ</td>
                       <td className="px-2 py-3">
@@ -237,7 +225,7 @@ export function EquipmentList() {
                   );
                 })}
                 {filteredEquipment.length === 0 && (
-                  <tr><td colSpan={12} className="px-2 py-8 text-center text-slate-500 text-sm">Không tìm thấy thiết bị nào</td></tr>
+                  <tr><td colSpan={8} className="px-2 py-8 text-center text-slate-500 text-sm">Không tìm thấy thiết bị nào</td></tr>
                 )}
               </tbody>
             </table>

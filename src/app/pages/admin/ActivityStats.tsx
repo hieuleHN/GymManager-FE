@@ -132,6 +132,7 @@ interface MonthlyDetail {
     }[];
 }
 
+
 export function ActivityStats() {
     const { selectedClub } = useClub();
     const locParam = selectedClub && selectedClub !== 'all' ? `&locationId=${selectedClub}` : '';
@@ -290,6 +291,7 @@ export function ActivityStats() {
                 setLoading(false);
                 return;
             }
+
 
             let url = `${getApiUrl()}/api/dashboard/admin-stats?period=${period}${locParam}`;
             if (customFrom && customTo) url += `&startDate=${customFrom}&endDate=${customTo}`;

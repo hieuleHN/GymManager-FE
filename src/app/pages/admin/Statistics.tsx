@@ -62,7 +62,7 @@ export function Statistics() {
   const [selectedMetric, setSelectedMetric] = useState<string | null>(null);
   const [periodData, setPeriodData] = useState<Record<string, any>>({});
   const [loadingPeriodData, setLoadingPeriodData] = useState(false);
-  const { selectedClub } = useClub();
+  const { selectedClub, selectedClubName } = useClub();
 
   const locParam = selectedClub && selectedClub !== 'all' ? `&locationId=${selectedClub}` : '';
 
@@ -222,9 +222,9 @@ export function Statistics() {
           </div>
         )}
 
-        {tab === 'finance' && <FinanceTab data={fd} period={period} customFrom={customFrom} customTo={customTo} onStatClick={handleOpenFormula} />}
-        {tab === 'operations' && <OperationsTab data={od} period={period} customFrom={customFrom} customTo={customTo} />}
-        {tab === 'activity' && <ActivityStats />}
+        {tab === 'finance' && <FinanceTab data={fd} period={period} customFrom={customFrom} customTo={customTo} onStatClick={handleOpenFormula} clubName={selectedClubName} />}
+        {tab === 'operations' && <OperationsTab data={od} period={period} customFrom={customFrom} customTo={customTo} clubName={selectedClubName} />}
+        {tab === 'activity' && <ActivityStats selectedClub={selectedClub} />}
       </div>
 
       {showFormulaModal && selectedMetric && (
@@ -274,7 +274,7 @@ const pct = (val: number, total: number) => `${Math.round((val / (total || 1)) *
 const prevVal = (cur: number, change: number) => cur - (cur * (change ?? 0)) / 100;
 const changeStr = (v: number) => `${v > 0 ? '+' : ''}${v ?? 0}%`;
 
-function FinanceTab({ data, period, customFrom, customTo, onStatClick }: { data: any; period: string; customFrom?: string; customTo?: string; onStatClick?: (metric: string) => void }) {
+function FinanceTab({ data, period, customFrom, customTo, onStatClick, clubName }: { data: any; period: string; customFrom?: string; customTo?: string; onStatClick?: (metric: string) => void; clubName?: string }) {
   if (!data?.summary) return <div className="text-slate-400 text-sm">Đang tải dữ liệu tài chính...</div>;
   const s = data.summary;
   const c = s.change || {};
@@ -296,7 +296,8 @@ function FinanceTab({ data, period, customFrom, customTo, onStatClick }: { data:
 
   const handleExport = async () => {
     const chartImages = generateChartImages(data);
-    await exportFinanceExcel(data, periodLabel, `BaoCaoTaiChinh_${periodLabel.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}`, chartImages.length > 0 ? chartImages : undefined);
+    const clubSuffix = clubName && clubName !== 'Tất cả câu lạc bộ' ? `_${clubName.replace(/\s+/g, '_')}` : '';
+    await exportFinanceExcel(data, periodLabel, `BaoCaoTaiChinh${clubSuffix}_${periodLabel.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}`, chartImages.length > 0 ? chartImages : undefined, clubName);
   };
 
   return (
@@ -501,7 +502,7 @@ function FinanceTab({ data, period, customFrom, customTo, onStatClick }: { data:
   );
 }
 
-function OperationsTab({ data, period, customFrom, customTo }: { data: any; period?: string; customFrom?: string; customTo?: string }) {
+function OperationsTab({ data, period, customFrom, customTo, clubName }: { data: any; period?: string; customFrom?: string; customTo?: string; clubName?: string }) {
   if (!data) return <div className="text-slate-400 text-sm">Đang tải dữ liệu vận hành...</div>;
   const opStats = [
     { label: 'Tổng số thiết bị', value: `${data.totalQuantity}`, icon: PackageIcon, color: 'bg-blue-500' },
@@ -515,7 +516,8 @@ function OperationsTab({ data, period, customFrom, customTo }: { data: any; peri
   const periodLabel = customFrom && customTo ? `${customFrom} → ${customTo}` : (period ? (PERIODS.find(p => p.key === period)?.label || period) : '');
 
   const handleExport = async () => {
-    await exportOperationsExcel(data, periodLabel, `BaoCaoVanHanh_${periodLabel.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}`);
+    const clubSuffix = clubName && clubName !== 'Tất cả câu lạc bộ' ? `_${clubName.replace(/\s+/g, '_')}` : '';
+    await exportOperationsExcel(data, periodLabel, `BaoCaoVanHanh${clubSuffix}_${periodLabel.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}`, clubName);
   };
 
   return (
