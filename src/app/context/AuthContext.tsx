@@ -36,11 +36,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const stored = localStorage.getItem('auth_user');
-    if (stored) {
-      try {
-        setUser(JSON.parse(stored));
-      } catch {}
+    if (!stored) {
+      setLoading(false);
+      return;
     }
+    try {
+      const parsed = JSON.parse(stored);
+      setUser(parsed);
+      if (!parsed.isStaff) {
+        fetch(`${API_URL}/api/customers/my-info`, {
+          headers: { 'Authorization': `Bearer ${parsed.token}` }
+        })
+          .then(res => res.json())
+          .then(data => {
+            if (!data || !data._id) return;
+            const refreshed = {
+              ...parsed,
+              fullName: data.fullName || parsed.fullName,
+              name: data.fullName || parsed.fullName || parsed.name,
+              status: data.status,
+              locationId: data.locationId || parsed.locationId || null
+            };
+            localStorage.setItem('auth_user', JSON.stringify(refreshed));
+            setUser(refreshed);
+          })
+          .catch(() => {})
+          .finally(() => setLoading(false));
+        return;
+      }
+    } catch {}
     setLoading(false);
   }, []);
 
@@ -93,7 +117,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           ...current,
           fullName: data.fullName || current.fullName,
           name: data.fullName || current.fullName || current.name,
-          status: data.status
+          status: data.status,
+          locationId: data.locationId || current.locationId || null
         };
         localStorage.setItem('auth_user', JSON.stringify(updated));
         setUser(updated);

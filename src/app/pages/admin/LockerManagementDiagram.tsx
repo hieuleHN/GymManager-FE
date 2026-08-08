@@ -569,7 +569,7 @@ function MaintenanceDetailModal({ locker, onClose, onComplete }: {
     );
 }
 
-export function LockerManagementV2() {
+export function LockerManagementDiagram() {
     const { user } = useAuth();
     const { selectedClub } = useClub();
     const [currentClubName, setCurrentClubName] = useState('');
@@ -807,7 +807,7 @@ export function LockerManagementV2() {
                         <span className="text-sm font-semibold">{banner}</span>
                     </div>
                 )}
-                {currentClubName && (
+                {currentClubName && user?.isAdmin === true && (
                     <div className="flex items-center gap-2.5 bg-indigo-600 text-white px-4 py-3 rounded-2xl shadow-sm">
                         <AlertTriangle className="w-5 h-5 text-indigo-200" />
                         <span className="text-sm font-bold">

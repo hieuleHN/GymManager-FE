@@ -348,6 +348,47 @@ export function generateActivityChartImages(data: any): { name: string; dataUrl:
   return images;
 }
 
+// ============ ATTENDANCE STATS CHART IMAGES ============
+export function generateAttendanceChartImages(data: any): { name: string; dataUrl: string }[] {
+  const images: { name: string; dataUrl: string }[] = [];
+  if (!data) return images;
+
+  const daily = data.daily || [];
+  const shiftDist = data.shiftDist || [];
+
+  if (daily.length > 0) {
+    images.push({
+      name: 'Lượt chấm công theo ngày',
+      dataUrl: drawBarChart(
+        daily.map((d: any) => d.date),
+        [{ name: 'Lượt chấm công', values: daily.map((d: any) => d.count || 0), color: '#6366f1' }],
+        'Lượt chấm công theo ngày'
+      ),
+    });
+    images.push({
+      name: 'Tổng giờ làm theo ngày',
+      dataUrl: drawBarChart(
+        daily.map((d: any) => d.date),
+        [{ name: 'Giờ làm', values: daily.map((d: any) => Math.round((d.totalMinutes || 0) / 60 * 10) / 10), color: '#10b981' }],
+        'Tổng giờ làm theo ngày (giờ)'
+      ),
+    });
+  }
+
+  if (shiftDist.length > 0) {
+    images.push({
+      name: 'Phân bổ theo ca làm',
+      dataUrl: drawPieChart(
+        shiftDist.map((s: any) => s.name),
+        shiftDist.map((s: any) => s.value || 0),
+        'Phân bổ theo ca làm'
+      ),
+    });
+  }
+
+  return images;
+}
+
 // ============ PUBLIC ============
 export function generateChartImages(data: any): { name: string; dataUrl: string }[] {
   const images: { name: string; dataUrl: string }[] = [];

@@ -6,6 +6,7 @@ import { useClub } from '../../context/ClubContext';
 import { Pagination } from '../../components/Pagination';
 import { exportActivityExcel } from '../../../lib/exportExcelWithChart';
 import { generateActivityChartImages } from '../../../lib/ChartCapture';
+import { AttendanceStats } from './AttendanceStats';
 
 interface BookingStats {
     today: number;
@@ -238,7 +239,7 @@ export function ActivityStats() {
             let userToken = '';
             if (authUserData) userToken = JSON.parse(authUserData).token || '';
             if (!userToken) return;
-            const url = `${getApiUrl()}/api/dashboard/admin-stats/sport-detail?name=${encodeURIComponent(sportName)}&period=${period}${locParam}`;
+            let url = `${getApiUrl()}/api/dashboard/admin-stats/sport-detail?name=${encodeURIComponent(sportName)}&period=${period}${locParam}`;
             if (customFrom && customTo) url += `&startDate=${customFrom}&endDate=${customTo}`;
             const res = await axios.get(url, {
                 headers: { Authorization: `Bearer ${userToken}` }
@@ -718,6 +719,9 @@ export function ActivityStats() {
                     )}
                 </div>
             </div>
+
+            {/* Chấm công nhân viên */}
+            <AttendanceStats selectedClub={selectedClub} period={period} customFrom={customFrom} customTo={customTo} />
         </div>
 
             {/* ── MODAL CHI TIẾT HỘI VIÊN THEO THÁNG ── */}

@@ -619,6 +619,151 @@ export async function exportActivityExcel(
   saveAs(blob, `${fileName}.xlsx`);
 }
 
+// ============ EXPORT CHẤM CÔNG NHÂN VIÊN ============
+export async function exportAttendanceExcel(
+  data: any,
+  periodLabel: string,
+  fileName: string,
+  chartImages?: { name: string; dataUrl: string }[],
+  clubName?: string
+) {
+  const wb = new ExcelJS.Workbook();
+  wb.created = new Date();
+
+  const s = data?.summary || {};
+  const daily = data?.daily || [];
+  const shiftDist = data?.shiftDist || [];
+
+  const fmtDur = (mins: number) => {
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    return h > 0 ? `${h} giờ ${m} phút` : `${m} phút`;
+  };
+
+  // ── Sheet 1: Tổng quan ──
+  const ws1 = wb.addWorksheet('Tổng quan');
+  ws1.mergeCells('A1:D1');
+  ws1.getCell('A1').value = `BÁO CÁO CHẤM CÔNG NHÂN VIÊN — ${periodLabel}`;
+  ws1.getCell('A1').font = { bold: true, size: 14, color: { argb: 'FF1E293B' } };
+  ws1.getCell('A1').alignment = { horizontal: 'center' };
+
+  ws1.mergeCells('A2:D2');
+  const clubLine = clubName && clubName !== 'Tất cả câu lạc bộ' ? `Cơ sở: ${clubName} | ` : '';
+  ws1.getCell('A2').value = `${clubLine}Ngày xuất: ${new Date().toLocaleDateString('vi-VN')}`;
+  ws1.getCell('A2').font = { italic: true, size: 10, color: { argb: 'FF94A3B8' } };
+  ws1.getCell('A2').alignment = { horizontal: 'center' };
+
+  addTableHeader(ws1, 4, ['Chỉ số', 'Giá trị', 'Đơn vị', 'Ghi chú']);
+  const summaryData = [
+    ['Tổng lượt chấm công', s.total || 0, 'lượt', 'Tổng số lượt check-in trong kỳ'],
+    ['Tổng giờ làm', fmtDur(s.totalMinutes || 0), 'giờ', 'Tổng thời gian giữa check-in và check-out'],
+    ['Đi muộn', s.lateCount || 0, 'lượt', 'Chấm công sau giờ bắt đầu ca (sau 15 phút khoan hồng)'],
+    ['Đúng giờ', s.onTimeCount || 0, 'lượt', 'Không đi muộn, không về sớm, đã check-out'],
+    ['Tăng ca', fmtDur(s.overtimeMinutes || 0), 'giờ', 'Làm sau giờ kết thúc ca'],
+    ['Vắng mặt', s.absentCount || 0, 'lượt', 'Được phân ca nhưng không chấm công trong ngày'],
+  ];
+  summaryData.forEach((r, i) => addDataRow(ws1, 5 + i, r, [1]));
+  setColWidths(ws1, [24, 24, 12, 42]);
+
+  // ── Sheet 2: Chi tiết theo ngày ──
+  if (daily.length > 0) {
+    const ws2 = wb.addWorksheet('Chi tiết theo ngày');
+    ws2.mergeCells('A1:E1');
+    ws2.getCell('A1').value = 'Số lượt chấm công và tổng giờ làm theo ngày';
+    ws2.getCell('A1').font = { bold: true, size: 13 };
+
+    addTableHeader(ws2, 3, ['Ngày', 'Số lượt chấm công', 'Tổng giờ làm', 'Đi muộn', 'Tăng ca']);
+    daily.forEach((d: any, i: number) => {
+      addDataRow(ws2, 4 + i, [
+        d.date, d.count || 0, fmtDur(d.totalMinutes || 0), d.lateCount || 0,
+        d.overtimeMinutes ? fmtDur(d.overtimeMinutes) : 0,
+      ], [1]);
+    });
+    const tTotal = daily.reduce((a: any, d: any) => a + (d.count || 0), 0);
+    const tMinutes = daily.reduce((a: any, d: any) => a + (d.totalMinutes || 0), 0);
+    addTotalRow(ws2, 4 + daily.length, ['TỔNG CỘNG', tTotal, fmtDur(tMinutes), daily.reduce((a: any, d: any) => a + (d.lateCount || 0), 0), 0], [1]);
+    setColWidths(ws2, [14, 22, 20, 12, 16]);
+  }
+
+  // ── Sheet 3: Phân bổ theo ca ──
+  if (shiftDist.length > 0) {
+    const ws3 = wb.addWorksheet('Phân bổ theo ca');
+    ws3.mergeCells('A1:C1');
+    ws3.getCell('A1').value = 'Phân bổ lượt chấm công theo ca làm';
+    ws3.getCell('A1').font = { bold: true, size: 13 };
+
+    const totalShift = shiftDist.reduce((a: any, e: any) => a + (e.value || 0), 0);
+    addTableHeader(ws3, 3, ['Ca làm', 'Số lượt', 'Tỷ trọng (%)']);
+    shiftDist.forEach((e: any, i: number) => {
+      addDataRow(ws3, 4 + i, [e.name, e.value || 0, totalShift > 0 ? Math.round((e.value / totalShift) * 100) : 0], [1]);
+    });
+    addTotalRow(ws3, 4 + shiftDist.length, ['TỔNG CỘNG', totalShift, 100], [1]);
+    setColWidths(ws3, [26, 12, 15]);
+  }
+
+  // ── Sheet 4: Phân chia theo cơ sở ──
+  const byLocation = data?.byLocation || [];
+  if (byLocation.length > 0) {
+    const ws4 = wb.addWorksheet('Theo cơ sở');
+    ws4.mergeCells('A1:F1');
+    ws4.getCell('A1').value = 'Phân chia chấm công theo cơ sở phòng tập';
+    ws4.getCell('A1').font = { bold: true, size: 13 };
+
+    addTableHeader(ws4, 3, ['Cơ sở', 'Lượt chấm công', 'Tổng giờ làm', 'Đi muộn', 'Đúng giờ', 'Vắng mặt']);
+    byLocation.forEach((l: any, i: number) => {
+      addDataRow(ws4, 4 + i, [
+        l.locationName || 'Phòng tập', l.total || 0, fmtDur(l.totalMinutes || 0),
+        l.lateCount || 0, l.onTimeCount || 0, l.absentCount || 0,
+      ], [1]);
+    });
+    const sumLoc = byLocation.reduce((a: any, l: any) => {
+      return {
+        total: a.total + (l.total || 0),
+        minutes: a.minutes + (l.totalMinutes || 0),
+        late: a.late + (l.lateCount || 0),
+        onTime: a.onTime + (l.onTimeCount || 0),
+        absent: a.absent + (l.absentCount || 0),
+      };
+    }, { total: 0, minutes: 0, late: 0, onTime: 0, absent: 0 });
+    addTotalRow(ws4, 4 + byLocation.length, ['TỔNG CỘNG', sumLoc.total, fmtDur(sumLoc.minutes), sumLoc.late, sumLoc.onTime, sumLoc.absent], [1]);
+    setColWidths(ws4, [26, 18, 18, 12, 12, 12]);
+  }
+
+  // ── Sheet 5: Biểu đồ ──
+  if (chartImages && chartImages.length > 0) {
+    const wsChart = wb.addWorksheet('Biểu đồ');
+    wsChart.mergeCells('A1:N1');
+    wsChart.getCell('A1').value = 'BIỂU ĐỒ CHẤM CÔNG';
+    wsChart.getCell('A1').font = { bold: true, size: 14 };
+    wsChart.getCell('A1').alignment = { horizontal: 'center' };
+
+    let currentRow = 3;
+    for (const img of chartImages) {
+      wsChart.getCell(`A${currentRow}`).value = img.name;
+      wsChart.getCell(`A${currentRow}`).font = { bold: true, size: 12, color: { argb: 'FF1E293B' } };
+      currentRow++;
+
+      try {
+        const base64 = img.dataUrl.replace(/^data:image\/\w+;base64,/, '');
+        const imageId = wb.addImage({ base64, extension: 'png' });
+        const widthPt = 580;
+        const heightPt = 300;
+        wsChart.addImage(imageId, { tl: { col: 0, row: currentRow }, ext: { width: widthPt, height: heightPt } });
+        currentRow += Math.ceil(heightPt / 18) + 2;
+      } catch {
+        wsChart.getCell(`A${currentRow}`).value = `(Không thể tải biểu đồ: ${img.name})`;
+        wsChart.getCell(`A${currentRow}`).font = { color: { argb: 'FFEF4444' } };
+        currentRow += 2;
+      }
+    }
+    setColWidths(wsChart, [80]);
+  }
+
+  const buffer = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  saveAs(blob, `${fileName}.xlsx`);
+}
+
 // ============ EXPORT VẬN HÀNH ============
 export async function exportOperationsExcel(
   data: any,

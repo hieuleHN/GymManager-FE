@@ -294,48 +294,6 @@ export function ClubManagement() {
               </div>
 
               <div className="border-t border-slate-200 pt-6 mt-6">
-                <h3 className="text-lg font-bold text-slate-900 mb-4">Cấu hình Thanh toán Online</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">Mã Ngân hàng (VD: MB, VCB, TCB)</label>
-                    <input
-                      type="text"
-                      {...register('bankName')}
-                      className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                      placeholder="Nhập tên viết tắt ngân hàng..."
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">Số tài khoản</label>
-                    <input
-                      type="text"
-                      {...register('accountNumber')}
-                      className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                      placeholder="Nhập số tài khoản..."
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">Tên chủ tài khoản</label>
-                    <input
-                      type="text"
-                      {...register('accountName')}
-                      className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                      placeholder="Nhập tên in hoa không dấu..."
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">Chi nhánh (Không bắt buộc)</label>
-                    <input
-                      type="text"
-                      {...register('branch')}
-                      className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                      placeholder="Chi nhánh ngân hàng..."
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="border-t border-slate-200 pt-6 mt-6">
                 <h3 className="text-lg font-bold text-slate-900 mb-4">Chữ ký đại diện cơ sở</h3>
                 <p className="text-sm text-slate-500 mb-4">Vẽ chữ ký đại diện của cơ sở để hiển thị trên hợp đồng</p>
 

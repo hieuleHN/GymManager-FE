@@ -180,6 +180,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
       submenu: [
         { name: "Điểm danh hội viên", href: "/admin/attendance" },
         { name: "Lịch sử điểm danh", href: "/admin/attendance/history" },
+        { name: "Lịch sử chấm công", href: "/admin/staff-attendance/history" },
       ],
     },
     { name: 'Chấm công nhân viên', href: '/admin/staff-attendance', icon: Clock, feature: 'attendance' },

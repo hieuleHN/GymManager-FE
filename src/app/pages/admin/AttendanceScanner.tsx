@@ -12,8 +12,7 @@ import {
     Unlock,
     AlertTriangle,
     Loader2,
-    KeyRound,
-    Volume2
+    KeyRound
 } from 'lucide-react';
 import { AdminLayout } from '../../components/AdminLayout';
 import { getApiUrl, getAuthHeaders, useAuth } from '../../context/AuthContext';
@@ -64,24 +63,19 @@ const speak = (text: string) => {
     if (announceTimer) clearTimeout(announceTimer);
     announceTimer = setTimeout(() => {
         try {
-            if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
-            window.speechSynthesis.cancel();
-            const utterance = new SpeechSynthesisUtterance(text);
-            utterance.lang = 'vi-VN';
-            utterance.rate = 1;
-            utterance.pitch = 1;
-            const pickVoice = () => {
-                const voices = window.speechSynthesis.getVoices();
-                const saved = localStorage.getItem('ttsVoiceURI');
-                const savedVoice = saved ? voices.find(v => v.voiceURI === saved) : null;
-                const viVoice = savedVoice || voices.find(v => v.lang.toLowerCase().startsWith('vi')) || voices.find(v => v.lang.toLowerCase().includes('vi'));
-                if (viVoice) utterance.voice = viVoice;
-                window.speechSynthesis.speak(utterance);
+            if (!text) return;
+            const audio = new Audio(`${getApiUrl()}/api/tts?text=${encodeURIComponent(text)}`);
+            audio.onerror = () => {
+                // Fallback: nếu Google TTS không gọi được thì dùng giọng trình duyệt (nếu có)
+                if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+                    window.speechSynthesis.cancel();
+                    const u = new SpeechSynthesisUtterance(text);
+                    u.lang = 'vi-VN';
+                    window.speechSynthesis.speak(u);
+                }
             };
-            const voices = window.speechSynthesis.getVoices();
-            if (voices.length > 0) pickVoice();
-            else window.speechSynthesis.onvoiceschanged = pickVoice;
-        } catch { /* bỏ qua nếu trình duyệt không hỗ trợ giọng đọc */ }
+            audio.play().catch(() => {});
+        } catch { /* bỏ qua nếu trình duyệt không hỗ trợ */ }
     }, 1000);
 };
 
@@ -112,6 +106,7 @@ interface LockerApiItem {
     _id: string;
     lockerNumber: string;
     prefix: string;
+    locationId?: string;
     status: 'AVAILABLE' | 'OCCUPIED' | 'MAINTENANCE';
     assignedType?: 'MEMBER' | 'STAFF' | null;
     assignedName?: string;
@@ -133,10 +128,6 @@ export function AttendanceScanner() {
     const [manualToken, setManualToken] = useState<string>('');
     const [loading, setLoading] = useState<boolean>(false);
     const [currentClubName, setCurrentClubName] = useState<string>('');
-    const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
-    const [voiceURI, setVoiceURI] = useState<string>(() => {
-        try { return localStorage.getItem('ttsVoiceURI') || ''; } catch { return ''; }
-    });
     const [scanResult, setScanResult] = useState<{ success: boolean; message: string } | null>(null);
     const [history, setHistory] = useState<CheckInRecord[]>([]);
     const [isCameraActive, setIsCameraActive] = useState<boolean>(false);
@@ -214,13 +205,26 @@ export function AttendanceScanner() {
             const verifiedName = customerData.fullName || customerData.customerName || customerData.name || 'Hội viên';
 
             const parsePackages = (data: any): PackageInfo[] => {
+                let pkgs: PackageInfo[] = [];
                 if (Array.isArray(data.packages) && data.packages.length > 0) {
-                    return data.packages;
+                    pkgs = data.packages;
+                } else {
+                    pkgs = [{
+                        packageName: data.packageName || 'Gói tập',
+                        endDate: data.endDate || 'Chưa rõ'
+                    }];
                 }
-                return [{
-                    packageName: data.packageName || 'Gói tập',
-                    endDate: data.endDate || 'Chưa rõ'
-                }];
+                // Chỉ hiển thị các gói đang sử dụng, loại bỏ trùng lặp theo tên gói (giữ gói còn nhiều ngày nhất)
+                const byName = new Map<string, PackageInfo>();
+                pkgs.forEach((p) => {
+                    const key = (p.packageName || '').trim();
+                    if (!key) return;
+                    const existing = byName.get(key);
+                    const curDays = typeof p.remainingDays === 'number' ? p.remainingDays : -1;
+                    const exDays = existing && typeof existing.remainingDays === 'number' ? existing.remainingDays : -1;
+                    if (!existing || curDays >= exDays) byName.set(key, p);
+                });
+                return Array.from(byName.values());
             };
             const packages = parsePackages(customerData);
 
@@ -539,18 +543,24 @@ export function AttendanceScanner() {
         }
     };
 
-    const availableLockers = lockers.filter(l => l.status === 'AVAILABLE');
-    const lockerPrefixes = Array.from(new Set(lockers.map(l => l.prefix)));
-    const filteredLockers = lockers.filter(l =>
+    const clubLockers = selectedClub && selectedClub !== 'all'
+        ? lockers.filter(l => String(l.locationId) === String(selectedClub))
+        : lockers;
+    const availableLockers = clubLockers.filter(l => l.status === 'AVAILABLE');
+    const lockerPrefixes = Array.from(new Set(clubLockers.map(l => l.prefix)));
+    const filteredLockers = clubLockers.filter(l =>
         (lockerFilter === 'ALL' || l.prefix === lockerFilter) &&
         (l.status === 'AVAILABLE' || l.status === 'MAINTENANCE')
     );
 
     // Tải lịch sử check-in hôm nay từ Backend để không bị mất khi reload trang
     const loadTodayHistory = async () => {
+        setHistory([]);
         const startOfDay = new Date();
         startOfDay.setHours(0, 0, 0, 0);
         const items: CheckInRecord[] = [];
+        const isClubMatch = (locId: any) =>
+            !selectedClub || selectedClub === 'all' || String(locId) === String(selectedClub);
 
         try {
             const res = await axios.get(`${getApiUrl()}/api/checkin/history?limit=100`, {
@@ -559,6 +569,7 @@ export function AttendanceScanner() {
             const list = Array.isArray(res.data) ? res.data : (res.data?.data || []);
             list.forEach((item: any) => {
                 if (!item?.checkInTime) return;
+                if (!isClubMatch(item.locationId)) return;
                 const t = new Date(item.checkInTime);
                 if (t < startOfDay) return;
                 const cust = item.customerId || {};
@@ -583,6 +594,7 @@ export function AttendanceScanner() {
             });
             const staffList = Array.isArray(staffRes.data) ? staffRes.data : [];
             staffList.forEach((item: any) => {
+                if (!isClubMatch(item.locationId)) return;
                 const name = item.staffId?.fullName || 'Nhân viên';
                 const checkedOut = item.status === 'checked-out';
                 const t = checkedOut && item.checkOutTime ? new Date(item.checkOutTime) : new Date(item.checkInTime);
@@ -602,7 +614,7 @@ export function AttendanceScanner() {
         }
 
         items.sort((a, b) => b.time.localeCompare(a.time));
-        if (items.length > 0) setHistory(items);
+        setHistory(items);
     };
 
     useEffect(() => {
@@ -613,35 +625,6 @@ export function AttendanceScanner() {
             }
         };
     }, [selectedClub]);
-
-    // Nạp danh sách giọng đọc tiếng Việt
-    useEffect(() => {
-        const loadVoices = () => {
-            if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
-            const vs = window.speechSynthesis.getVoices();
-            if (!vs.length) return;
-            const viVoices = vs.filter(v => v.lang.toLowerCase().includes('vi'));
-            setVoices(viVoices);
-            try {
-                const manual = localStorage.getItem('ttsVoiceManual') === '1';
-                const saved = localStorage.getItem('ttsVoiceURI');
-                if (manual && saved && viVoices.some(v => v.voiceURI === saved)) {
-                    setVoiceURI(saved);
-                    return;
-                }
-                // Mặc định: giọng thứ 3 trong select (index 1), trừ khi chỉ có 1 giọng
-                if (viVoices.length > 0) {
-                    const uri = viVoices[Math.min(1, viVoices.length - 1)].voiceURI;
-                    setVoiceURI(uri);
-                    localStorage.setItem('ttsVoiceURI', uri);
-                    localStorage.removeItem('ttsVoiceManual');
-                }
-            } catch { /* ignore */ }
-        };
-        loadVoices();
-        window.speechSynthesis.onvoiceschanged = loadVoices;
-        return () => { window.speechSynthesis.onvoiceschanged = null; };
-    }, []);
 
     // Lấy tên phòng tập hiện tại của nhân viên đang đăng nhập để hiển thị banner
     useEffect(() => {
@@ -659,24 +642,6 @@ export function AttendanceScanner() {
             .catch(() => {});
     }, [selectedClub, user?.locationId]);
 
-    const handleVoiceChange = (uri: string) => {
-        setVoiceURI(uri);
-        try {
-            localStorage.setItem('ttsVoiceURI', uri);
-            if (uri) localStorage.setItem('ttsVoiceManual', '1');
-            else localStorage.removeItem('ttsVoiceManual');
-        } catch { /* ignore */ }
-        if (!uri) return;
-        try {
-            window.speechSynthesis.cancel();
-            const utterance = new SpeechSynthesisUtterance('Xin chào, tôi là giọng đọc thông báo');
-            utterance.lang = 'vi-VN';
-            const v = window.speechSynthesis.getVoices().find(x => x.voiceURI === uri);
-            if (v) utterance.voice = v;
-            window.speechSynthesis.speak(utterance);
-        } catch { /* ignore */ }
-    };
-
     return (
         <AdminLayout>
             <div className="max-w-7xl mx-auto space-y-6 font-sans antialiased text-slate-900 py-4 px-2 bg-slate-50">
@@ -690,43 +655,13 @@ export function AttendanceScanner() {
                     <p className="text-sm text-slate-600 font-medium">Quét QR hội viên (check-in) / QR nhân viên (chấm công)</p>
                 </div>
 
-                {/* Banner phòng tập hiện tại */}
-                {currentClubName && (
+                {/* Banner phòng tập hiện tại (chỉ hiển thị cho tài khoản admin) */}
+                {currentClubName && user?.isAdmin === true && (
                     <div className="flex items-center gap-2.5 bg-indigo-600 text-white px-4 py-3 rounded-2xl shadow-sm">
                         <AlertTriangle className="w-5 h-5 text-indigo-200" />
                         <span className="text-sm font-bold">
                             Máy quét đang hoạt động tại phòng tập: {currentClubName} — chỉ điểm danh được người thuộc phòng tập này
                         </span>
-                    </div>
-                )}
-
-                {/* Chọn giọng đọc thông báo */}
-                {voices.length > 0 && (
-                    <div className="bg-white border border-slate-200 rounded-2xl p-3.5 flex flex-col md:flex-row md:items-center gap-2 md:gap-3 shadow-sm">
-                        <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-                            <Volume2 className="w-4 h-4 text-indigo-500" />
-                            Giọng đọc thông báo:
-                        </div>
-                        <select
-                            value={voiceURI}
-                            onChange={(e) => handleVoiceChange(e.target.value)}
-                            className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        >
-                            <option value="">Tự động (giọng tiếng Việt mặc định)</option>
-                            {voices.map(v => (
-                                <option key={v.voiceURI} value={v.voiceURI}>
-                                    {v.name} {v.localService ? '' : '(online)'}
-                                </option>
-                            ))}
-                        </select>
-                        {voiceURI && (
-                            <button
-                                onClick={() => handleVoiceChange('')}
-                                className="px-3 py-2 text-xs font-semibold text-slate-500 hover:text-red-600 bg-slate-100 hover:bg-red-50 rounded-xl transition-colors"
-                            >
-                                Đặt lại tự động
-                            </button>
-                        )}
                     </div>
                 )}
 
@@ -924,7 +859,7 @@ export function AttendanceScanner() {
                         {wantLocker && (
                             <div className="space-y-4">
                                 <div className="flex items-center justify-between">
-                                    <p className="text-sm font-bold text-slate-700">Chọn tủ trống cho người này</p>
+                                    <p className="text-sm font-bold text-slate-700">Chọn tủ trống cho người này{currentClubName ? ` · ${currentClubName}` : ''}</p>
                                     <button
                                         onClick={() => setWantLocker(false)}
                                         className="px-3 py-1.5 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold hover:bg-slate-200"

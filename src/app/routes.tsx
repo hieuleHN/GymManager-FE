@@ -47,6 +47,7 @@ import { AddStaff } from './pages/admin/AddStaff';
 import { StaffPermissions } from './pages/admin/StaffPermissions';
 import { StaffShift } from './pages/admin/StaffShift';
 import { StaffCheckIn } from './pages/admin/StaffCheckIn';
+import { StaffAttendanceHistory } from './pages/admin/StaffAttendanceHistory';
 import { JobList } from './pages/admin/JobList';
 import { AddJob } from './pages/admin/AddJob';
 import { EditJob } from './pages/admin/EditJob';
@@ -69,8 +70,7 @@ import { RecruitmentManagement } from './pages/admin/RecruitmentManagement';
 import { ExpenseManagement } from './pages/admin/ExpenseManagement';
 import { TrainerProfile } from './pages/admin/TrainerProfile';
 import { TrainingSchedule } from './pages/admin/TrainingSchedule';
-import { LockerManagement } from './pages/admin/LockerManagement';
-import { LockerManagementV2 } from './pages/v2/LockerManagementV2';
+import { LockerManagementDiagram } from './pages/admin/LockerManagementDiagram';
 import { ScheduleConfirmations } from './pages/admin/ScheduleConfirmations';
 import { Community } from './pages/dashboard/Community';
 import { Messages } from './pages/dashboard/Messages';
@@ -125,6 +125,7 @@ const routeFeatures: Record<string, string> = {
   '/admin/services/history': 'services',
   '/admin/attendance': 'attendance',
   '/admin/attendance/history': 'attendance',
+  '/admin/staff-attendance/history': 'attendance',
   '/admin/products': 'products',
   '/admin/products/add': 'products',
   '/admin/products/returns': 'products',
@@ -361,6 +362,10 @@ export const router = createBrowserRouter([
     element: <ProtectedRoute role="staff"><StaffCheckIn /></ProtectedRoute>
   },
   {
+    path: '/admin/staff-attendance/history',
+    element: <ProtectedRoute role="staff"><StaffAttendanceHistory /></ProtectedRoute>
+  },
+  {
     path: '/admin/products',
     element: <ProtectedRoute role="staff"><ProductList /></ProtectedRoute>
   },
@@ -458,7 +463,7 @@ export const router = createBrowserRouter([
   },
   {
     path: '/admin/lockers',
-    element: <ProtectedRoute role="staff"><LockerManagementV2 /></ProtectedRoute>
+    element: <ProtectedRoute role="staff"><LockerManagementDiagram /></ProtectedRoute>
   },
   {
     path: '/admin/schedule-confirmations',
