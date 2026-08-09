@@ -72,7 +72,6 @@ import { TrainerProfile } from './pages/admin/TrainerProfile';
 import { TrainingSchedule } from './pages/admin/TrainingSchedule';
 import { LockerManagementDiagram } from './pages/admin/LockerManagementDiagram';
 import { ScheduleConfirmations } from './pages/admin/ScheduleConfirmations';
-import { Community } from './pages/dashboard/Community';
 import { Messages } from './pages/dashboard/Messages';
 import { Tasks } from './pages/admin/Tasks';
 import { Invoices } from './pages/admin/Invoices';
@@ -84,6 +83,8 @@ import { Articles } from './pages/Articles';
 import { ArticleDetail } from './pages/ArticleDetail';
 import { AdminCommunity } from './pages/admin/AdminCommunity';
 import { AdminMessages } from './pages/admin/AdminMessages';
+import { MessagesMonitor } from './pages/admin/MessagesMonitor';
+import { SensitiveKeywords } from './pages/admin/SensitiveKeywords';
 
 // IMPORT TRANG THỐNG KÊ BIỂU ĐỒ ADMIN
 import { AdminStats } from './pages/dashboard/AdminStats';
@@ -157,10 +158,8 @@ const routeFeatures: Record<string, string> = {
   '/admin/invoices': 'payment',
   '/admin/posts': 'services',
   '/admin/articles': 'services',
-  '/admin/community': 'services',
-  '/admin/messages': 'services'
+  '/admin/community': 'services'
 };
-
 function ProtectedRoute({ children, role }: { children: React.ReactNode, role?: 'member' | 'staff' }) {
   const { user, loading, hasPermission } = useAuth();
   const location = useLocation();
@@ -264,10 +263,6 @@ export const router = createBrowserRouter([
   {
     path: '/dashboard/progress',
     element: <ProtectedRoute role="member"><Progress /></ProtectedRoute>
-  },
-  {
-    path: '/dashboard/community',
-    element: <ProtectedRoute role="member"><Community /></ProtectedRoute>
   },
   {
     path: '/dashboard/bookings/:bookingId/status',
@@ -496,5 +491,13 @@ export const router = createBrowserRouter([
   {
     path: '/admin/messages',
     element: <ProtectedRoute role="staff"><AdminMessages /></ProtectedRoute>
+  },
+  {
+    path: '/admin/messages-monitor',
+    element: <ProtectedRoute role="staff"><MessagesMonitor /></ProtectedRoute>
+  },
+  {
+    path: '/admin/sensitive-keywords',
+    element: <ProtectedRoute role="staff"><SensitiveKeywords /></ProtectedRoute>
   },
 ]);

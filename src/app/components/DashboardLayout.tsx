@@ -3,9 +3,10 @@ import { Link, useLocation, useNavigate } from 'react-router';
 import {
   LayoutDashboard, CreditCard, History, Calendar, UserCircle,
   Package, TrendingUp, Settings, LogOut, Menu, X, FileText,
-  Bell, Home, Users, MessageCircle, AlertTriangle, CheckCircle, XCircle, Clock, ArrowRightLeft, Wallet
+  Bell, Home, MessageCircle, AlertTriangle, CheckCircle, XCircle, Clock, ArrowRightLeft, Wallet
 } from 'lucide-react';
 import { useAuth, getApiUrl, getAuthHeaders } from '../context/AuthContext';
+import { useChatContext } from '../context/ChatContext';
 import logo from '../../imports/ChatGPT_Image_May_14__2026__09_48_52_PM.png';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import { WalletBalance } from './WalletBalance';
@@ -16,6 +17,7 @@ interface DashboardLayoutProps {
 
 export function DashboardLayout({ children }: DashboardLayoutProps) {
   const { user, logout, refreshUser } = useAuth();
+  const { unreadCounts: chatUnread } = useChatContext();
   const location = useLocation();
   const navigate = useNavigate();
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -170,7 +172,8 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     if (!showNotifications) fetchNotifications();
   };
 
-  const hasRedDot = (user?.status && user.status !== 'approved' && user.status !== 'locked') || unreadCount > 0;
+  const totalUnread = unreadCount + (chatUnread?.total || 0);
+  const hasRedDot = (user?.status && user.status !== 'approved' && user.status !== 'locked') || totalUnread > 0;
 
   const menuItems = [
     { name: 'Tổng quan', href: '/dashboard', icon: LayoutDashboard },
@@ -178,7 +181,6 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     { name: 'Lịch sử giao dịch', href: '/dashboard/history', icon: History },
     { name: 'Lịch tập', href: '/dashboard/schedule', icon: Calendar },
     { name: 'Đặt lịch / Liên hệ HLV', href: '/dashboard/trainers', icon: UserCircle },
-    { name: 'Cộng đồng', href: '/dashboard/community', icon: Users },
     { name: 'Tin nhắn', href: '/dashboard/messages', icon: MessageCircle },
     { name: 'Theo dõi tiến độ', href: '/dashboard/progress', icon: TrendingUp },
     { name: 'Dịch vụ', href: '/dashboard/services', icon: FileText },
@@ -223,6 +225,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
               {menuItems.map((item) => {
                 const Icon = item.icon;
                 const isActive = location.pathname === item.href;
+                const chatBadge = item.href === '/dashboard/messages' ? (chatUnread?.total || 0) : 0;
                 return (
                   <li key={item.name}>
                     <Link to={item.href}
@@ -233,6 +236,11 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                       }`}>
                       <Icon className="w-5 h-5" />
                       <span className="text-sm">{item.name}</span>
+                      {chatBadge > 0 && (
+                        <span className="ml-auto min-w-[20px] h-5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center px-1.5">
+                          {chatBadge > 99 ? '99+' : chatBadge}
+                        </span>
+                      )}
                     </Link>
                   </li>
                 );
@@ -263,9 +271,9 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                 <button onClick={handleBellClick}
                   className="p-2 rounded-lg hover:bg-slate-100 transition-colors relative">
                   <Bell className="w-5 h-5 text-slate-600" />
-                  {unreadCount > 0 && (
+                  {totalUnread > 0 && (
                     <span className="absolute -top-1.5 -right-1.5 block min-w-[18px] h-[18px] rounded-full bg-red-500 ring-2 ring-white text-white text-[10px] font-bold flex items-center justify-center px-1">
-                      {unreadCount > 99 ? '99+' : unreadCount}
+                      {totalUnread > 99 ? '99+' : totalUnread}
                     </span>
                   )}
                 </button>
@@ -274,7 +282,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                   <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-xl border border-slate-200 z-50">
                     <div className="p-4 border-b border-slate-200 flex items-center justify-between">
                       <h3 className="font-bold text-slate-900">Thông báo</h3>
-                      {unreadCount > 0 && (
+                      {totalUnread > 0 && (
                         <button onClick={markAllAsRead}
                           className="text-xs text-indigo-600 hover:text-indigo-700 font-medium">
                           Đánh dấu đã đọc
@@ -282,6 +290,19 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                       )}
                     </div>
                     <div className="max-h-96 overflow-y-auto">
+                      {chatUnread && chatUnread.total > 0 && (
+                        <Link to="/dashboard/messages"
+                          onClick={() => setShowNotifications(false)}
+                          className="block p-4 hover:bg-slate-50 border-b border-slate-100 bg-indigo-50/50">
+                          <div className="flex gap-3">
+                            <MessageCircle className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5" />
+                            <div className="flex-1 min-w-0">
+                              <h4 className="font-semibold text-slate-900 text-sm mb-1">Tin nhắn mới</h4>
+                              <p className="text-sm text-slate-600">Bạn có {chatUnread.total} tin nhắn chưa đọc</p>
+                            </div>
+                          </div>
+                        </Link>
+                      )}
                       {profileNotif && (
                         <Link to="/dashboard/settings"
                           onClick={() => setShowNotifications(false)}

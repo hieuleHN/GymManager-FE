@@ -1,8 +1,9 @@
 import { DashboardLayout } from '../../components/DashboardLayout';
 import { Button } from '@mui/material';
-import { Pause, Play, MapPin, FileText, HelpCircle, Users, Download, Send, X } from 'lucide-react';
+import { Pause, Play, MapPin, FileText, HelpCircle, Users, Download } from 'lucide-react';
 import { useState } from 'react';
 import { clubsData } from '../../data';
+import { useChatContext } from '../../context/ChatContext';
 
 const services = [
   {
@@ -76,6 +77,7 @@ const contracts = [
 ];
 
 export function Services() {
+  const { openSupportChat } = useChatContext();
   const [selectedService, setSelectedService] = useState<string | null>(null);
   const [freezeReason, setFreezeReason] = useState('');
   const [freezePackage, setFreezePackage] = useState('');
@@ -85,12 +87,12 @@ export function Services() {
   const [transferCode, setTransferCode] = useState('');
   const [changeClubReason, setChangeClubReason] = useState('');
   const [selectedClub, setSelectedClub] = useState('');
-  const [chatMessage, setChatMessage] = useState('');
-  const [chatMessages, setChatMessages] = useState<Array<{sender: 'user' | 'staff', message: string, time: string}>>([
-    { sender: 'staff', message: 'Xin chào! Tôi có thể giúp gì cho bạn?', time: '10:00' }
-  ]);
 
   const handleServiceClick = (serviceId: string) => {
+    if (serviceId === 'support') {
+      openSupportChat();
+      return;
+    }
     setSelectedService(serviceId);
   };
 
@@ -109,26 +111,6 @@ export function Services() {
   const handleSubmitRequest = () => {
     alert('Yêu cầu của bạn đã được gửi. Chúng tôi sẽ liên hệ với bạn sớm!');
     handleCloseModal();
-  };
-
-  const handleSendMessage = () => {
-    if (chatMessage.trim()) {
-      setChatMessages([...chatMessages, {
-        sender: 'user',
-        message: chatMessage,
-        time: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
-      }]);
-      setChatMessage('');
-
-      // Simulate staff response
-      setTimeout(() => {
-        setChatMessages(prev => [...prev, {
-          sender: 'staff',
-          message: 'Cảm ơn bạn đã liên hệ. Chúng tôi sẽ xử lý yêu cầu của bạn ngay.',
-          time: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
-        }]);
-      }, 1000);
-    }
   };
 
   return (
@@ -583,76 +565,7 @@ export function Services() {
           </div>
         )}
 
-        {/* Support Chat Modal */}
-        {selectedService === 'support' && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={handleCloseModal}>
-            <div className="bg-white rounded-2xl w-[450px] h-[600px] mx-4 flex flex-col" onClick={(e) => e.stopPropagation()}>
-              {/* Chat Header */}
-              <div className="flex items-center justify-between p-4 border-b border-slate-200">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-indigo-600 rounded-full flex items-center justify-center">
-                    <HelpCircle className="w-5 h-5 text-white" />
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-slate-900">Hỗ trợ khách hàng</h3>
-                    <p className="text-xs text-green-600">● Đang hoạt động</p>
-                  </div>
-                </div>
-                <button
-                  onClick={handleCloseModal}
-                  className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
-                >
-                  <X className="w-5 h-5 text-slate-600" />
-                </button>
-              </div>
-
-              {/* Chat Messages */}
-              <div className="flex-1 p-4 overflow-y-auto space-y-4">
-                {chatMessages.map((msg, idx) => (
-                  <div key={idx} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-[70%] ${
-                      msg.sender === 'user'
-                        ? 'bg-indigo-600 text-white'
-                        : 'bg-slate-100 text-slate-900'
-                    } rounded-2xl px-4 py-2`}>
-                      <p className="text-sm">{msg.message}</p>
-                      <p className={`text-xs mt-1 ${
-                        msg.sender === 'user' ? 'text-indigo-200' : 'text-slate-500'
-                      }`}>
-                        {msg.time}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Chat Input */}
-              <div className="p-4 border-t border-slate-200">
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={chatMessage}
-                    onChange={(e) => setChatMessage(e.target.value)}
-                    onKeyPress={(e) => {
-                      if (e.key === 'Enter') {
-                        handleSendMessage();
-                      }
-                    }}
-                    placeholder="Nhập tin nhắn..."
-                    className="flex-1 px-4 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  />
-                  <button
-                    onClick={handleSendMessage}
-                    disabled={!chatMessage.trim()}
-                    className="p-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    <Send className="w-5 h-5" />
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+        {/* Support Chat - mở chat thật qua openSupportChat() */}
       </div>
     </DashboardLayout>
   );

@@ -30,14 +30,21 @@ import {
   Lock,
   CheckCircle,
   Shield,
+  ShieldCheck,
   Plus,
   Building2,
   MessageCircle,
   Camera,
-  Clock
+  Clock,
+  AlertTriangle,
+  XCircle,
+  ArrowRightLeft,
+  Wallet,
+  AlertCircle
 } from 'lucide-react';
 import { useAuth, getApiUrl, getAuthHeaders } from '../context/AuthContext';
 import { useClub } from '../context/ClubContext';
+import { useChatContext } from '../context/ChatContext';
 import { AddClubModal } from './AddClubModal';
 import logo from '../../imports/ChatGPT_Image_May_14__2026__09_48_52_PM.png';
 import { ImageWithFallback } from './figma/ImageWithFallback';
@@ -56,6 +63,7 @@ interface AdminLayoutProps {
 
 export function AdminLayout({ children }: AdminLayoutProps) {
   const { user, logout, hasPermission } = useAuth();
+  const { unreadCounts: chatUnread } = useChatContext();
   const { selectedClub, setSelectedClub, clubs, setClubs } = useClub();
   const location = useLocation();
   const navigate = useNavigate();
@@ -66,8 +74,113 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   const [isLoadingClubs, setIsLoadingClubs] = useState(false);
   const [showAddClubModal, setShowAddClubModal] = useState(false);
   const [staffAvatar, setStaffAvatar] = useState('');
+  const [apiNotifications, setApiNotifications] = useState<any[]>([]);
+  const [notifUnreadCount, setNotifUnreadCount] = useState(0);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const notifRef = useRef<HTMLDivElement>(null);
 
   const isAdminUser = user?.isAdmin === true;
+
+  useEffect(() => {
+    if (!user?.id) return;
+    fetchApiNotifications();
+    fetchNotifUnreadCount();
+    const interval = setInterval(fetchNotifUnreadCount, 30000);
+    return () => clearInterval(interval);
+  }, [user]);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
+        setShowNotifications(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const fetchApiNotifications = async () => {
+    if (!user?.id) return;
+    try {
+      const res = await fetch(
+        `${getApiUrl()}/api/notifications?recipientId=${user.id}&recipientRole=staff&limit=10`,
+        { headers: getAuthHeaders() },
+      );
+      if (res.ok) {
+        const data = await res.json();
+        setApiNotifications(data.data || []);
+      }
+    } catch {}
+  };
+
+  const fetchNotifUnreadCount = async () => {
+    if (!user?.id) return;
+    try {
+      const res = await fetch(
+        `${getApiUrl()}/api/notifications/unread-count?recipientId=${user.id}&recipientRole=staff`,
+        { headers: getAuthHeaders() },
+      );
+      if (res.ok) {
+        const data = await res.json();
+        setNotifUnreadCount(data.count || 0);
+      }
+    } catch {}
+  };
+
+  const handleNotificationClick = async (notif: any) => {
+    try {
+      await fetch(`${getApiUrl()}/api/notifications/${notif._id}/read`, {
+        method: "PUT",
+        headers: getAuthHeaders(),
+      });
+    } catch {}
+    setShowNotifications(false);
+    fetchApiNotifications();
+    fetchNotifUnreadCount();
+    if (notif.type === "booking_request" || notif.type === "booking_transferred") {
+      navigate("/admin/booking-management");
+    } else if (notif.type === "locker_resolved" || notif.type === "locker_rejected") {
+      navigate("/admin/locker-issues");
+    }
+  };
+
+  const markAllAsRead = async () => {
+    if (!user?.id) return;
+    try {
+      await fetch(`${getApiUrl()}/api/notifications/read-all`, {
+        method: "PUT",
+        headers: { ...(getAuthHeaders() as any), "Content-Type": "application/json" },
+        body: JSON.stringify({ recipientId: user.id, recipientRole: "staff" }),
+      });
+      setNotifUnreadCount(0);
+      setApiNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    } catch {}
+  };
+
+  const getNotifIcon = (type: string) => {
+    switch (type) {
+      case "booking_confirmed":
+        return <CheckCircle className="w-4 h-4 text-green-500" />;
+      case "booking_rejected":
+      case "booking_cancelled":
+        return <XCircle className="w-4 h-4 text-red-500" />;
+      case "booking_request":
+      case "booking_transferred":
+        return <Calendar className="w-4 h-4 text-indigo-500" />;
+      case "locker_resolved":
+        return <CheckCircle className="w-4 h-4 text-emerald-500" />;
+      case "locker_rejected":
+        return <AlertTriangle className="w-4 h-4 text-amber-500" />;
+      case "transfer_approved":
+      case "transfer_requested":
+        return <ArrowRightLeft className="w-4 h-4 text-sky-500" />;
+      case "wallet_topup":
+      case "wallet_payment":
+        return <Wallet className="w-4 h-4 text-emerald-500" />;
+      default:
+        return <AlertCircle className="w-4 h-4 text-slate-500" />;
+    }
+  };
 
   useEffect(() => {
     if (!user?.isStaff || user?.isAdmin || !user?.id) { setStaffAvatar(''); return; }
@@ -134,6 +247,20 @@ export function AdminLayout({ children }: AdminLayoutProps) {
       href: "/admin/dashboard",
       icon: LayoutDashboard,
       feature: "statistics",
+    },
+    {
+      name: "Tin nhắn",
+      href: "/admin/messages",
+      icon: MessageCircle,
+    },
+    {
+      name: "Quản lý tin nhắn",
+      icon: ShieldCheck,
+      feature: "giám_sát_tin_nhắn",
+      submenu: [
+        { name: "Giám sát tin nhắn", href: "/admin/messages-monitor" },
+        { name: "Từ khoá cấm", href: "/admin/sensitive-keywords" },
+      ],
     },
     {
       name: "Quản lý khách hàng",
@@ -405,7 +532,17 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                                           : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
                                       }`}
                                     >
-                                      {subItem.name}
+                                      <span className="flex items-center justify-between">
+                                        <span>{subItem.name}</span>
+                                        {subItem.href === "/admin/messages" &&
+                                          (chatUnread?.total || 0) > 0 && (
+                                            <span className="min-w-[20px] h-5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center px-1.5">
+                                              {chatUnread.total > 99
+                                                ? "99+"
+                                                : chatUnread.total}
+                                            </span>
+                                          )}
+                                      </span>
                                     </Link>
                                   </li>
                                 );
@@ -424,6 +561,11 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                       >
                         <Icon className="w-5 h-5" />
                         <span className="text-sm">{item.name}</span>
+                        {item.href === "/admin/messages" && (chatUnread?.total || 0) > 0 && (
+                          <span className="ml-auto min-w-[20px] h-5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center px-1.5">
+                            {chatUnread.total > 99 ? "99+" : chatUnread.total}
+                          </span>
+                        )}
                       </Link>
                     )}
                   </li>
@@ -528,6 +670,107 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                   )}
                 </div>
               )}
+              <div className="relative" ref={notifRef}>
+                <button
+                  onClick={() => {
+                    setShowNotifications(!showNotifications);
+                    if (!showNotifications) {
+                      fetchApiNotifications();
+                      fetchNotifUnreadCount();
+                    }
+                  }}
+                  className="text-slate-500 hover:text-slate-700 relative"
+                  title="Thông báo"
+                >
+                  <Bell className="w-5 h-5" />
+                  {(notifUnreadCount + (chatUnread?.total || 0)) > 0 && (
+                    <span className="absolute -top-2 -right-2 min-w-[18px] h-[18px] rounded-full bg-red-500 ring-2 ring-white text-white text-[10px] font-bold flex items-center justify-center px-1">
+                      {(notifUnreadCount + (chatUnread?.total || 0)) > 99 ? "99+" : notifUnreadCount + (chatUnread?.total || 0)}
+                    </span>
+                  )}
+                </button>
+
+                {showNotifications && (
+                  <div className="absolute top-full right-0 mt-2 w-96 bg-white rounded-2xl shadow-xl border border-slate-200 z-50 max-h-[500px] flex flex-col">
+                    <div className="flex items-center justify-between p-4 border-b border-slate-100 shrink-0">
+                      <h3 className="font-bold text-slate-900">Thông báo</h3>
+                      {(notifUnreadCount > 0) && (
+                        <button
+                          onClick={markAllAsRead}
+                          className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+                        >
+                          Đánh dấu đã đọc
+                        </button>
+                      )}
+                    </div>
+                    <div className="overflow-y-auto flex-1">
+                      {(chatUnread?.total || 0) > 0 && (
+                        <button
+                          onClick={() => {
+                            setShowNotifications(false);
+                            navigate("/admin/messages");
+                          }}
+                          className="w-full text-left p-4 flex gap-3 hover:bg-slate-50 transition-colors border-b border-slate-50 bg-indigo-50/50"
+                        >
+                          <div className="mt-0.5 shrink-0">
+                            <MessageCircle className="w-4 h-4 text-indigo-500" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-slate-900">
+                              Tin nhắn mới
+                            </p>
+                            <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">
+                              Bạn có {chatUnread?.total} tin nhắn chưa đọc
+                            </p>
+                          </div>
+                          <ChevronRight className="w-4 h-4 text-slate-300 shrink-0 mt-1" />
+                        </button>
+                      )}
+                      {apiNotifications.length === 0 ? (
+                        <div className="p-8 text-center text-slate-500 text-sm">
+                          <Bell className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+                          Không có thông báo
+                        </div>
+                      ) : (
+                        apiNotifications.map((notif) => (
+                          <button
+                            key={notif._id}
+                            onClick={() => handleNotificationClick(notif)}
+                            className={`w-full text-left p-4 flex gap-3 hover:bg-slate-50 transition-colors border-b border-slate-50 ${
+                              !notif.read ? "bg-indigo-50/50" : ""
+                            }`}
+                          >
+                            <div className="mt-0.5 shrink-0">
+                              {getNotifIcon(notif.type)}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p
+                                className={`text-sm ${
+                                  !notif.read
+                                    ? "font-semibold text-slate-900"
+                                    : "text-slate-700"
+                                }`}
+                              >
+                                {notif.title}
+                              </p>
+                              <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">
+                                {notif.message}
+                              </p>
+                              <p className="text-[10px] text-slate-400 mt-1">
+                                {new Date(notif.createdAt).toLocaleDateString(
+                                  "vi-VN",
+                                  { hour: "2-digit", minute: "2-digit" },
+                                )}
+                              </p>
+                            </div>
+                            <ChevronRight className="w-4 h-4 text-slate-300 shrink-0 mt-1" />
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
               <Link
                 to="/"
                 className="flex items-center gap-2 text-sm text-slate-600 hover:text-indigo-600 transition-colors"
