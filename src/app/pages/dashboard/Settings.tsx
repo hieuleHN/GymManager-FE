@@ -1,16 +1,18 @@
 import { DashboardLayout } from '../../components/DashboardLayout';
 import { Button } from '@mui/material';
-import { User, Lock, Bell, Shield, CreditCard, Globe, Camera, AlertTriangle, CheckCircle, XCircle, Clock } from 'lucide-react';
+import { User, Lock, Bell, Shield, CreditCard, Globe, Camera, AlertTriangle, CheckCircle, XCircle, Clock, Loader2 } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
-import { useAuth, getApiUrl, getAuthHeaders } from '../../context/AuthContext';
+import { useAuth, getApiUrl, getAuthHeaders, customerAvatarSrc } from '../../context/AuthContext';
 
 export function Settings() {
-  const { user, refreshUser } = useAuth();
+  const { user, refreshUser, updateAvatar } = useAuth();
   const [activeTab, setActiveTab] = useState('profile');
   const [loading, setLoading] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [fetching, setFetching] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const avatarInputRef = useRef<HTMLInputElement>(null);
 
   const [formData, setFormData] = useState({
     fullName: '',
@@ -139,6 +141,32 @@ export function Settings() {
     }
   };
 
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingAvatar(true);
+    setError('');
+    setSuccess('');
+    try {
+      const form = new FormData();
+      form.append('avatar', file);
+      const res = await fetch(`${getApiUrl()}/api/customers/avatar`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${user?.token}` },
+        body: form
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Lỗi cập nhật ảnh đại diện!');
+      updateAvatar(data.avatar || '');
+      setSuccess('Cập nhật ảnh đại diện thành công!');
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setUploadingAvatar(false);
+      if (avatarInputRef.current) avatarInputRef.current.value = '';
+    }
+  };
+
   const handleSaveSecurity = async () => {
     if (formData.newPassword && formData.newPassword !== formData.confirmPassword) {
       setError('Mật khẩu mới không khớp!');
@@ -238,6 +266,10 @@ export function Settings() {
                       <span className="text-sm text-slate-500">Trạng thái:</span>
                       {statusBadge()}
                     </div>
+                    <div className="flex items-center gap-3 mb-2">
+                      <span className="text-sm text-slate-500">Mã hội viên:</span>
+                      <span className="text-sm font-semibold text-slate-900">{user?.username || 'Chưa có'}</span>
+                    </div>
                     <p className="text-slate-600">Cập nhật thông tin cá nhân và gửi cho nhân viên xác nhận</p>
                   </div>
 
@@ -245,17 +277,42 @@ export function Settings() {
                   {success && <div className="p-3 bg-green-50 border border-green-200 text-green-700 rounded-xl text-sm">{success}</div>}
 
                   <div className="flex items-center gap-6 pb-6 border-b border-slate-200">
-                    <img
-                      src={user?.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=150'}
-                      alt="Avatar"
-                      className="w-24 h-24 rounded-full object-cover"
-                    />
+                    <div className="relative group">
+                      <img
+                        src={customerAvatarSrc(user?.avatar) || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=150'}
+                        alt="Avatar"
+                        className="w-24 h-24 rounded-full object-cover"
+                      />
+                      {uploadingAvatar && (
+                        <div className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center">
+                          <Loader2 className="w-6 h-6 text-white animate-spin" />
+                        </div>
+                      )}
+                      <label className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 cursor-pointer transition-opacity">
+                        <Camera className="w-6 h-6 text-white" />
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={handleAvatarUpload}
+                        />
+                      </label>
+                    </div>
                     <div>
-                      <Button variant="contained"
-                        sx={{ bgcolor: '#4f46e5', '&:hover': { bgcolor: '#4338ca' }, textTransform: 'none', borderRadius: 2, mb: 1 }}>
-                        Thay đổi ảnh
-                      </Button>
-                      <p className="text-sm text-slate-600">JPG, PNG. Tối đa 2MB</p>
+                      <label className="inline-flex cursor-pointer">
+                        <Button variant="contained" component="span" disabled={uploadingAvatar}
+                          sx={{ bgcolor: '#4f46e5', '&:hover': { bgcolor: '#4338ca' }, textTransform: 'none', borderRadius: 2, mb: 1 }}>
+                          {uploadingAvatar ? 'Đang tải...' : 'Thay đổi ảnh'}
+                        </Button>
+                        <input
+                          ref={avatarInputRef}
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={handleAvatarUpload}
+                        />
+                      </label>
+                      <p className="text-sm text-slate-600">JPG, PNG. Tối đa 5MB</p>
                     </div>
                   </div>
 

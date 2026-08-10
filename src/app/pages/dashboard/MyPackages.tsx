@@ -34,6 +34,8 @@ interface Registration {
   payment_method: string;
 
   signature: string;
+  frozenAt?: string | null;
+  frozenUntil?: string | null;
   createdAt: string;
 }
 
@@ -204,6 +206,17 @@ export function MyPackages() {
     const diff = new Date(endDate).getTime() - new Date().getTime();
     return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
   };
+  // Hạn sử dụng thực tế: khi gói đang tạm ngưng, cộng thêm số ngày đã đóng băng
+  const effectiveEndDate = (reg: Registration): string => {
+    if (reg.status === "đang tạm ngưng" && reg.frozenAt) {
+      const frozenMs = Date.now() - new Date(reg.frozenAt).getTime();
+      const frozenDays = Math.max(0, Math.floor(frozenMs / 86400000));
+      const end = new Date(reg.end_date);
+      end.setDate(end.getDate() + frozenDays);
+      return end.toISOString();
+    }
+    return reg.end_date;
+  };
 
   const handleOpenRenewModal = (reg: Registration) => {
     setSelectedPkg(reg.package_id);
@@ -292,7 +305,7 @@ export function MyPackages() {
 
 
   const activeRegistrations = registrations.filter(r =>
-    r.status === 'đang hoạt động' || r.status === 'còn 10 ngày'
+    r.status === 'đang hoạt động' || r.status === 'còn 10 ngày' || r.status === 'đang tạm ngưng'
   );
   const paidPendingRegistrations = registrations.filter(r =>
     r.status === 'chờ xác nhận' && r.payment_status === 'paid'
@@ -450,7 +463,13 @@ export function MyPackages() {
                   <div className="flex items-start justify-between mb-4">
                     <div>
                       <div
-                        className={`inline-block px-3 py-1 rounded-full text-xs font-semibold mb-2 ${reg.status === "còn 10 ngày" ? "bg-amber-100 text-amber-700" : "bg-green-100 text-green-700"}`}
+                        className={`inline-block px-3 py-1 rounded-full text-xs font-semibold mb-2 ${
+                          reg.status === "đang tạm ngưng"
+                            ? "bg-amber-100 text-amber-700"
+                            : reg.status === "còn 10 ngày"
+                            ? "bg-amber-100 text-amber-700"
+                            : "bg-green-100 text-green-700"
+                        }`}
                       >
                         {reg.status}
                       </div>
@@ -478,7 +497,7 @@ export function MyPackages() {
                     <div className="flex items-center gap-2 text-sm">
                       <Calendar className="w-4 h-4 text-slate-400" />
                       <span className="text-slate-600 font-medium">
-                        Hạn sử dụng: đến {formatDate(reg.end_date)}
+                        Hạn sử dụng: đến {formatDate(effectiveEndDate(reg))}
                       </span>
                     </div>
 
@@ -493,15 +512,33 @@ export function MyPackages() {
                       </span>
                     </div>
 
-                    {reg.end_date && (
-                      <div className="px-3 py-2 rounded-lg bg-indigo-50 inline-block border border-indigo-100">
-                        <p className="text-sm text-indigo-700">
-                          Còn lại{" "}
-                          <span className="font-bold text-indigo-900">
-                            {daysRemaining(reg.end_date)} ngày
-                          </span>
+                    {reg.status === "đang tạm ngưng" ? (
+                      <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200">
+                        <Clock className="w-4 h-4 text-amber-600 shrink-0" />
+                        <p className="text-sm text-amber-800">
+                          Đang tạm ngưng — còn lại{" "}
+                          <span className="font-bold text-amber-900">
+                            {daysRemaining(effectiveEndDate(reg))} ngày
+                          </span>{" "}
+                          sử dụng (được bảo lưu)
+                          {reg.frozenUntil && (
+                            <span className="block text-xs mt-0.5">
+                              Sẽ tự động kích hoạt lại sau: {formatDate(reg.frozenUntil)}
+                            </span>
+                          )}
                         </p>
                       </div>
+                    ) : (
+                      reg.end_date && (
+                        <div className="px-3 py-2 rounded-lg bg-indigo-50 inline-block border border-indigo-100">
+                          <p className="text-sm text-indigo-700">
+                            Còn lại{" "}
+                            <span className="font-bold text-indigo-900">
+                              {daysRemaining(reg.end_date)} ngày
+                            </span>
+                          </p>
+                        </div>
+                      )
                     )}
                   </div>
 
@@ -699,7 +736,8 @@ export function MyPackages() {
                   (r) =>
                     r.package_id?._id === pkg._id &&
                     (r.status === "đang hoạt động" ||
-                      r.status === "còn 10 ngày"),
+                      r.status === "còn 10 ngày" ||
+                      r.status === "đang tạm ngưng"),
                 );
                 return (
                   <div

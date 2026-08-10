@@ -4,10 +4,10 @@ import { getApiUrl, getAuthHeaders, useAuth } from '../../context/AuthContext';
 import { useClub } from '../../context/ClubContext';
 import {
     Lock, Unlock, AlertTriangle, Search, Plus, X, Trash2, Rows3, PlusCircle,
-    PackagePlus, LayoutGrid, User, Wrench, Boxes, Gauge, Info, Loader2, Clock, CheckCircle2
+    PackagePlus, LayoutGrid, User, Wrench, Boxes, Gauge, Info, Loader2, Clock, CheckCircle2, KeyRound
 } from 'lucide-react';
 
-type LockerStatus = 'AVAILABLE' | 'OCCUPIED' | 'MAINTENANCE';
+type LockerStatus = 'AVAILABLE' | 'OCCUPIED' | 'MAINTENANCE' | 'AWAIT_KEY_RETURN';
 type Zone = 'NAM' | 'NU' | 'VIP';
 
 interface LockerItem {
@@ -18,6 +18,8 @@ interface LockerItem {
     assignedType?: 'MEMBER' | 'STAFF';
     assignedPhone?: string;
     assignedAt?: string;
+    rentalDays?: number;
+    rentedAt?: string;
     maintenanceType?: string;
     maintenanceDescription?: string;
     maintenanceImage?: string;
@@ -43,6 +45,8 @@ interface LockerApiItem {
     assignedName: string;
     assignedPhone: string;
     assignedAt: string | null;
+    rentalDays?: number;
+    rentedAt?: string | null;
     maintenanceType: string;
     maintenanceDescription: string;
     maintenanceImage: string;
@@ -79,12 +83,26 @@ const STATUS_META: Record<LockerStatus, { label: string; card: string; iconCls: 
         card: 'bg-amber-50/70 border-amber-200 text-amber-900 hover:border-amber-400 hover:shadow-md',
         iconCls: 'text-amber-500',
     },
+    AWAIT_KEY_RETURN: {
+        label: 'Chờ trả chìa khoá',
+        card: 'bg-rose-50/80 border-rose-200 text-rose-900 hover:border-rose-400 hover:shadow-md',
+        iconCls: 'text-rose-500',
+    },
+};
+
+const formatRentalDays = (locker: LockerItem): string => {
+    if (!locker.rentedAt || !locker.rentalDays) return '';
+    const start = new Date(locker.rentedAt).getTime();
+    if (Number.isNaN(start)) return '';
+    const used = Math.max(0, Math.floor((Date.now() - start) / 86400000));
+    return `Thuê ${used}/${locker.rentalDays} ngày`;
 };
 
 const STATUS_OPTIONS: { key: LockerStatus; label: string; desc: string; card: string; active: string }[] = [
     { key: 'AVAILABLE', label: 'Trống', desc: 'Sẵn sàng cho khách', card: 'bg-emerald-50/70 border-emerald-200', active: 'ring-2 ring-emerald-500 border-emerald-500' },
     { key: 'OCCUPIED', label: 'Đang sử dụng', desc: 'Đã gán cho khách', card: 'bg-slate-50 border-slate-200', active: 'ring-2 ring-indigo-500 border-indigo-500' },
     { key: 'MAINTENANCE', label: 'Bảo trì', desc: 'Hỏng / đang sửa chữa', card: 'bg-amber-50/70 border-amber-200', active: 'ring-2 ring-amber-500 border-amber-500' },
+    { key: 'AWAIT_KEY_RETURN', label: 'Chờ trả chìa khoá', desc: 'Hết hạn thuê, chờ trả chìa khoá', card: 'bg-rose-50/80 border-rose-200', active: 'ring-2 ring-rose-500 border-rose-500' },
 ];
 
 const inputCls = 'w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500';
@@ -469,18 +487,32 @@ interface LockerDetailModalProps {
 }
 
 function LockerDetailModal({ locker, onClose, onRelease, onEdit }: LockerDetailModalProps) {
+    const isRented = locker.rentalDays && locker.rentalDays > 0 && locker.rentedAt;
     return (
         <Modal
             title={`Tủ ${locker.code}`}
-            subtitle="Thông tin người đang sử dụng tủ"
+            subtitle={locker.status === 'AWAIT_KEY_RETURN' ? 'Đã hết hạn thuê - chờ trả chìa khoá' : 'Thông tin người đang sử dụng tủ'}
             icon={<Lock className="w-6 h-6" />}
             onClose={onClose}
         >
             <div className="space-y-4">
-                <div className="bg-indigo-50 border border-indigo-200 text-indigo-800 p-3 rounded-xl flex items-center gap-2">
-                    <Clock className="w-4 h-4 shrink-0 text-indigo-600" />
-                    <span className="text-xs font-bold">Đã sử dụng <span className="underline decoration-dotted">{formatDuration(locker.assignedAt)}</span></span>
+                <div className={`${locker.status === 'AWAIT_KEY_RETURN' ? 'bg-rose-50 border-rose-200 text-rose-800' : 'bg-indigo-50 border-indigo-200 text-indigo-800'} border p-3 rounded-xl flex items-center gap-2`}>
+                    <Clock className="w-4 h-4 shrink-0" />
+                    <span className="text-xs font-bold">
+                        {isRented
+                            ? `Thuê ${locker.rentalDays || 0} ngày · đã dùng ${formatRentalDays(locker).replace('Thuê ', '').split('/')[0]} ngày`
+                            : <span>Đã sử dụng <span className="underline decoration-dotted">{formatDuration(locker.assignedAt)}</span></span>}
+                    </span>
                 </div>
+                {isRented && (
+                    <div className="bg-cyan-50 border border-cyan-200 text-cyan-800 p-3 rounded-xl flex items-center gap-2">
+                        <Boxes className="w-4 h-4 shrink-0 text-cyan-600" />
+                        <div className="text-xs">
+                            <p className="font-bold">Đang thuê · {formatRentalDays(locker)}</p>
+                            <p className="mt-0.5 opacity-80">Hết hạn: {formatDateTime(new Date(new Date(locker.rentedAt as string).getTime() + (locker.rentalDays || 0) * 86400000).toISOString())}</p>
+                        </div>
+                    </div>
+                )}
                 <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
                     <div className="flex justify-between items-center">
                         <span className="text-xs text-slate-500">Loại người dùng:</span>
@@ -637,6 +669,8 @@ export function LockerManagementDiagram() {
                     assignedType: l.assignedType || undefined,
                     assignedPhone: l.assignedPhone || undefined,
                     assignedAt: l.assignedAt || undefined,
+                    rentalDays: l.rentalDays || undefined,
+                    rentedAt: l.rentedAt || undefined,
                     maintenanceType: l.maintenanceType || undefined,
                     maintenanceDescription: l.maintenanceDescription || undefined,
                     maintenanceImage: l.maintenanceImage || undefined,
@@ -921,11 +955,13 @@ export function LockerManagementDiagram() {
                                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
                                     {row.lockers.map(locker => {
                                         const meta = STATUS_META[locker.status];
+                                        const isRented = locker.rentalDays && locker.rentalDays > 0 && locker.rentedAt;
+                                        const label = isRented && locker.status === 'OCCUPIED' ? 'Đang thuê' : meta.label;
                                         return (
                                             <button
                                                 key={locker.id}
                                                 onClick={() => {
-                                                    if (locker.status === 'OCCUPIED') setViewing(locker);
+                                                    if (locker.status === 'OCCUPIED' || locker.status === 'AWAIT_KEY_RETURN') setViewing(locker);
                                                     else if (locker.status === 'MAINTENANCE') setViewingMaintenance(locker);
                                                     else setEditing(locker);
                                                 }}
@@ -935,18 +971,24 @@ export function LockerManagementDiagram() {
                                                     <span className="font-black text-sm">{locker.code}</span>
                                                     <span className="opacity-40 group-hover:opacity-100 transition-opacity">
                                                         {locker.status === 'AVAILABLE' && <Unlock className={`w-4 h-4 ${meta.iconCls}`} />}
-                                                        {locker.status === 'OCCUPIED' && <Lock className={`w-4 h-4 ${meta.iconCls}`} />}
+                                                        {(locker.status === 'OCCUPIED' || locker.status === 'AWAIT_KEY_RETURN') && <Lock className={`w-4 h-4 ${meta.iconCls}`} />}
                                                         {locker.status === 'MAINTENANCE' && <AlertTriangle className={`w-4 h-4 ${meta.iconCls}`} />}
                                                     </span>
                                                 </div>
                                                 <div className="mt-3 pt-2 border-t border-current/10">
-                                                    <p className="text-[10px] font-bold uppercase opacity-60">{meta.label}</p>
-                                                    {locker.status === 'OCCUPIED' ? (
+                                                    <p className="text-[10px] font-bold uppercase opacity-60">{label}</p>
+                                                    {locker.status === 'OCCUPIED' || locker.status === 'AWAIT_KEY_RETURN' ? (
                                                         <>
                                                             <p className="text-xs font-semibold truncate mt-0.5">{locker.customerName || 'Đang sử dụng'}</p>
-                                                            <p className="text-[10px] font-semibold opacity-70 mt-0.5 inline-flex items-center gap-1">
-                                                                <Clock className="w-3 h-3" /> {formatDuration(locker.assignedAt)}
-                                                            </p>
+                                                            {isRented ? (
+                                                                <p className="text-[10px] font-semibold opacity-70 mt-0.5 inline-flex items-center gap-1">
+                                                                    <Clock className="w-3 h-3" /> {formatRentalDays(locker)}
+                                                                </p>
+                                                            ) : (
+                                                                <p className="text-[10px] font-semibold opacity-70 mt-0.5 inline-flex items-center gap-1">
+                                                                    <Clock className="w-3 h-3" /> {formatDuration(locker.assignedAt)}
+                                                                </p>
+                                                            )}
                                                         </>
                                                     ) : locker.status === 'AVAILABLE' ? (
                                                         <p className="text-xs font-semibold truncate mt-0.5">Sẵn sàng</p>
@@ -968,6 +1010,8 @@ export function LockerManagementDiagram() {
                     <p className="text-xs font-bold text-slate-500 uppercase">Chú thích:</p>
                     <span className="inline-flex items-center gap-1.5 text-xs text-slate-600"><Unlock className="w-3.5 h-3.5 text-emerald-500" /> Trống</span>
                     <span className="inline-flex items-center gap-1.5 text-xs text-slate-600"><Lock className="w-3.5 h-3.5 text-indigo-500" /> Đang sử dụng</span>
+                    <span className="inline-flex items-center gap-1.5 text-xs text-slate-600"><Lock className="w-3.5 h-3.5 text-cyan-600" /> Đang thuê</span>
+                    <span className="inline-flex items-center gap-1.5 text-xs text-slate-600"><KeyRound className="w-3.5 h-3.5 text-rose-500" /> Chờ trả chìa khoá</span>
                     <span className="inline-flex items-center gap-1.5 text-xs text-slate-600"><AlertTriangle className="w-3.5 h-3.5 text-amber-500" /> Bảo trì</span>
                     <span className="inline-flex items-center gap-1.5 text-xs text-slate-400 ml-auto">Bấm vào tủ trống để gán khách · tủ đang dùng để trả tủ · tủ bảo trì để xem báo cáo</span>
                 </div>

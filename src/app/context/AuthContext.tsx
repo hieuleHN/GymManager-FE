@@ -24,6 +24,7 @@ interface AuthContextType {
   loading: boolean;
   hasPermission: (feature: string) => boolean;
   refreshUser: () => Promise<void>;
+  updateAvatar: (avatar: string) => void;
 }
 
 const API_URL = '';
@@ -55,6 +56,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               fullName: data.fullName || parsed.fullName,
               name: data.fullName || parsed.fullName || parsed.name,
               status: data.status,
+              avatar: data.avatar || parsed.avatar,
               locationId: data.locationId || parsed.locationId || null
             };
             localStorage.setItem('auth_user', JSON.stringify(refreshed));
@@ -118,6 +120,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           fullName: data.fullName || current.fullName,
           name: data.fullName || current.fullName || current.name,
           status: data.status,
+          avatar: data.avatar || current.avatar,
           locationId: data.locationId || current.locationId || null
         };
         localStorage.setItem('auth_user', JSON.stringify(updated));
@@ -131,6 +134,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   };
 
+  const updateAvatar = (avatar: string) => {
+    const stored = localStorage.getItem('auth_user');
+    if (!stored) return;
+    const updated = { ...JSON.parse(stored), avatar };
+    localStorage.setItem('auth_user', JSON.stringify(updated));
+    setUser(updated);
+  };
+
   const hasPermission = (feature: string): boolean => {
     if (!user) return false;
     if (!user.isStaff) return true;
@@ -140,7 +151,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, loading, hasPermission, refreshUser }}>
+    <AuthContext.Provider value={{ user, login, logout, loading, hasPermission, refreshUser, updateAvatar }}>
       {children}
     </AuthContext.Provider>
   );
@@ -156,6 +167,12 @@ export function useAuth() {
 
 export function getApiUrl() {
   return API_URL;
+}
+
+export function customerAvatarSrc(avatar?: string) {
+  if (!avatar) return '';
+  if (avatar.startsWith('http') || avatar.startsWith('data:') || avatar.startsWith('/uploads/')) return avatar;
+  return `${API_URL}/uploads/customers/${avatar}`;
 }
 
 export function getAuthHeaders() {

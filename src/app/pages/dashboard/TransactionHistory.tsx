@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router';
 import { getApiUrl, getAuthHeaders, useAuth } from '../../context/AuthContext';
 import { Pagination } from '../../components/Pagination';
 import { Loader2, Calendar, CreditCard, Search, Wallet, TrendingUp, TrendingDown } from 'lucide-react';
+import { SERVICE_LABELS } from '../../../lib/serviceCatalog';
 
 interface BookingItem {
   _id: string;
@@ -41,7 +42,7 @@ interface BatchGroup {
 
 interface Transaction {
   _id: string;
-  type: 'package' | 'booking' | 'wallet';
+  type: 'package' | 'booking' | 'wallet' | 'service';
   walletSubType?: 'topup' | 'payment' | 'refund' | 'withdraw';
   name: string;
   total_price: number;
@@ -66,6 +67,8 @@ interface Transaction {
   batchId?: string;
   bookingCount?: number;
   bookingIds?: string[];
+  serviceRequestId?: string;
+  description?: string;
 }
 
 const bankNameMap: Record<string, string> = {
@@ -124,6 +127,7 @@ const typeFilterOptions = [
   { value: 'all', label: 'Tất cả loại' },
   { value: 'package', label: 'Gói tập' },
   { value: 'booking', label: 'Đặt lịch' },
+  { value: 'service', label: 'Dịch vụ' },
   { value: 'topup', label: 'Nạp tiền ví' },
   { value: 'payment', label: 'Thanh toán ví' },
   { value: 'refund', label: 'Hoàn tiền' },
@@ -145,6 +149,7 @@ export function TransactionHistory() {
   const [loading, setLoading] = useState(true);
   const [walletBalance, setWalletBalance] = useState(0);
   const [rawBookings, setRawBookings] = useState<any[]>([]);
+  const [balanceTimeline, setBalanceTimeline] = useState<{ time: number; balanceAfter: number }[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -178,6 +183,16 @@ export function TransactionHistory() {
           package: { name: tx.name, price: tx.total_price }
         }
       });
+    } else if (tx.type === 'service' && tx.serviceRequestId) {
+      navigate('/payment', {
+        state: {
+          type: 'service_request',
+          requestId: tx.serviceRequestId,
+          amount: tx.total_price,
+          totalPrice: tx.total_price,
+          serviceTitle: tx.name
+        }
+      });
     }
   };
 
@@ -192,11 +207,12 @@ export function TransactionHistory() {
       fetch(`${getApiUrl()}/api/user-packages/transactions`, { headers: getAuthHeaders() }),
       fetch(`${getApiUrl()}/api/bookings/my`, { headers: getAuthHeaders() }),
       fetch(`${getApiUrl()}/api/wallet/transactions`, { headers: getAuthHeaders() }),
-      fetch(`${getApiUrl()}/api/wallet/balance`, { headers: getAuthHeaders() })
+      fetch(`${getApiUrl()}/api/wallet/balance`, { headers: getAuthHeaders() }),
+      fetch(`${getApiUrl()}/api/service-requests/mine`, { headers: getAuthHeaders() })
     ])
-      .then(([pkgRes, bookingRes, walletRes, balanceRes]) =>
-        Promise.all([pkgRes.json(), bookingRes.json(), walletRes.json(), balanceRes.json()]))
-      .then(([pkgData, bookingData, walletData, balanceData]) => {
+      .then(([pkgRes, bookingRes, walletRes, balanceRes, svcRes]) =>
+        Promise.all([pkgRes.json(), bookingRes.json(), walletRes.json(), balanceRes.json(), svcRes.json()]))
+      .then(([pkgData, bookingData, walletData, balanceData, svcData]) => {
         const list: Transaction[] = [];
         const bookingRawList: any[] = [];
 
@@ -290,8 +306,33 @@ export function TransactionHistory() {
 
         setRawBookings(bookingRawList);
 
+        if (Array.isArray(svcData)) {
+          svcData.forEach((req: any) => {
+            const fee = Math.floor(Number(req.amount) || 0);
+            if (fee <= 0) return;
+            list.push({
+              _id: `service_${req._id}`,
+              type: 'service',
+              serviceRequestId: req._id,
+              name: SERVICE_LABELS[req.service_type] || req.service_type || 'Dịch vụ',
+              total_price: fee,
+              payment_method: req.payment_method || '',
+              payment_status: req.payment_status === 'paid' ? 'paid' : 'chờ thanh toán',
+              createdAt: req.createdAt || '',
+              description: req.description || ''
+            });
+          });
+        }
+
         if (Array.isArray(walletData)) {
-          walletData.forEach((tx: any) => {
+          const walletTxList = walletData as any[];
+          const timeline = walletTxList
+            .map((tx: any) => ({ time: new Date(tx.createdAt).getTime(), balanceAfter: tx.balanceAfter }))
+            .filter(e => !Number.isNaN(e.time) && typeof e.balanceAfter === 'number')
+            .sort((a, b) => a.time - b.time);
+          setBalanceTimeline(timeline);
+
+          walletTxList.forEach((tx: any) => {
             const txType = tx.type;
             let name = tx.description || '';
             let method = 'wallet';
@@ -300,6 +341,7 @@ export function TransactionHistory() {
             else if (txType === 'payment') { name = name || 'Thanh toán ví'; method = 'wallet'; }
             else if (txType === 'refund') { name = name || 'Hoàn tiền'; method = 'wallet'; }
             else if (txType === 'withdraw') { name = name || 'Rút tiền'; method = 'wallet'; }
+            if (txType === 'payment' && name.includes('phí dịch vụ')) return;
             list.push({
               _id: `wallet_${tx._id}`,
               type: 'wallet',
@@ -347,6 +389,20 @@ export function TransactionHistory() {
   const getStatusInfo = (status: string) =>
     statusConfig[status?.toLowerCase()] || { label: status || '---', className: 'bg-slate-100 text-slate-700' };
 
+  // Số dư sau giao dịch: ưu tiên balanceAfter được lưu sẵn (ví),
+  // nếu không có thì dùng số dư ví tại thời điểm gần nhất <= lúc giao dịch
+  const getBalanceAfter = (tx: Transaction): string | null => {
+    if (tx.balanceAfter != null) return formatPrice(tx.balanceAfter);
+    const t = new Date(tx.createdAt).getTime();
+    if (Number.isNaN(t)) return null;
+    let last: number | null = null;
+    for (const e of balanceTimeline) {
+      if (e.time <= t) last = e.balanceAfter;
+      else break;
+    }
+    return last != null ? formatPrice(last) : null;
+  };
+
   const getBankInfo = (tx: Transaction) => {
     if (tx.payment_method === 'wallet') return '';
     if (tx.payment_method === 'vnpay' && tx.vnpay_bank_code) {
@@ -358,8 +414,14 @@ export function TransactionHistory() {
     return '';
   };
 
-  const getTransactionCode = (tx: Transaction) =>
-    tx.vnpay_transaction_no || tx.vnpay_txn_ref || '';
+  // Mã giao dịch: ưu tiên mã VNPay, nếu không có thì tự sinh từ mã giao dịch nội bộ
+  const getTransactionCode = (tx: Transaction) => {
+    if (tx.vnpay_transaction_no) return tx.vnpay_transaction_no;
+    if (tx.vnpay_txn_ref) return tx.vnpay_txn_ref;
+    const raw = String(tx._id || '').replace(/^(wallet_|service_|batch_)/, '');
+    const hash = raw.replace(/[^a-zA-Z0-9]/g, '').slice(-8).toUpperCase();
+    return hash ? `GD${hash}` : '';
+  };
 
   const isIncome = (tx: Transaction) =>
     tx.type === 'wallet' && (tx.walletSubType === 'topup' || tx.walletSubType === 'refund');
@@ -368,6 +430,7 @@ export function TransactionHistory() {
     if (typeFilter === 'all') return true;
     if (typeFilter === 'package') return tx.type === 'package';
     if (typeFilter === 'booking') return tx.type === 'booking';
+    if (typeFilter === 'service') return tx.type === 'service';
     if (typeFilter === 'topup') return tx.type === 'wallet' && tx.walletSubType === 'topup';
     if (typeFilter === 'payment') return tx.type === 'wallet' && tx.walletSubType === 'payment';
     if (typeFilter === 'refund') return tx.type === 'wallet' && tx.walletSubType === 'refund';
@@ -535,9 +598,11 @@ export function TransactionHistory() {
                         </td>
                         <td className="px-4 py-4">
                           <p className="font-medium text-slate-900">
-                            {tx.type === 'booking' ? tx.name : tx.type === 'wallet' ? tx.name : (tx.package_id?.name || 'Đã xóa')}
+                            {tx.type === 'booking' || tx.type === 'service' || tx.type === 'wallet' ? tx.name : (tx.package_id?.name || 'Đã xóa')}
                           </p>
-                          {tx.type === 'booking' && tx.bookingCount && tx.bookingCount > 1 ? (
+                          {tx.type === 'service' && tx.description ? (
+                            <p className="text-xs text-slate-500 mt-0.5 line-clamp-1 max-w-[280px]">{tx.description}</p>
+                          ) : tx.type === 'booking' && tx.bookingCount && tx.bookingCount > 1 ? (
                             <p className="text-xs text-slate-500 mt-0.5 flex items-center gap-1">
                               <Calendar className="w-3 h-3" />
                               {tx.bookingCount} buổi
@@ -556,7 +621,7 @@ export function TransactionHistory() {
                           ) : null}
                         </td>
                         <td className="px-4 py-4 text-sm text-slate-600 whitespace-nowrap">
-                          {tx.type === 'booking' ? 'Đặt lịch' : tx.type === 'wallet'
+                          {tx.type === 'booking' ? 'Đặt lịch' : tx.type === 'service' ? 'Dịch vụ' : tx.type === 'wallet'
                             ? tx.walletSubType === 'payment' ? 'Thanh toán'
                               : tx.walletSubType === 'refund' ? 'Hoàn tiền'
                               : tx.walletSubType === 'topup' ? 'Nạp tiền'
@@ -570,7 +635,7 @@ export function TransactionHistory() {
                           </span>
                         </td>
                         <td className="px-4 py-4 text-sm text-slate-600 whitespace-nowrap">
-                          {tx.type === 'wallet' && tx.balanceAfter != null ? formatPrice(tx.balanceAfter) : '---'}
+                          {getBalanceAfter(tx) ?? '---'}
                         </td>
                         <td className="px-4 py-4 text-sm text-slate-600 whitespace-nowrap">
                           {getMethodLabel(tx.payment_method)}

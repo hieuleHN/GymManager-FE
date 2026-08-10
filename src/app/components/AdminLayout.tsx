@@ -78,6 +78,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   const [notifUnreadCount, setNotifUnreadCount] = useState(0);
   const [showNotifications, setShowNotifications] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
+  const [serviceReqCount, setServiceReqCount] = useState(0);
 
   const isAdminUser = user?.isAdmin === true;
 
@@ -85,7 +86,11 @@ export function AdminLayout({ children }: AdminLayoutProps) {
     if (!user?.id) return;
     fetchApiNotifications();
     fetchNotifUnreadCount();
-    const interval = setInterval(fetchNotifUnreadCount, 30000);
+    fetchServiceReqCount();
+    const interval = setInterval(() => {
+      fetchNotifUnreadCount();
+      fetchServiceReqCount();
+    }, 30000);
     return () => clearInterval(interval);
   }, [user]);
 
@@ -124,6 +129,19 @@ export function AdminLayout({ children }: AdminLayoutProps) {
         const data = await res.json();
         setNotifUnreadCount(data.count || 0);
       }
+    } catch {}
+  };
+
+  const fetchServiceReqCount = async () => {
+    if (!user?.isStaff) return;
+    try {
+      const [pendingRes, awaitingRes] = await Promise.all([
+        fetch(`${getApiUrl()}/api/service-requests?status=pending&limit=1`, { headers: getAuthHeaders() }),
+        fetch(`${getApiUrl()}/api/service-requests?status=awaiting_payment&limit=1`, { headers: getAuthHeaders() }),
+      ]);
+      const [pendingData, awaitingData] = await Promise.all([pendingRes.json(), awaitingRes.json()]);
+      const count = (pendingData?.total || 0) + (awaitingData?.total || 0);
+      setServiceReqCount(count);
     } catch {}
   };
 
@@ -505,6 +523,11 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                             <span className="text-sm font-medium">
                               {item.name}
                             </span>
+                            {item.name === "Quản lý dịch vụ" && serviceReqCount > 0 && (
+                              <span className="min-w-[20px] h-5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center px-1.5">
+                                {serviceReqCount > 99 ? "99+" : serviceReqCount}
+                              </span>
+                            )}
                           </div>
                           {isExpanded ? (
                             <ChevronDown className="w-4 h-4" />

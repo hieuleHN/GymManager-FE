@@ -5,7 +5,7 @@ import {
   Package, TrendingUp, Settings, LogOut, Menu, X, FileText,
   Bell, Home, MessageCircle, AlertTriangle, CheckCircle, XCircle, Clock, ArrowRightLeft, Wallet
 } from 'lucide-react';
-import { useAuth, getApiUrl, getAuthHeaders } from '../context/AuthContext';
+import { useAuth, getApiUrl, getAuthHeaders, customerAvatarSrc } from '../context/AuthContext';
 import { useChatContext } from '../context/ChatContext';
 import logo from '../../imports/ChatGPT_Image_May_14__2026__09_48_52_PM.png';
 import { ImageWithFallback } from './figma/ImageWithFallback';
@@ -209,7 +209,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
           <div className="p-6 border-b border-slate-200">
             <div className="flex items-center gap-4">
               <img
-                src={user?.avatar || 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&q=80&w=100'}
+                src={customerAvatarSrc(user?.avatar) || 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&q=80&w=100'}
                 alt={user?.name}
                 className="w-14 h-14 rounded-full object-cover ring-2 ring-indigo-100"
               />
