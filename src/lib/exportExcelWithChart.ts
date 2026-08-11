@@ -73,6 +73,7 @@ export async function exportFinanceExcel(
   const summaryData = [
     ['Doanh thu thực thu', s.realCashIn, s.change?.realCashIn, (s.change?.realCashIn ?? 0) >= 0 ? 'Tăng' : 'Giảm'],
     ['Doanh thu ghi nhận', s.accrualRevenue, s.change?.accrualRevenue, (s.change?.accrualRevenue ?? 0) >= 0 ? 'Tăng' : 'Giảm'],
+    ['Dòng tiền ròng (tích lũy)', s.netCashFlow ?? 0, '', ''],
     ['Tổng chi phí', s.totalExpense, s.change?.totalExpense, (s.change?.totalExpense ?? 0) >= 0 ? 'Tăng' : 'Giảm'],
     ['Lợi nhuận', s.totalProfit, s.change?.totalProfit, (s.change?.totalProfit ?? 0) >= 0 ? 'Tăng' : 'Giảm'],
   ];
@@ -82,8 +83,8 @@ export async function exportFinanceExcel(
       ws1.getCell(5 + i, 3).value = `${r[2] > 0 ? '+' : ''}${r[2]}%`;
     }
   });
-  addDataRow(ws1, 9, ['Biên lợi nhuận', `${s.profitMargin || 0}%`, '', '']);
-  ws1.getCell(9, 1).font = { bold: true };
+  addDataRow(ws1, 10, ['Biên lợi nhuận', `${s.profitMargin || 0}%`, '', '']);
+  ws1.getCell(10, 1).font = { bold: true };
   setColWidths(ws1, [25, 20, 15, 12]);
 
   // ── Sheet 2: Dòng tiền & Doanh thu chi tiết ──
@@ -151,19 +152,19 @@ export async function exportFinanceExcel(
   ws3.getCell('A1').value = 'Chi phí & Lợi nhuận theo tháng';
   ws3.getCell('A1').font = { bold: true, size: 13 };
 
-  // Bảng bên trái (A-C): Chi phí theo tháng
-  addTableHeader(ws3, 3, ['Tháng', 'Chi phí', 'Lợi nhuận']);
+  // Bảng bên trái (A-D): Chi phí, DT ghi nhận, Lợi nhuận theo tháng
+  addTableHeader(ws3, 3, ['Tháng', 'DT ghi nhận', 'Chi phí', 'Lợi nhuận']);
   profit.forEach((p: any, i: number) => {
-    addDataRow(ws3, 4 + i, [p.month, p.expense, p.profit], [1, 2]);
+    addDataRow(ws3, 4 + i, [p.month, p.revenue, p.expense, p.profit], [1, 2]);
   });
   if (profit.length > 0) {
     const tRow = 4 + profit.length;
-    const pt = profit.reduce((a: any, p: any) => ({ e: a.e + p.expense, p: a.p + p.profit }), { e: 0, p: 0 });
-    addTotalRow(ws3, tRow, ['TỔNG CỘNG', pt.e, pt.p], [1, 2]);
+    const pt = profit.reduce((a: any, p: any) => ({ r: a.r + (p.revenue || 0), e: a.e + p.expense, p: a.p + p.profit }), { r: 0, e: 0, p: 0 });
+    addTotalRow(ws3, tRow, ['TỔNG CỘNG', pt.r, pt.e, pt.p], [1, 2]);
   }
 
-  // Bảng bên phải (E-G): Cơ cấu chi phí
-  const expDetailStartCol = 5;
+  // Bảng bên phải (F-H): Cơ cấu chi phí
+  const expDetailStartCol = 6;
   ws3.getCell(3, expDetailStartCol).value = 'Loại chi phí';
   ws3.getCell(3, expDetailStartCol + 1).value = 'Số tiền';
   ws3.getCell(3, expDetailStartCol + 2).value = 'Tỷ trọng (%)';

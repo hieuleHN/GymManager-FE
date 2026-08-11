@@ -37,7 +37,7 @@ const MONTHS = ["T1", "T2", "T3", "T4", "T5", "T6", "T7", "T8", "T9", "T10", "T1
 const fallbackFinance = {
   summary: {
     cashRevenue: 0, accrualRevenue: 0, realCashIn: 0,
-    totalExpense: 0, totalProfit: 0, profitMargin: 0,
+    totalExpense: 0, totalProfit: 0, netCashFlow: 0, profitMargin: 0,
     change: { realCashIn: 0, accrualRevenue: 0, totalExpense: 0, totalProfit: 0 },
   },
   cashFlowData: MONTHS.map(m => ({ month: m, cash: 0, revenue: 0 })),
@@ -281,6 +281,7 @@ function FinanceTab({ data, period, customFrom, customTo, onStatClick, clubName 
   const stats = [
     { key: 'realCashIn', label: 'Doanh thu thực thu', value: fmtVnd(s.realCashIn), change: fmtChange(c.realCashIn ?? 0), trend: (c.realCashIn ?? 0) >= 0 ? 'up' : 'down', icon: Wallet, color: 'bg-emerald-500' },
     { key: 'accrualRevenue', label: 'Doanh thu ghi nhận', value: fmtVnd(s.accrualRevenue), change: fmtChange(c.accrualRevenue ?? 0), trend: (c.accrualRevenue ?? 0) >= 0 ? 'up' : 'down', icon: DollarSign, color: 'bg-indigo-500' },
+    { key: 'netCashFlow', label: 'Dòng tiền ròng (tích lũy)', value: fmtVnd(s.netCashFlow ?? 0), change: '', trend: (s.netCashFlow ?? 0) >= 0 ? 'up' : 'down', icon: Wallet, color: 'bg-cyan-500' },
     { key: 'totalExpense', label: 'Tổng chi phí', value: fmtVnd(s.totalExpense), change: fmtChange(c.totalExpense ?? 0), trend: (c.totalExpense ?? 0) >= 0 ? 'down' : 'up', icon: Activity, color: 'bg-orange-500' },
     { key: 'totalProfit', label: 'Lợi nhuận', value: fmtVnd(s.totalProfit), change: fmtChange(c.totalProfit ?? 0), trend: (c.totalProfit ?? 0) >= 0 ? 'up' : 'down', icon: PiggyBank, color: 'bg-green-500' },
   ];
@@ -288,6 +289,7 @@ function FinanceTab({ data, period, customFrom, customTo, onStatClick, clubName 
   const summaryRows = [
     { key: 'realCashIn', label: 'Doanh thu thực thu' },
     { key: 'accrualRevenue', label: 'Doanh thu ghi nhận' },
+    { key: 'netCashFlow', label: 'Dòng tiền ròng' },
     { key: 'totalExpense', label: 'Tổng chi phí' },
     { key: 'totalProfit', label: 'Lợi nhuận' },
   ];
@@ -302,7 +304,7 @@ function FinanceTab({ data, period, customFrom, customTo, onStatClick, clubName 
 
   return (
     <>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">{stats.map((stat, i) => <StatCard key={i} stat={stat} onClick={onStatClick ? () => onStatClick(stat.key) : undefined} />)}</div>
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">{stats.map((stat, i) => <StatCard key={i} stat={stat} onClick={onStatClick ? () => onStatClick(stat.key) : undefined} />)}</div>
       <ExportBtn onClick={handleExport} />
 
       {/* 1. Dòng tiền vs Doanh thu ghi nhận */}
@@ -648,6 +650,7 @@ function OperationsTab({ data, period, customFrom, customTo, clubName }: { data:
 const METRIC_CLASSES: Record<string, { iconBg: string; iconText: string; formulaBg: string; formulaBorder: string; formulaText: string; dot: string }> = {
   realCashIn: { iconBg: 'bg-emerald-100', iconText: 'text-emerald-600', formulaBg: 'bg-emerald-50', formulaBorder: 'border-emerald-200', formulaText: 'text-emerald-800', dot: 'bg-emerald-400' },
   accrualRevenue: { iconBg: 'bg-indigo-100', iconText: 'text-indigo-600', formulaBg: 'bg-indigo-50', formulaBorder: 'border-indigo-200', formulaText: 'text-indigo-800', dot: 'bg-indigo-400' },
+  netCashFlow: { iconBg: 'bg-cyan-100', iconText: 'text-cyan-600', formulaBg: 'bg-cyan-50', formulaBorder: 'border-cyan-200', formulaText: 'text-cyan-800', dot: 'bg-cyan-400' },
   totalExpense: { iconBg: 'bg-orange-100', iconText: 'text-orange-600', formulaBg: 'bg-orange-50', formulaBorder: 'border-orange-200', formulaText: 'text-orange-800', dot: 'bg-orange-400' },
   totalProfit: { iconBg: 'bg-green-100', iconText: 'text-green-600', formulaBg: 'bg-green-50', formulaBorder: 'border-green-200', formulaText: 'text-green-800', dot: 'bg-green-400' },
 };
@@ -680,17 +683,30 @@ const METRIC_INFO: Record<string, { title: string; icon: any; color: string; for
       'Ví dụ: Khách đóng 6 triệu gói 6 tháng → thực thu = 6 triệu ngay, ghi nhận = 1 triệu/tháng',
     ],
   },
+  netCashFlow: {
+    title: 'Dòng tiền ròng (Tích lũy)',
+    icon: Wallet,
+    color: 'cyan',
+    formula: 'Dòng tiền ròng = Tổng tiền thu từ đầu − Tổng tiền chi từ đầu',
+    description: 'Số tiền mặt hiện có tính đến thời điểm hiện tại. Không thay đổi khi chọn kỳ (tháng/quý/năm) vì đây là giá trị tích lũy.',
+    details: [
+      'Tổng tiền thu từ đầu: Tổng gói tập đã thanh toán + Nạp ví + Book HLV',
+      'Tổng tiền chi từ đầu: Tổng chi phí cố định (điện, nước, mặt bằng...) + Tổng tiền nhập hàng',
+      'Giá trị này KHÔNG phụ thuộc kỳ đã chọn - nó là số tiền mặt tích lũy thực tế',
+      'Dòng tiền ròng > 0 → Phòng đang có tiền mặt dương',
+      'Dòng tiền ròng < 0 → Phòng đang âm tiền mặt cần bổ sung',
+    ],
+  },
   totalExpense: {
     title: 'Tổng chi phí',
     icon: Activity,
     color: 'orange',
-    formula: 'Tổng chi phí = Chi phí cố định + Tiền nhập hàng + Khấu hao thiết bị',
-    description: 'Tổng hợp tất cả chi phí phát sinh trong kỳ: chi phí cố định hằng tháng, tiền nhập hàng hóa và khấu hao thiết bị.',
+    formula: 'Tổng chi phí = Chi phí cố định + Giá vốn hàng bán (COGS) + Khấu hao thiết bị',
+    description: 'Tổng hợp tất cả chi phí phát sinh trong kỳ: chi phí cố định hằng tháng, giá vốn hàng đã bán và khấu hao thiết bị.',
     details: [
       'Chi phí cố định: Tổng khoản chi có phân loại "chi phí cố định" (tiền điện, nước, mặt bằng, nhân công...)',
-      'Tiền nhập hàng: Tổng tiền mua hàng hóa (Giá vốn × Số lượng nhập)',
+      'Giá vốn hàng bán (COGS): Giá vốn × Số lượng đã bán trong kỳ (chỉ tính hàng đã bán, không tính hàng tồn kho)',
       'Khấu hao thiết bị: Nguyên giá chia đều 60 tháng (5 năm), chỉ tính từ tháng mua đến nay',
-      'Chi phí sửa chữa: Nếu có sự cố thiết bị cần sửa, chi phí sửa cũng được cộng vào',
       'Nếu phòng có nhiều thiết bị mới mua → khấu hao tháng cao → tổng chi phí lớn',
     ],
   },
