@@ -421,18 +421,23 @@ export function AdminLayout({ children }: AdminLayoutProps) {
       icon: Calendar,
       feature: "training",
     },
-    { name: 'Thống kê & Báo cáo', href: '/admin/statistics', icon: BarChart3, feature: 'statistics' },
-    { name: 'Quản lý cơ sở', href: '/admin/clubs', icon: MapPin, feature: 'clubs' },
-    { name: 'Quản lý chính sách', href: '/admin/policies', icon: FileText, feature: 'services' },
-    { name: 'Giao diện Trang chủ', href: '/admin/homepage', icon: Globe, feature: 'services' },
-    { name: 'Quản lý thanh toán', href: '/admin/payment', icon: CreditCard, feature: 'payment' },
-    { name: 'Quản lý tuyển dụng', href: '/admin/recruitment', icon: BriefcaseIcon, feature: 'staff' },
-    { name: 'Quản lý chi phí', href: '/admin/expenses', icon: DollarSign, feature: 'statistics' },
-    { name: 'Hồ sơ HLV', href: '/admin/trainer-profile', icon: UserCircle, feature: 'training' },
-    { name: 'Lịch tập', href: '/admin/training-schedule', icon: Calendar, feature: 'training' },
-    { name: 'Quản lý tủ đồ', href: '/admin/lockers', icon: Lock },
-    { name: 'Xác nhận lịch tập', href: '/admin/schedule-confirmations', icon: CheckCircle, feature: 'schedule' },
-    { name: 'Quản lý bài viết', href: '/admin/articles', icon: FileText, feature: 'services' }
+    {
+      name: "Quản lý tủ đồ",
+      href: "/admin/lockers",
+      icon: Lock,
+    },
+    {
+      name: "Xác nhận lịch tập",
+      href: "/admin/schedule-confirmations",
+      icon: CheckCircle,
+      feature: "schedule",
+    },
+    {
+      name: "Quản lý bài viết",
+      href: "/admin/articles",
+      icon: FileText,
+      feature: "services",
+    },
   ];
 
   const menuItems = allMenuItems.filter((item: any) => {
