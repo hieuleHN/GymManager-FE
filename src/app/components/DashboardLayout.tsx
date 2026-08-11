@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router';
 import {
   LayoutDashboard, CreditCard, History, Calendar, UserCircle,
   Package, TrendingUp, Settings, LogOut, Menu, X, FileText,
-  Bell, Home, MessageCircle, AlertTriangle, CheckCircle, XCircle, Clock, ArrowRightLeft, Wallet
+  Bell, Home, MessageCircle, AlertTriangle, CheckCircle, XCircle, Clock, ArrowRightLeft, Wallet, ScanLine
 } from 'lucide-react';
 import { useAuth, getApiUrl, getAuthHeaders, customerAvatarSrc } from '../context/AuthContext';
 import { useChatContext } from '../context/ChatContext';
@@ -179,6 +179,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     { name: 'Tổng quan', href: '/dashboard', icon: LayoutDashboard },
     { name: 'Gói tập của tôi', href: '/dashboard/my-packages', icon: CreditCard },
     { name: 'Lịch sử giao dịch', href: '/dashboard/history', icon: History },
+    { name: 'Điểm danh', href: '/dashboard/qr', icon: ScanLine },
     { name: 'Lịch tập', href: '/dashboard/schedule', icon: Calendar },
     { name: 'Đặt lịch / Liên hệ HLV', href: '/dashboard/trainers', icon: UserCircle },
     { name: 'Tin nhắn', href: '/dashboard/messages', icon: MessageCircle },

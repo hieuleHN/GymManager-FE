@@ -415,7 +415,7 @@ export function Services() {
     setSearchingRecipient(true);
     setRecipientOpen(true);
     try {
-      const res = await fetch(`${getApiUrl()}/api/customers/search?q=${encodeURIComponent(q)}`, { headers: headers as any });
+      const res = await fetch(`${getApiUrl()}/api/customers/search?q=${encodeURIComponent(q)}${memberLocationId ? `&locationId=${encodeURIComponent(memberLocationId)}` : ''}`, { headers: headers as any });
       if (res.ok) {
         const data = await res.json();
         setRecipientResults(Array.isArray(data) ? data : []);

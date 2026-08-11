@@ -149,7 +149,7 @@ export function TransactionHistory() {
   const [loading, setLoading] = useState(true);
   const [walletBalance, setWalletBalance] = useState(0);
   const [rawBookings, setRawBookings] = useState<any[]>([]);
-  const [balanceTimeline, setBalanceTimeline] = useState<{ time: number; balanceAfter: number }[]>([]);
+  const [balanceTimeline, setBalanceTimeline] = useState<{ time: number; balanceAfter: number; amount: number; type: string }[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -327,7 +327,12 @@ export function TransactionHistory() {
         if (Array.isArray(walletData)) {
           const walletTxList = walletData as any[];
           const timeline = walletTxList
-            .map((tx: any) => ({ time: new Date(tx.createdAt).getTime(), balanceAfter: tx.balanceAfter }))
+            .map((tx: any) => ({
+              time: new Date(tx.createdAt).getTime(),
+              balanceAfter: tx.balanceAfter,
+              amount: tx.amount,
+              type: tx.type
+            }))
             .filter(e => !Number.isNaN(e.time) && typeof e.balanceAfter === 'number')
             .sort((a, b) => a.time - b.time);
           setBalanceTimeline(timeline);
@@ -390,17 +395,32 @@ export function TransactionHistory() {
     statusConfig[status?.toLowerCase()] || { label: status || '---', className: 'bg-slate-100 text-slate-700' };
 
   // Số dư sau giao dịch: ưu tiên balanceAfter được lưu sẵn (ví),
-  // nếu không có thì dùng số dư ví tại thời điểm gần nhất <= lúc giao dịch
+  // nếu không có thì ghép với giao dịch ví trừ tiền cùng số tiền và gần thời điểm nhất
+  // (ví dụ: mua gói tập bằng ví sẽ khớp với bản ghi "Thanh toán gói tập" trong lịch sử ví),
+  // cuối cùng mới dùng số dư ví gần nhất với thời điểm giao dịch
   const getBalanceAfter = (tx: Transaction): string | null => {
     if (tx.balanceAfter != null) return formatPrice(tx.balanceAfter);
     const t = new Date(tx.createdAt).getTime();
     if (Number.isNaN(t)) return null;
-    let last: number | null = null;
+
+    let paymentBest: number | null = null;
+    let paymentDiff = Infinity;
+    let anyBest: number | null = null;
+    let anyDiff = Infinity;
+    const amount = Math.abs(tx.total_price);
     for (const e of balanceTimeline) {
-      if (e.time <= t) last = e.balanceAfter;
-      else break;
+      const diff = Math.abs(e.time - t);
+      if (diff < anyDiff) {
+        anyDiff = diff;
+        anyBest = e.balanceAfter;
+      }
+      if (e.type === 'payment' && Math.abs(e.amount) === amount && diff < paymentDiff) {
+        paymentDiff = diff;
+        paymentBest = e.balanceAfter;
+      }
     }
-    return last != null ? formatPrice(last) : null;
+    if (paymentBest != null) return formatPrice(paymentBest);
+    return anyBest != null ? formatPrice(anyBest) : null;
   };
 
   const getBankInfo = (tx: Transaction) => {

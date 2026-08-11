@@ -315,6 +315,7 @@ export function MyPackages() {
   );
 
   const groupedRegistrationsMap = new Map<string, Registration>();
+  const bestUpgradeRegId = new Map<string, string>();
   const groups: Record<string, Registration[]> = {};
 
   // 1. Phân nhóm các hóa đơn theo cùng một gói tập
@@ -345,6 +346,7 @@ export function MyPackages() {
       });
       displayReg.end_date = maxPaidReg.end_date;
       displayReg.status = maxPaidReg.status;
+      bestUpgradeRegId.set(pkgId, maxPaidReg._id);
     }
 
     groupedRegistrationsMap.set(pkgId, displayReg);
@@ -578,7 +580,7 @@ export function MyPackages() {
                       </>
                     ) : null}
                     <Button fullWidth variant="outlined" size="small"
-                      onClick={() => navigate(`/dashboard/upgrade/${reg._id}`)}
+                      onClick={() => navigate(`/dashboard/upgrade/${bestUpgradeRegId.get(reg.package_id?._id || '') || reg._id}`)}
                       sx={{ textTransform: 'none', borderRadius: 2, color: '#22c55e', borderColor: '#22c55e', '&:hover': { borderColor: '#16a34a', bgcolor: 'rgba(34,197,94,0.08)' } }}>
                       Nâng cấp
                     </Button>

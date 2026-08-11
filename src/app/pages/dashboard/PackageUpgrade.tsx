@@ -12,6 +12,8 @@ interface PackageItem {
   features: string[];
   durations: { months: number; discount: number }[];
   disciplineId?: { _id: string; name: string };
+  combo?: boolean;
+  disciplines?: any[];
   is_active: boolean;
   ptSessionsPerMonth?: number;
   isFullMonth?: boolean;
@@ -66,13 +68,20 @@ export function PackageUpgrade() {
         if (regData && !regData.error) {
           setCurrentReg(regData);
 
-          const disciplineId =
-            regData.package_id?.disciplineId?._id || regData.package_id?.disciplineId;
+          const currentPkg = regData.package_id as any;
+          const currentDisciplineIds = new Set<string>();
+          if (currentPkg?.disciplineId) {
+            currentDisciplineIds.add(currentPkg.disciplineId?._id || currentPkg.disciplineId);
+          }
+          (currentPkg?.disciplines || []).forEach((d: any) => {
+            currentDisciplineIds.add(d?._id || d);
+          });
+
           const locId =
             infoData?.locationId?._id || infoData?.locationId ||
             regData.locationId?._id || regData.locationId;
 
-          if (disciplineId) {
+          if (currentDisciplineIds.size > 0) {
             const pkgRes = await fetch(
               `${getApiUrl()}/api/packages?page=1&limit=50&locationId=${locId}`
             );
@@ -82,8 +91,9 @@ export function PackageUpgrade() {
               list.filter((p: PackageItem) =>
                 p.is_active &&
                 p._id !== regData.package_id?._id &&
-                (p.disciplineId?._id === disciplineId ||
-                 p.disciplineId === disciplineId)
+                (p.combo
+                  ? (p.disciplines || []).some((d: any) => currentDisciplineIds.has(d?._id || d))
+                  : currentDisciplineIds.has(p.disciplineId?._id || p.disciplineId))
               )
             );
           }
@@ -287,7 +297,14 @@ export function PackageUpgrade() {
                   }`}
                 >
                   <div className="mb-4">
-                    <h3 className="text-xl font-bold text-slate-900 mb-1">{pkg.name}</h3>
+                    <h3 className="text-xl font-bold text-slate-900 mb-1">
+                      {pkg.name}
+                      {pkg.combo && (
+                        <span className="ml-2 inline-block px-2.5 py-1 text-[10px] font-bold bg-fuchsia-100 text-fuchsia-700 rounded-full align-middle">
+                          COMBO
+                        </span>
+                      )}
+                    </h3>
                     <p className="text-2xl font-bold text-indigo-600">
                       {formatPrice(pkg.unitPrice)}
                       <span className="text-sm text-slate-500 font-normal"> / tháng</span>
