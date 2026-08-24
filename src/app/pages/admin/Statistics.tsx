@@ -1,5 +1,5 @@
 import { AdminLayout } from '../../components/AdminLayout';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   TrendingUp, TrendingDown, DollarSign, Wallet, PiggyBank,
   Package as PackageIcon, ShoppingBag, Wrench, AlertTriangle,
@@ -62,6 +62,8 @@ export function Statistics() {
   const [selectedMetric, setSelectedMetric] = useState<string | null>(null);
   const [periodData, setPeriodData] = useState<Record<string, any>>({});
   const [loadingPeriodData, setLoadingPeriodData] = useState(false);
+  const [drilldown, setDrilldown] = useState<{ title: string; subtitle?: string; columns: string[]; rows: any[]; totalLabel?: string; totalValue?: number } | null>(null);
+  const [explainModal, setExplainModal] = useState<{ title: string; formula: string; description: string; example?: string } | null>(null);
   const { selectedClub, selectedClubName } = useClub();
 
   const locParam = selectedClub && selectedClub !== 'all' ? `&locationId=${selectedClub}` : '';
@@ -222,7 +224,7 @@ export function Statistics() {
           </div>
         )}
 
-        {tab === 'finance' && <FinanceTab data={fd} period={period} customFrom={customFrom} customTo={customTo} onStatClick={handleOpenFormula} clubName={selectedClubName} />}
+        {tab === 'finance' && <FinanceTab data={fd} period={period} customFrom={customFrom} customTo={customTo} onStatClick={handleOpenFormula} onDrilldown={setDrilldown} onExplain={setExplainModal} clubName={selectedClubName} />}
         {tab === 'operations' && <OperationsTab data={od} period={period} customFrom={customFrom} customTo={customTo} clubName={selectedClubName} />}
         {tab === 'activity' && <ActivityStats selectedClub={selectedClub} />}
       </div>
@@ -235,6 +237,56 @@ export function Statistics() {
           loading={loadingPeriodData}
           onClose={() => { setShowFormulaModal(false); setSelectedMetric(null); setPeriodData({}); }}
         />
+      )}
+
+      {drilldown && (
+        <DrilldownModal
+          title={drilldown.title}
+          subtitle={drilldown.subtitle}
+          columns={drilldown.columns}
+          rows={drilldown.rows}
+          totalLabel={drilldown.totalLabel}
+          totalValue={drilldown.totalValue}
+          onClose={() => setDrilldown(null)}
+        />
+      )}
+
+      {explainModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setExplainModal(null)}>
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-bold text-slate-900">{explainModal.title}</h3>
+                <button onClick={() => setExplainModal(null)} className="text-slate-400 hover:text-slate-600 transition-colors p-1">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
+              <div className="space-y-3">
+                <div className="bg-blue-50 rounded-xl p-4">
+                  <p className="text-xs font-semibold text-blue-700 mb-1">Công thức</p>
+                  <p className="text-sm text-blue-900 font-medium">{explainModal.formula}</p>
+                </div>
+                <div className="bg-slate-50 rounded-xl p-4">
+                  <p className="text-xs font-semibold text-slate-600 mb-1">Giải thích</p>
+                  <p className="text-sm text-slate-700 leading-relaxed">{explainModal.description}</p>
+                </div>
+                {explainModal.example && (
+                  <div className="bg-green-50 rounded-xl p-4">
+                    <p className="text-xs font-semibold text-green-700 mb-1">Ví dụ</p>
+                    <p className="text-sm text-green-900">{explainModal.example}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="px-6 pb-5">
+              <button onClick={() => setExplainModal(null)}
+                className="w-full py-2.5 bg-slate-900 text-white rounded-xl text-sm font-medium hover:bg-slate-800 transition-colors">
+                Đóng
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </AdminLayout>
   );
@@ -274,10 +326,66 @@ const pct = (val: number, total: number) => `${Math.round((val / (total || 1)) *
 const prevVal = (cur: number, change: number) => cur - (cur * (change ?? 0)) / 100;
 const changeStr = (v: number) => `${v > 0 ? '+' : ''}${v ?? 0}%`;
 
-function FinanceTab({ data, period, customFrom, customTo, onStatClick, clubName }: { data: any; period: string; customFrom?: string; customTo?: string; onStatClick?: (metric: string) => void; clubName?: string }) {
+function FinanceTab({ data, period, customFrom, customTo, onStatClick, onDrilldown, onExplain, clubName }: { data: any; period: string; customFrom?: string; customTo?: string; onStatClick?: (metric: string) => void; onDrilldown?: (d: { title: string; subtitle?: string; columns: string[]; rows: any[]; totalLabel?: string; totalValue?: number }) => void; onExplain?: (d: { title: string; formula: string; description: string; example?: string }) => void; clubName?: string }) {
   if (!data?.summary) return <div className="text-slate-400 text-sm">Đang tải dữ liệu tài chính...</div>;
   const s = data.summary;
   const c = s.change || {};
+
+  const MONTH_NUM: Record<string, number> = { T1: 1, T2: 2, T3: 3, T4: 4, T5: 5, T6: 6, T7: 7, T8: 8, T9: 9, T10: 10, T11: 11, T12: 12 };
+  const [expSearch, setExpSearch] = useState('');
+  const filteredExpenses = (data.expenseStructure || []).filter((item: any) =>
+    !expSearch.trim() || item.name.toLowerCase().includes(expSearch.toLowerCase())
+  );
+  const filterByMonth = (items: any[], monthLabel: string) => {
+    const m = MONTH_NUM[monthLabel];
+    if (!m) return [];
+    const year = new Date().getFullYear();
+    const mStart = new Date(year, m - 1, 1);
+    const isCurrent = m === new Date().getMonth() + 1;
+    const mEnd = isCurrent ? new Date() : new Date(year, m, 0, 23, 59, 59, 999);
+    return items.filter((r: any) => { const d = new Date(r.date); return d >= mStart && d <= mEnd; });
+  };
+  const drillRevenue = (monthLabel: string, metric: 'cash' | 'revenue') => {
+    if (!onDrilldown) return;
+    const items = filterByMonth(data.revenueDetails || [], monthLabel);
+    const label = metric === 'cash' ? 'Tiền thực thu' : 'Doanh thu ghi nhận';
+    onDrilldown({
+      title: `${label} — ${monthLabel}`,
+      subtitle: `${items.length} giao dịch`,
+      columns: ['Ngày', 'Loại', 'Khách hàng', 'Nội dung', 'Số tiền'],
+      rows: items.map((r: any) => ({ 'Ngày': new Date(r.date).toLocaleDateString('vi-VN'), 'Loại': r.type, 'Khách hàng': r.customerName, 'Nội dung': r.name, 'Số tiền': fmtVnd(r.amount) })),
+      totalLabel: `Tổng ${label}`,
+      totalValue: items.reduce((sum: number, r: any) => sum + (r.amount || 0), 0),
+    });
+  };
+  const drillExpense = (monthLabel: string) => {
+    if (!onDrilldown) return;
+    const items = filterByMonth(data.expenseDetails || [], monthLabel);
+    onDrilldown({
+      title: `Chi phí — ${monthLabel}`,
+      subtitle: `${items.length} khoản chi`,
+      columns: ['Ngày', 'Tên khoản chi', 'Phân loại', 'Ghi chú', 'Số tiền'],
+      rows: items.map((e: any) => ({ 'Ngày': new Date(e.date).toLocaleDateString('vi-VN'), 'Tên khoản chi': e.name, 'Phân loại': e.category || 'Khác', 'Ghi chú': e.note || '', 'Số tiền': fmtVnd(e.amount) })),
+      totalLabel: `Tổng chi phí ${monthLabel}`,
+      totalValue: items.reduce((sum: number, e: any) => sum + (e.amount || 0), 0),
+    });
+  };
+  const drillProfit = (monthLabel: string) => {
+    if (!onDrilldown) return;
+    const row = (data.profitData || []).find((r: any) => r.month === monthLabel);
+    if (!row) return;
+    onDrilldown({
+      title: `Lợi nhuận — ${monthLabel}`,
+      columns: ['Chỉ số', 'Giá trị'],
+      rows: [
+        { 'Chỉ số': 'Doanh thu ghi nhận', 'Giá trị': fmtVnd(row.revenue) },
+        { 'Chỉ số': 'Chi phí', 'Giá trị': fmtVnd(row.expense) },
+        { 'Chỉ số': 'Lợi nhuận', 'Giá trị': fmtVnd(row.profit) },
+      ],
+      totalLabel: 'Lợi nhuận',
+      totalValue: row.profit,
+    });
+  };
   const stats = [
     { key: 'realCashIn', label: 'Doanh thu thực thu', value: fmtVnd(s.realCashIn), change: fmtChange(c.realCashIn ?? 0), trend: (c.realCashIn ?? 0) >= 0 ? 'up' : 'down', icon: Wallet, color: 'bg-emerald-500' },
     { key: 'accrualRevenue', label: 'Doanh thu ghi nhận', value: fmtVnd(s.accrualRevenue), change: fmtChange(c.accrualRevenue ?? 0), trend: (c.accrualRevenue ?? 0) >= 0 ? 'up' : 'down', icon: DollarSign, color: 'bg-indigo-500' },
@@ -331,8 +439,10 @@ function FinanceTab({ data, period, customFrom, customTo, onStatClick, clubName 
             <YAxis tickFormatter={fmt} tick={{ fontSize: 11 }} />
             <Tooltip formatter={(v: number) => fmtVnd(v)} />
             <Legend />
-            <Area type="monotone" dataKey="cash" stroke="#10b981" strokeWidth={2.5} fill="url(#gCash)" name="Dòng tiền thực thu" />
-            <Area type="monotone" dataKey="revenue" stroke="#6366f1" strokeWidth={2.5} fill="url(#gRev)" name="Doanh thu ghi nhận" />
+            <Area type="monotone" dataKey="cash" stroke="#10b981" strokeWidth={2.5} fill="url(#gCash)" name="Dòng tiền thực thu"
+              activeDot={{ r: 6, onClick: (_: any, e: any) => { if (e?.payload?.month) drillRevenue(e.payload.month, 'cash'); } }} />
+            <Area type="monotone" dataKey="revenue" stroke="#6366f1" strokeWidth={2.5} fill="url(#gRev)" name="Doanh thu ghi nhận"
+              activeDot={{ r: 6, onClick: (_: any, e: any) => { if (e?.payload?.month) drillRevenue(e.payload.month, 'revenue'); } }} />
           </AreaChart>
         </ResponsiveContainer>
       </div>
@@ -369,7 +479,12 @@ function FinanceTab({ data, period, customFrom, customTo, onStatClick, clubName 
           </div>
           <p className="text-xs text-slate-500 mb-4">Theo dõi phòng gym có vận hành hiệu quả không</p>
           <ResponsiveContainer width="100%" height={280}>
-            <ComposedChart data={data.profitData}>
+            <ComposedChart data={data.profitData}
+              onClick={(e: any) => {
+                const payload = e?.activePayload?.[0]?.payload;
+                if (!payload?.month) return;
+                drillExpense(payload.month);
+              }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
               <XAxis dataKey="month" tick={{ fontSize: 12 }} />
               <YAxis tickFormatter={fmt} tick={{ fontSize: 11 }} />
@@ -388,24 +503,71 @@ function FinanceTab({ data, period, customFrom, customTo, onStatClick, clubName 
             <>
               <ResponsiveContainer width="100%" height={200}>
                 <PieChart>
-                  <Pie data={data.expenseStructure} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={3}>
-                    {data.expenseStructure.map((_: any, i: number) => (
-                      <Cell key={i} fill={COLORS[i % COLORS.length]} />
-                    ))}
+                  <Pie data={filteredExpenses.length > 0 ? filteredExpenses : data.expenseStructure} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={3}>
+                    {(filteredExpenses.length > 0 ? filteredExpenses : data.expenseStructure).map((_: any, i: number) => {
+                      const origItem = (filteredExpenses.length > 0 ? filteredExpenses : data.expenseStructure)[i];
+                      const origIdx = data.expenseStructure.findIndex((e: any) => e.name === origItem?.name);
+                      return (
+                        <Cell key={i} fill={COLORS[origIdx >= 0 ? origIdx : i % COLORS.length]} style={{ cursor: 'pointer' }}
+                          onClick={() => {
+                            if (!onDrilldown || !origItem) return;
+                            const catName = origItem.name || '';
+                            const matched = (data.expenseDetails || []).filter((e: any) => e.name === catName || e.category === catName);
+                            onDrilldown({
+                              title: `Chi phí: ${catName}`,
+                              subtitle: `${matched.length} khoản chi`,
+                              columns: ['Ngày', 'Tên khoản chi', 'Phân loại', 'Ghi chú', 'Số tiền'],
+                              rows: matched.map((e: any) => ({ 'Ngày': new Date(e.date).toLocaleDateString('vi-VN'), 'Tên khoản chi': e.name, 'Phân loại': e.category || 'Khác', 'Ghi chú': e.note || '', 'Số tiền': fmtVnd(e.amount) })),
+                              totalLabel: `Tổng ${catName}`,
+                              totalValue: matched.reduce((s: number, e: any) => s + (e.amount || 0), 0),
+                            });
+                          }}
+                        />
+                      );
+                    })}
                   </Pie>
                   <Tooltip formatter={(v: number) => fmtVnd(v)} />
                 </PieChart>
               </ResponsiveContainer>
-              <div className="space-y-1.5 mt-2">
-                {data.expenseStructure.map((item: any, i: number) => (
-                  <div key={i} className="flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
-                      <span className="text-slate-600">{item.name}</span>
+              {data.expenseStructure.length > 3 && (
+                <div className="relative mt-2 mb-2">
+                  <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                  <input type="text" value={expSearch} onChange={e => setExpSearch(e.target.value)}
+                    placeholder="Tìm khoản chi..."
+                    className="w-full pl-10 pr-4 py-1.5 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400" />
+                  {expSearch && (
+                    <button onClick={() => setExpSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                  )}
+                </div>
+              )}
+              <div className="space-y-1.5">
+                {filteredExpenses.map((item: any, i: number) => {
+                  const origIdx = data.expenseStructure.findIndex((e: any) => e.name === item.name);
+                  return (
+                    <div key={i} className="flex items-center justify-between text-xs cursor-pointer hover:bg-slate-50 rounded-lg px-2 py-1 transition-colors"
+                      onClick={() => {
+                        if (!onDrilldown) return;
+                        const matched = (data.expenseDetails || []).filter((e: any) => e.name === item.name || e.category === item.name);
+                        onDrilldown({
+                          title: `Chi phí: ${item.name}`,
+                          subtitle: `${matched.length} khoản chi`,
+                          columns: ['Ngày', 'Tên khoản chi', 'Phân loại', 'Ghi chú', 'Số tiền'],
+                          rows: matched.map((e: any) => ({ 'Ngày': new Date(e.date).toLocaleDateString('vi-VN'), 'Tên khoản chi': e.name, 'Phân loại': e.category || 'Khác', 'Ghi chú': e.note || '', 'Số tiền': fmtVnd(e.amount) })),
+                          totalLabel: `Tổng ${item.name}`,
+                          totalValue: matched.reduce((s: number, e: any) => s + (e.amount || 0), 0),
+                        });
+                      }}
+                    >
+                      <div className="flex items-center gap-2">
+                        <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: COLORS[origIdx >= 0 ? origIdx : i % COLORS.length] }} />
+                        <span className="text-slate-600">{item.name}</span>
+                      </div>
+                      <span className="font-medium text-slate-800">{fmtVnd(item.value)}</span>
                     </div>
-                    <span className="font-medium text-slate-800">{fmtVnd(item.value)}</span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </>
           ) : (
@@ -423,7 +585,27 @@ function FinanceTab({ data, period, customFrom, customTo, onStatClick, clubName 
         <p className="text-xs text-slate-500 mb-4">Gói nào mang lại nhiều tiền nhất và mức độ chăm chỉ của hội viên</p>
         {data.participation?.length > 0 ? (
           <ResponsiveContainer width="100%" height={300}>
-            <ComposedChart data={data.participation} layout="vertical">
+            <ComposedChart data={data.participation} layout="vertical"
+              onClick={(e: any) => {
+                const payload = e?.activePayload?.[0]?.payload;
+                if (!payload?.package || !onDrilldown) return;
+                const customers = (data.packageDetails || []).filter((p: any) => p.packageName === payload.package);
+                onDrilldown({
+                  title: `Gói: ${payload.package}`,
+                  subtitle: `${customers.length} khách hàng`,
+                  columns: ['Khách hàng', 'Giới tính', 'SĐT', 'Giá', 'Bắt đầu', 'Kết thúc'],
+                  rows: customers.map((c: any) => ({
+                    'Khách hàng': c.customerName,
+                    'Giới tính': c.gender === 'Nam' ? 'Nam' : c.gender === 'Nữ' ? 'Nữ' : c.gender || '—',
+                    'SĐT': c.phone || '—',
+                    'Giá': fmtVnd(c.totalPrice),
+                    'Bắt đầu': new Date(c.startDate).toLocaleDateString('vi-VN'),
+                    'Kết thúc': new Date(c.endDate).toLocaleDateString('vi-VN'),
+                  })),
+                  totalLabel: `Tổng doanh thu`,
+                  totalValue: payload.revenue,
+                });
+              }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
               <XAxis type="number" tick={{ fontSize: 11 }} />
               <YAxis type="category" dataKey="package" tick={{ fontSize: 12 }} width={80} />
@@ -476,7 +658,19 @@ function FinanceTab({ data, period, customFrom, customTo, onStatClick, clubName 
                   const total = data.topProducts.reduce((s, d) => s + d.revenue, 0) || 1;
                   const pct = Math.round((item.revenue / total) * 100);
                   return (
-                    <tr key={i} className="border-b border-slate-50 hover:bg-slate-50">
+                    <tr key={i} className="border-b border-slate-50 hover:bg-slate-50 cursor-pointer"
+                      onClick={() => {
+                        if (!onDrilldown) return;
+                        onDrilldown({
+                          title: `Sản phẩm: ${item.name}`,
+                          subtitle: `${item.quantity} đã bán · Đơn giá: ${fmtVnd(item.price)}`,
+                          columns: ['Sản phẩm', 'Đơn giá', 'Giá vốn', 'SL bán', 'Doanh thu', 'Lợi nhuận'],
+                          rows: [{ 'Sản phẩm': item.name, 'Đơn giá': fmtVnd(item.price), 'Giá vốn': fmtVnd(item.costPrice), 'SL bán': String(item.quantity), 'Doanh thu': fmtVnd(item.revenue), 'Lợi nhuận': fmtVnd(item.profit) }],
+                          totalLabel: 'Tổng doanh thu',
+                          totalValue: item.revenue,
+                        });
+                      }}
+                    >
                       <td className="py-2.5 px-2 font-medium text-slate-800">{item.name}</td>
                       <td className="py-2.5 px-2 text-right text-slate-700">{item.quantity}</td>
                       <td className="py-2.5 px-2 text-right text-slate-700">{fmtVnd(item.revenue)}</td>
@@ -500,6 +694,160 @@ function FinanceTab({ data, period, customFrom, customTo, onStatClick, clubName 
           <div className="flex items-center justify-center h-[260px] text-sm text-slate-400">Chưa có sản phẩm nào</div>
         )}
       </div>
+
+      {/* 5. PHÂN TÍCH HỘI VIÊN */}
+      {data.memberAnalytics && (
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+          <div className="flex items-center justify-between mb-1">
+            <h2 className="text-lg font-bold text-slate-900">Phân tích hội viên</h2>
+            <span className="text-xs bg-blue-50 text-blue-600 px-2.5 py-1 rounded-full font-medium">Retention & ARPU</span>
+          </div>
+          <p className="text-xs text-slate-500 mb-4">Tỷ lệ giữ chân, giá trị TB mỗi hội viên và thời gian sử dụng</p>
+          {(() => {
+            const m = data.memberAnalytics;
+            const cards = [
+              { label: 'Hội viên active', value: m.activeMembers, sub: `/${m.totalMembers} tổng`, color: 'bg-blue-500', icon: '👤',
+                explain: { title: 'Hội viên active', formula: 'Đếm số khách hàng có ít nhất 1 gói tập còn hiệu lực (end_date >= today)', description: 'Hội viên active là những người đang sở hữu gói tập chưa hết hạn. Đây là chỉ số cơ bản để đo lường quy mô khách hàng hiện tại của phòng gym.', example: 'Nếu có 10 khách hàng đăng ký nhưng chỉ 6 người có gói chưa hết hạn → Active = 6' },
+                drill: { title: 'Hội viên đang active', subtitle: `${m.activeMembers} hội viên có gói còn hiệu lực`, columns: ['Họ tên', 'SĐT', 'Gói', 'Ngày bắt đầu', 'Ngày hết hạn', 'Giá trị'], rows: (m.activeList || []).map((r: any) => ({ 'Họ tên': r.name, 'SĐT': r.phone, 'Gói': r.package, 'Ngày bắt đầu': r.startDate ? new Date(r.startDate).toLocaleDateString('vi-VN') : '—', 'Ngày hết hạn': r.endDate ? new Date(r.endDate).toLocaleDateString('vi-VN') : '—', 'Giá trị': r.totalPrice ? fmtVnd(r.totalPrice) : '—' })) } },
+              { label: 'Tỷ lệ giữ chân', value: `${m.retentionRate}%`, sub: `${m.renewedPackages}/${m.expiredPackages} gói gia hạn`, color: 'bg-green-500', icon: '🔄',
+                explain: { title: 'Tỷ lệ giữ chân (Retention Rate)', formula: '(Số gói hết hạn trong kỳ mà khách mua gói mới) / (Tổng số gói hết hạn trong kỳ) × 100%', description: 'Đo lường tỷ lệ khách hàng tiếp tục gia hạn khi gói tập hết hạn. Tỷ lệ giữ chân cao cho thấy dịch vụ tốt, khách hàng hài lòng. Nếu giữ chân = 100% nghĩa là tất cả khách hết hạn đều gia hạn.', example: `Trong kỳ có ${m.expiredPackages} gói hết hạn, ${m.renewedPackages} gói được gia hạn → Tỷ lệ = ${m.retentionRate}%` },
+                drill: { title: 'Hội viên giữ chân', subtitle: `${m.renewedPackages} gói hết hạn đã gia hạn`, columns: ['Họ tên', 'SĐT', 'Gói', 'Ngày hết hạn', 'Giá trị'], rows: (m.retainedList || []).map((r: any) => ({ 'Họ tên': r.name, 'SĐT': r.phone, 'Gói': r.package, 'Ngày hết hạn': r.endDate ? new Date(r.endDate).toLocaleDateString('vi-VN') : '—', 'Giá trị': r.totalPrice ? fmtVnd(r.totalPrice) : '—' })) } },
+              { label: 'Tỷ lệ rời bỏ', value: `${m.churnRate}%`, sub: `${m.expiredPackages - m.renewedPackages} gói không gia hạn`, color: 'bg-red-500', icon: '📤',
+                explain: { title: 'Tỷ lệ rời bỏ (Churn Rate)', formula: '(Số gói hết hạn trong kỳ KHÔNG gia hạn) / (Tổng số gói hết hạn trong kỳ) × 100% = 100% − Tỷ lệ giữ chân', description: 'Đo lường tỷ lệ khách hàng ngừng sử dụng dịch vụ sau khi gói hết hạn. Tỷ lệ rời bỏ cao là dấu hiệu cần cải thiện chất lượng dịch vụ, giá cả hoặc chương trình khuyến mãi.', example: `Trong kỳ có ${m.expiredPackages} gói hết hạn, ${m.expiredPackages - m.renewedPackages} gói không gia hạn → Tỷ lệ = ${m.churnRate}%` },
+                drill: { title: 'Hội viên rời bỏ', subtitle: `${m.expiredPackages - m.renewedPackages} gói hết hạn không gia hạn`, columns: ['Họ tên', 'SĐT', 'Gói', 'Ngày hết hạn', 'Giá trị'], rows: (m.churnedList || []).map((r: any) => ({ 'Họ tên': r.name, 'SĐT': r.phone, 'Gói': r.package, 'Ngày hết hạn': r.endDate ? new Date(r.endDate).toLocaleDateString('vi-VN') : '—', 'Giá trị': r.totalPrice ? fmtVnd(r.totalPrice) : '—' })) } },
+              { label: 'ARPU', value: fmtVnd(m.arpu), sub: 'DT thực thu / HV active', color: 'bg-purple-500', icon: '💰',
+                explain: { title: 'ARPU (Average Revenue Per User)', formula: 'Tổng doanh thu thực thu trong kỳ / Số hội viên active', description: 'Doanh thu trung bình mang lại từ mỗi hội viên đang active. Chỉ số này giúp đánh giá giá trị kinh tế của mỗi khách hàng. ARPU càng cao cho thấy khả năng upsell/cross-sell tốt.', example: `DT thực thu = ${fmtVnd(m.arpu * m.activeMembers)}, HV active = ${m.activeMembers} → ARPU = ${fmtVnd(m.arpu)}` },
+                drill: null },
+              { label: 'Thời gian giữ chân TB', value: `${m.avgLifetime} tháng`, sub: `Hội viên mới: ${m.newMembers}`, color: 'bg-amber-500', icon: '📅',
+                explain: { title: 'Thời gian giữ chân trung bình', formula: 'Tổng (thời hạn các gói tập) / Số gói tập', description: 'Thời gian trung bình mà khách hàng sử dụng dịch vụ. Được tính bằng cách lấy tổng thời hạn (duration_months) của tất cả gói tập chia cho số gói. Chỉ số càng cao cho thấy khách hàng trung thành lâu dài.', example: `Tổng thời hạn các gói = X tháng, số gói = Y → TB = ${m.avgLifetime} tháng` },
+                drill: { title: 'Hội viên mới trong kỳ', subtitle: `${m.newMembers} hội viên mới đăng ký`, columns: ['Họ tên', 'SĐT', 'Giới tính', 'Ngày đăng ký'], rows: (m.newList || []).map((r: any) => ({ 'Họ tên': r.name, 'SĐT': r.phone, 'Giới tính': r.gender || '—', 'Ngày đăng ký': r.registerDate ? new Date(r.registerDate).toLocaleDateString('vi-VN') : '—' })) } },
+              { label: 'Lượt check-in kỳ', value: m.checkinsThisPeriod.toLocaleString(), sub: `${m.expiredPackages} gói hết hạn`, color: 'bg-indigo-500', icon: '✅',
+                explain: { title: 'Lượt check-in trong kỳ', formula: 'Đếm số lượt check-in có checkInTime trong khoảng [đầu kỳ, cuối kỳ]', description: 'Tổng số lần hội viên đến phòng gym và quét thẻ/check-in trong kỳ báo cáo. Chỉ số này thể hiện tần suất sử dụng thực tế của khách hàng.', example: `Có ${m.checkinsThisPeriod} lượt check-in trong kỳ này` },
+                drill: null },
+            ];
+            return (
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                {cards.map((c, i) => (
+                  <div key={i}
+                    onClick={() => c.drill && onDrilldown?.(c.drill)}
+                    className={`bg-slate-50 rounded-xl p-4 text-center ${c.drill ? 'cursor-pointer hover:shadow-md hover:bg-white hover:border-indigo-200 border border-transparent transition-all' : ''}`}>
+                    <div className="text-2xl mb-1">{c.icon}</div>
+                    <p className="text-xl font-bold text-slate-900">{c.value}</p>
+                    <p className="text-xs font-medium text-slate-600 mt-1 underline decoration-dotted underline-offset-2 cursor-help hover:text-blue-600 transition-colors"
+                      onClick={(e) => { e.stopPropagation(); onExplain?.(c.explain); }}>{c.label}</p>
+                    <p className="text-[10px] text-slate-400 mt-0.5">{c.sub}</p>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
+      {/* 6. HIỆU SUẤT HLV */}
+      {data.trainerPerformance && data.trainerPerformance.length > 0 && (
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+          <div className="flex items-center justify-between mb-1">
+            <h2 className="text-lg font-bold text-slate-900">Hiệu suất HLV</h2>
+            <span className="text-xs bg-violet-50 text-violet-600 px-2.5 py-1 rounded-full font-medium">DT & PT Sessions</span>
+          </div>
+          <p className="text-xs text-slate-500 mb-4">Xếp hạng huấn luyện viên theo doanh thu và số buổi tập</p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-200">
+                  <th className="text-left py-3 px-3 text-slate-500 font-medium w-8">#</th>
+                  <th className="text-left py-3 px-3 text-slate-500 font-medium">HLV</th>
+                  <th className="text-right py-3 px-3 text-slate-500 font-medium">Doanh thu</th>
+                  <th className="text-right py-3 px-3 text-slate-500 font-medium">Buổi PT</th>
+                  <th className="text-right py-3 px-3 text-slate-500 font-medium">Khách hàng</th>
+                  <th className="text-center py-3 px-3 text-slate-500 font-medium">Đánh giá</th>
+                  <th className="text-right py-3 px-3 text-slate-500 font-medium">Hoa hồng</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.trainerPerformance.map((t: any, i: number) => (
+                  <tr key={i} className="border-b border-slate-50 hover:bg-slate-50">
+                    <td className="py-3 px-3">
+                      <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${i === 0 ? 'bg-yellow-100 text-yellow-700' : i === 1 ? 'bg-slate-200 text-slate-600' : i === 2 ? 'bg-orange-100 text-orange-700' : 'bg-slate-50 text-slate-500'}`}>
+                        {i + 1}
+                      </span>
+                    </td>
+                    <td className="py-3 px-3 font-medium text-slate-800">{t.name}</td>
+                    <td className="py-3 px-3 text-right font-semibold text-slate-800">{fmtVnd(t.revenue)}</td>
+                    <td className="py-3 px-3 text-right text-slate-700">{t.sessions}</td>
+                    <td className="py-3 px-3 text-right text-slate-700">{t.uniqueCustomers}</td>
+                    <td className="py-3 px-3 text-center">
+                      {t.rating > 0 ? (
+                        <span className="text-amber-500 font-medium">★ {t.rating.toFixed(1)}</span>
+                      ) : <span className="text-slate-400">—</span>}
+                    </td>
+                    <td className="py-3 px-3 text-right text-slate-700">{fmtVnd(t.estimatedCommission)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* 7. SO SÁNH CLB */}
+      {data.clubComparison && data.clubComparison.length > 0 && (
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+          <div className="flex items-center justify-between mb-1">
+            <h2 className="text-lg font-bold text-slate-900">So sánh câu lạc bộ</h2>
+            <span className="text-xs bg-teal-50 text-teal-600 px-2.5 py-1 rounded-full font-medium">Revenue & Margin</span>
+          </div>
+          <p className="text-xs text-slate-500 mb-4">So sánh hiệu quả kinh doanh giữa các chi nhánh trong kỳ</p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-200">
+                  <th className="text-left py-3 px-3 text-slate-500 font-medium">CLB</th>
+                  <th className="text-right py-3 px-3 text-slate-500 font-medium">Doanh thu</th>
+                  <th className="text-right py-3 px-3 text-slate-500 font-medium">Chi phí</th>
+                  <th className="text-right py-3 px-3 text-slate-500 font-medium">Lợi nhuận</th>
+                  <th className="text-center py-3 px-3 text-slate-500 font-medium">Margin</th>
+                  <th className="text-center py-3 px-3 text-slate-500 font-medium">Hội viên</th>
+                  <th className="text-center py-3 px-3 text-slate-500 font-medium">HLV</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.clubComparison.map((c: any, i: number) => (
+                  <tr key={i} className="border-b border-slate-50 hover:bg-slate-50">
+                    <td className="py-3 px-3 font-medium text-slate-800">{c.name}</td>
+                    <td className="py-3 px-3 text-right font-semibold text-slate-800">{fmtVnd(c.revenue)}</td>
+                    <td className="py-3 px-3 text-right text-red-600">{fmtVnd(c.expense)}</td>
+                    <td className={`py-3 px-3 text-right font-semibold ${c.profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>{fmtVnd(c.profit)}</td>
+                    <td className="py-3 px-3 text-center">
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${c.margin >= 30 ? 'bg-green-100 text-green-700' : c.margin >= 10 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>
+                        {c.margin}%
+                      </span>
+                    </td>
+                    <td className="py-3 px-3 text-center text-slate-700">{c.memberCount}</td>
+                    <td className="py-3 px-3 text-center text-slate-700">{c.trainerCount}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {/* Bar chart so sánh */}
+          <div className="mt-4">
+            <ResponsiveContainer width="100%" height={250}>
+              <BarChart data={data.clubComparison}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                <YAxis tickFormatter={fmt} tick={{ fontSize: 11 }} />
+                <Tooltip formatter={(v: number) => fmtVnd(v)} />
+                <Legend />
+                <Bar dataKey="revenue" fill="#6366f1" name="Doanh thu" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="expense" fill="#f59e0b" name="Chi phí" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="profit" fill="#10b981" name="Lợi nhuận" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
     </>
   );
 }
@@ -745,6 +1093,9 @@ function FormulaDetailModal({ metric, data, periodData, loading, onClose }: {
   const cls = METRIC_CLASSES[metric];
   const Icon = info.icon;
   const s = data?.summary || {};
+  const [detailTab, setDetailTab] = useState<'formula' | 'transactions'>('formula');
+  const [txFilter, setTxFilter] = useState<string>('all');
+  const [txSearch, setTxSearch] = useState('');
 
   const breakdownRows = ['week', 'month', 'quarter', 'year'].map(p => {
     const ps = periodData[p];
@@ -752,10 +1103,112 @@ function FormulaDetailModal({ metric, data, periodData, loading, onClose }: {
     return { key: p, label: PERIOD_LABELS[p], value: val };
   });
 
+  const getTransactionData = () => {
+    switch (metric) {
+      case 'realCashIn': {
+        const items = data?.revenueDetails || [];
+        return {
+          columns: ['Ngày', 'Loại giao dịch', 'Khách hàng', 'Nội dung', 'Số tiền'],
+          rows: items.map((r: any) => ({
+            date: r.date,
+            type: r.type,
+            customer: r.customerName,
+            detail: r.name,
+            amount: r.amount,
+          })),
+          types: [...new Set(items.map((r: any) => r.type))],
+          filterKey: 'type',
+          totalLabel: 'Tổng thực thu',
+          totalValue: items.reduce((sum: number, r: any) => sum + (r.amount || 0), 0),
+        };
+      }
+      case 'accrualRevenue': {
+        const items = data?.accrualDetails || [];
+        return {
+          columns: ['Gói tập', 'Khách hàng', 'Tổng giá', 'Thời hạn', 'Ghi nhận/tháng', 'Tháng đã qua', 'Tổng ghi nhận'],
+          rows: items.map((r: any) => ({
+            packageName: r.packageName,
+            customer: r.customerName,
+            totalPrice: r.totalPrice,
+            duration: `${r.duration} tháng`,
+            monthlyRevenue: r.monthlyRevenue,
+            monthsElapsed: r.monthsElapsed,
+            amount: r.accrualAmount,
+          })),
+          types: [...new Set(items.map((r: any) => r.packageName))],
+          filterKey: 'packageName',
+          totalLabel: 'Tổng ghi nhận',
+          totalValue: items.reduce((sum: number, r: any) => sum + (r.accrualAmount || 0), 0),
+        };
+      }
+      case 'totalExpense': {
+        const items = data?.expenseDetails || [];
+        return {
+          columns: ['Ngày', 'Tên khoản chi', 'Phân loại', 'Ghi chú', 'Số tiền'],
+          rows: items.map((r: any) => ({
+            date: r.date,
+            name: r.name,
+            category: r.category || 'Khác',
+            note: r.note || '',
+            amount: r.amount,
+          })),
+          types: [...new Set(items.map((r: any) => r.category || 'Khác'))],
+          filterKey: 'category',
+          totalLabel: 'Tổng chi phí',
+          totalValue: items.reduce((sum: number, r: any) => sum + (r.amount || 0), 0),
+        };
+      }
+      case 'netCashFlow':
+        return {
+          columns: ['Chỉ số', 'Giá trị'],
+          rows: [
+            { label: 'Tổng tiền thu (thực thu)', amount: s.realCashIn || 0 },
+            { label: 'Tổng chi phí kỳ này', amount: -(s.totalExpense || 0) },
+          ],
+          types: [],
+          filterKey: '',
+          totalLabel: 'Dòng tiền ròng',
+          totalValue: (s.realCashIn || 0) - (s.totalExpense || 0),
+        };
+      case 'totalProfit':
+        return {
+          columns: ['Chỉ số', 'Giá trị'],
+          rows: [
+            { label: 'Doanh thu ghi nhận', amount: s.accrualRevenue || 0 },
+            { label: 'Tổng chi phí', amount: -(s.totalExpense || 0) },
+          ],
+          types: [],
+          filterKey: '',
+          totalLabel: 'Lợi nhuận',
+          totalValue: s.totalProfit || 0,
+        };
+      default:
+        return { columns: [], rows: [], types: [], filterKey: '', totalLabel: '', totalValue: 0 };
+    }
+  };
+
+  const txData = getTransactionData();
+  const filteredRows = (() => {
+    let rows = txFilter === 'all' ? txData.rows : txData.rows.filter((r: any) => r[txData.filterKey] === txFilter);
+    if (txSearch.trim()) {
+      const q = txSearch.toLowerCase();
+      rows = rows.filter((r: any) =>
+        Object.values(r).some((v: any) => v != null && String(v).toLowerCase().includes(q))
+      );
+    }
+    return rows;
+  })();
+
+  const formatDate = (d: any) => {
+    if (!d) return '—';
+    const dt = new Date(d);
+    return dt.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         {/* Header */}
         <div className="flex items-center gap-3 p-6 border-b border-slate-100">
           <div className={`${cls.iconBg} p-3 rounded-xl`}>
@@ -763,99 +1216,323 @@ function FormulaDetailModal({ metric, data, periodData, loading, onClose }: {
           </div>
           <div className="flex-1">
             <h3 className="text-lg font-bold text-slate-900">{info.title}</h3>
-            <p className="text-sm text-slate-500">Công thức & cách tính</p>
+            <p className="text-sm text-slate-500">Chi tiết & cách tính</p>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition-colors p-1">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
           </button>
         </div>
 
-        {/* Current value */}
-        <div className="px-6 pt-5">
-          <div className="bg-slate-50 rounded-xl p-4">
-            <p className="text-xs text-slate-500 mb-1">Giá trị kỳ hiện tại</p>
-            <p className="text-2xl font-bold text-slate-900">{fmtVnd(s[metric] || 0)}</p>
-          </div>
+        {/* Tabs */}
+        <div className="flex border-b border-slate-100 px-6">
+          <button
+            onClick={() => setDetailTab('formula')}
+            className={`py-3 px-4 text-sm font-medium border-b-2 transition-colors ${detailTab === 'formula' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+          >
+            Công thức & cách tính
+          </button>
+          <button
+            onClick={() => setDetailTab('transactions')}
+            className={`py-3 px-4 text-sm font-medium border-b-2 transition-colors ${detailTab === 'transactions' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+          >
+            Chi tiết giao dịch
+          </button>
         </div>
 
-        {/* Formula */}
-        <div className="px-6 pt-5">
-          <h4 className="text-sm font-semibold text-slate-700 mb-2">Công thức tính</h4>
-          <div className={`${cls.formulaBg} border ${cls.formulaBorder} rounded-xl p-4`}>
-            <p className={`text-sm font-mono font-medium ${cls.formulaText}`}>{info.formula}</p>
-          </div>
-        </div>
-
-        {/* Description */}
-        <div className="px-6 pt-4">
-          <h4 className="text-sm font-semibold text-slate-700 mb-2">Giải thích</h4>
-          <p className="text-sm text-slate-600 leading-relaxed">{info.description}</p>
-        </div>
-
-        {/* Details */}
-        <div className="px-6 pt-4">
-          <h4 className="text-sm font-semibold text-slate-700 mb-2">Chi tiết cách tính</h4>
-          <ul className="space-y-2">
-            {info.details.map((d, i) => (
-              <li key={i} className="flex items-start gap-2 text-sm text-slate-600">
-                <span className={`mt-1.5 w-1.5 h-1.5 rounded-full ${cls.dot} shrink-0`} />
-                {d}
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        {/* Period breakdown */}
-        <div className="px-6 pt-5 pb-6">
-          <h4 className="text-sm font-semibold text-slate-700 mb-3">So sánh theo khoảng thời gian</h4>
-          {loading ? (
-            <div className="flex items-center justify-center py-6">
-              <Loader2 className="w-5 h-5 animate-spin text-indigo-500" />
-              <span className="text-sm text-slate-500 ml-2">Đang tải...</span>
+        {detailTab === 'formula' ? (
+          <>
+            {/* Current value */}
+            <div className="px-6 pt-5">
+              <div className="bg-slate-50 rounded-xl p-4">
+                <p className="text-xs text-slate-500 mb-1">Giá trị kỳ hiện tại</p>
+                <p className="text-2xl font-bold text-slate-900">{fmtVnd(s[metric] || 0)}</p>
+              </div>
             </div>
-          ) : (
-            <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+            {/* Formula */}
+            <div className="px-6 pt-5">
+              <h4 className="text-sm font-semibold text-slate-700 mb-2">Công thức tính</h4>
+              <div className={`${cls.formulaBg} border ${cls.formulaBorder} rounded-xl p-4`}>
+                <p className={`text-sm font-mono font-medium ${cls.formulaText}`}>{info.formula}</p>
+              </div>
+            </div>
+            {/* Description */}
+            <div className="px-6 pt-4">
+              <h4 className="text-sm font-semibold text-slate-700 mb-2">Giải thích</h4>
+              <p className="text-sm text-slate-600 leading-relaxed">{info.description}</p>
+            </div>
+            {/* Details */}
+            <div className="px-6 pt-4">
+              <h4 className="text-sm font-semibold text-slate-700 mb-2">Chi tiết cách tính</h4>
+              <ul className="space-y-2">
+                {info.details.map((d, i) => (
+                  <li key={i} className="flex items-start gap-2 text-sm text-slate-600">
+                    <span className={`mt-1.5 w-1.5 h-1.5 rounded-full ${cls.dot} shrink-0`} />
+                    {d}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            {/* Period breakdown */}
+            <div className="px-6 pt-5 pb-6">
+              <h4 className="text-sm font-semibold text-slate-700 mb-3">So sánh theo khoảng thời gian</h4>
+              {loading ? (
+                <div className="flex items-center justify-center py-6">
+                  <Loader2 className="w-5 h-5 animate-spin text-indigo-500" />
+                  <span className="text-sm text-slate-500 ml-2">Đang tải...</span>
+                </div>
+              ) : (
+                <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-200">
+                        <th className="text-left py-2.5 px-4 text-slate-600 font-medium">Khoảng thời gian</th>
+                        <th className="text-right py-2.5 px-4 text-slate-600 font-medium">Giá trị</th>
+                        <th className="text-right py-2.5 px-4 text-slate-600 font-medium">Thay đổi</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {breakdownRows.map((r, i) => {
+                        const prev = i > 0 ? breakdownRows[i - 1].value : null;
+                        const change = r.value && prev ? ((r.value - prev) / (prev || 1)) * 100 : null;
+                        return (
+                          <tr key={r.key} className={`border-b border-slate-50 ${r.key === 'month' ? 'bg-indigo-50' : ''}`}>
+                            <td className="py-2.5 px-4 text-slate-700 font-medium">
+                              {r.label}
+                              {r.key === 'month' && <span className="ml-1.5 text-[10px] bg-indigo-100 text-indigo-600 px-1.5 py-0.5 rounded-full">hiện tại</span>}
+                            </td>
+                            <td className="py-2.5 px-4 text-right font-semibold text-slate-900">
+                              {r.value != null ? fmtVnd(r.value) : <span className="text-slate-400">—</span>}
+                            </td>
+                            <td className="py-2.5 px-4 text-right">
+                              {change != null ? (
+                                <span className={`font-medium ${change >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                  {change >= 0 ? '+' : ''}{change.toFixed(1)}%
+                                </span>
+                              ) : (
+                                <span className="text-slate-400">—</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </>
+        ) : (
+          /* TRANSACTIONS TAB */
+          <div className="px-6 py-5">
+            {/* Filter */}
+            {txData.types.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-4">
+                <button
+                  onClick={() => setTxFilter('all')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${txFilter === 'all' ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                >
+                  Tất cả ({txData.rows.length})
+                </button>
+                {txData.types.map((t: string) => {
+                  const count = txData.rows.filter((r: any) => r[txData.filterKey] === t).length;
+                  return (
+                    <button
+                      key={t}
+                      onClick={() => setTxFilter(t)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${txFilter === t ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                    >
+                      {t} ({count})
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            {/* Search */}
+            {txData.rows.length > 3 && (
+              <div className="relative mb-4">
+                <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                <input type="text" value={txSearch} onChange={e => setTxSearch(e.target.value)}
+                  placeholder="Tìm kiếm giao dịch..."
+                  className="w-full pl-10 pr-4 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400" />
+                {txSearch && (
+                  <button onClick={() => setTxSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Transaction table */}
+            {filteredRows.length > 0 ? (
+              <div className="border border-slate-200 rounded-xl overflow-hidden">
+                <div className="max-h-[400px] overflow-y-auto">
+                  <table className="w-full text-sm">
+                    <thead className="sticky top-0 bg-slate-50 border-b border-slate-200">
+                      <tr>
+                        {txData.columns.map((col: string) => (
+                          <th key={col} className={`py-2.5 px-3 text-slate-600 font-medium ${col === 'Số tiền' || col === 'Tổng ghi nhận' || col === 'Tổng giá' || col === 'Ghi nhận/tháng' ? 'text-right' : 'text-left'}`}>{col}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredRows.map((row: any, i: number) => (
+                        <tr key={i} className="border-b border-slate-50 hover:bg-slate-50/50">
+                          {txData.columns.map((col: string) => {
+                            let val = '';
+                            if (col === 'Ngày') val = formatDate(row.date);
+                            else if (col === 'Loại giao dịch') val = row.type || '';
+                            else if (col === 'Khách hàng') val = row.customer || row.customerName || '';
+                            else if (col === 'Nội dung') val = row.detail || row.name || '';
+                            else if (col === 'Gói tập') val = row.packageName || '';
+                            else if (col === 'Tổng giá') val = row.totalPrice != null ? fmtVnd(row.totalPrice) : '';
+                            else if (col === 'Thời hạn') val = row.duration || '';
+                            else if (col === 'Ghi nhận/tháng') val = row.monthlyRevenue != null ? fmtVnd(row.monthlyRevenue) : '';
+                            else if (col === 'Tháng đã qua') val = `${row.monthsElapsed || 0}/${row.duration?.toString().replace(' tháng', '') || '?'}`;
+                            else if (col === 'Phân loại') val = row.category || '';
+                            else if (col === 'Ghi chú') val = row.note || '';
+                            else if (col === 'Số tiền') val = row.amount != null ? fmtVnd(row.amount) : '';
+                            else if (col === 'Tổng ghi nhận') val = row.amount != null ? fmtVnd(row.amount) : '';
+                            else if (col === 'Chỉ số') val = row.label || '';
+                            else if (col === 'Giá trị') val = row.amount != null ? fmtVnd(Math.abs(row.amount)) : '';
+
+                            const isMoney = ['Số tiền', 'Tổng giá', 'Ghi nhận/tháng', 'Tổng ghi nhận', 'Giá trị'].includes(col);
+                            return (
+                              <td key={col} className={`py-2.5 px-3 ${isMoney ? 'text-right font-medium text-slate-800' : 'text-slate-700'}`}>
+                                {val}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {/* Total footer */}
+                <div className="bg-slate-50 border-t border-slate-200 px-3 py-2.5 flex items-center justify-between">
+                  <span className="text-sm font-semibold text-slate-700">{txData.totalLabel}</span>
+                  <span className="text-sm font-bold text-slate-900">{fmtVnd(txData.totalValue)}</span>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-12 text-slate-400">
+                <Wallet className="w-10 h-10 mb-3 opacity-40" />
+                <p className="text-sm">Chưa có giao dịch nào trong kỳ này</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Close button */}
+        <div className="px-6 pb-6">
+          <button onClick={onClose}
+            className="w-full py-2.5 bg-slate-900 text-white rounded-xl text-sm font-medium hover:bg-slate-800 transition-colors">
+            Đóng
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Drilldown Modal (for chart/table click) ─── */
+function DrilldownModal({ title, subtitle, columns, rows, totalLabel, totalValue, onClose }: {
+  title: string;
+  subtitle?: string;
+  columns: string[];
+  rows: any[];
+  totalLabel?: string;
+  totalValue?: number;
+  onClose: () => void;
+}) {
+  const [search, setSearch] = useState('');
+
+  const filteredRows = useMemo(() => {
+    if (!search.trim()) return rows;
+    const q = search.toLowerCase();
+    return rows.filter((row: any) =>
+      columns.some((col: string) => {
+        const val = row[col];
+        if (val == null) return false;
+        return String(val).toLowerCase().includes(q);
+      })
+    );
+  }, [rows, search, columns]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+        {/* Header */}
+        <div className="flex items-center gap-3 p-5 border-b border-slate-100">
+          <div className="flex-1">
+            <h3 className="text-lg font-bold text-slate-900">{title}</h3>
+            {subtitle && <p className="text-sm text-slate-500">{subtitle}</p>}
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition-colors p-1">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+          </button>
+        </div>
+
+        {/* Search */}
+        {rows.length > 3 && (
+          <div className="px-5 pt-4">
+            <div className="relative">
+              <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+              <input type="text" value={search} onChange={e => setSearch(e.target.value)}
+                placeholder="Tìm kiếm..."
+                className="w-full pl-10 pr-4 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400" />
+              {search && (
+                <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Table */}
+        <div className="flex-1 overflow-y-auto p-5">
+          {filteredRows.length > 0 ? (
+            <div className="border border-slate-200 rounded-xl overflow-hidden">
               <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-slate-50 border-b border-slate-200">
-                    <th className="text-left py-2.5 px-4 text-slate-600 font-medium">Khoảng thời gian</th>
-                    <th className="text-right py-2.5 px-4 text-slate-600 font-medium">Giá trị</th>
-                    <th className="text-right py-2.5 px-4 text-slate-600 font-medium">Thay đổi</th>
+                <thead className="sticky top-0 bg-slate-50 border-b border-slate-200">
+                  <tr>
+                    {columns.map((col: string) => (
+                      <th key={col} className={`py-2.5 px-3 text-slate-600 font-medium ${['Số tiền', 'Doanh thu', 'Lợi nhuận', 'Giá trị'].includes(col) ? 'text-right' : 'text-left'}`}>{col}</th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {breakdownRows.map((r, i) => {
-                    const prev = i > 0 ? breakdownRows[i - 1].value : null;
-                    const change = r.value && prev ? ((r.value - prev) / (prev || 1)) * 100 : null;
-                    return (
-                      <tr key={r.key} className={`border-b border-slate-50 ${r.key === 'month' ? 'bg-indigo-50' : ''}`}>
-                        <td className="py-2.5 px-4 text-slate-700 font-medium">
-                          {r.label}
-                          {r.key === 'month' && <span className="ml-1.5 text-[10px] bg-indigo-100 text-indigo-600 px-1.5 py-0.5 rounded-full">hiện tại</span>}
-                        </td>
-                        <td className="py-2.5 px-4 text-right font-semibold text-slate-900">
-                          {r.value != null ? fmtVnd(r.value) : <span className="text-slate-400">—</span>}
-                        </td>
-                        <td className="py-2.5 px-4 text-right">
-                          {change != null ? (
-                            <span className={`font-medium ${change >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                              {change >= 0 ? '+' : ''}{change.toFixed(1)}%
-                            </span>
-                          ) : (
-                            <span className="text-slate-400">—</span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
+                  {filteredRows.map((row: any, i: number) => (
+                    <tr key={i} className="border-b border-slate-50 hover:bg-slate-50/50">
+                      {columns.map((col: string) => {
+                        const isMoney = ['Số tiền', 'Doanh thu', 'Lợi nhuận', 'Giá trị'].includes(col);
+                        return (
+                          <td key={col} className={`py-2.5 px-3 ${isMoney ? 'text-right font-medium text-slate-800' : 'text-slate-700'}`}>
+                            {row[col] ?? '—'}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
                 </tbody>
               </table>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-12 text-slate-400">
+              <p className="text-sm">{search ? 'Không tìm thấy kết quả' : 'Không có dữ liệu chi tiết'}</p>
             </div>
           )}
         </div>
 
-        {/* Close button */}
-        <div className="px-6 pb-6">
+        {/* Total + Close */}
+        {totalLabel && totalValue != null && (
+          <div className="border-t border-slate-200 px-5 py-3 flex items-center justify-between bg-slate-50">
+            <span className="text-sm font-semibold text-slate-700">{totalLabel}</span>
+            <span className="text-sm font-bold text-slate-900">{fmtVnd(totalValue)}</span>
+          </div>
+        )}
+        <div className="px-5 pb-4">
           <button onClick={onClose}
             className="w-full py-2.5 bg-slate-900 text-white rounded-xl text-sm font-medium hover:bg-slate-800 transition-colors">
             Đóng
