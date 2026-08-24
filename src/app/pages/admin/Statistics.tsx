@@ -63,6 +63,7 @@ export function Statistics() {
   const [periodData, setPeriodData] = useState<Record<string, any>>({});
   const [loadingPeriodData, setLoadingPeriodData] = useState(false);
   const [drilldown, setDrilldown] = useState<{ title: string; subtitle?: string; columns: string[]; rows: any[]; totalLabel?: string; totalValue?: number } | null>(null);
+  const [explainModal, setExplainModal] = useState<{ title: string; formula: string; description: string; example?: string } | null>(null);
   const { selectedClub, selectedClubName } = useClub();
 
   const locParam = selectedClub && selectedClub !== 'all' ? `&locationId=${selectedClub}` : '';
@@ -223,7 +224,7 @@ export function Statistics() {
           </div>
         )}
 
-        {tab === 'finance' && <FinanceTab data={fd} period={period} customFrom={customFrom} customTo={customTo} onStatClick={handleOpenFormula} onDrilldown={setDrilldown} clubName={selectedClubName} />}
+        {tab === 'finance' && <FinanceTab data={fd} period={period} customFrom={customFrom} customTo={customTo} onStatClick={handleOpenFormula} onDrilldown={setDrilldown} onExplain={setExplainModal} clubName={selectedClubName} />}
         {tab === 'operations' && <OperationsTab data={od} period={period} customFrom={customFrom} customTo={customTo} clubName={selectedClubName} />}
         {tab === 'activity' && <ActivityStats selectedClub={selectedClub} />}
       </div>
@@ -248,6 +249,44 @@ export function Statistics() {
           totalValue={drilldown.totalValue}
           onClose={() => setDrilldown(null)}
         />
+      )}
+
+      {explainModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setExplainModal(null)}>
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-bold text-slate-900">{explainModal.title}</h3>
+                <button onClick={() => setExplainModal(null)} className="text-slate-400 hover:text-slate-600 transition-colors p-1">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
+              <div className="space-y-3">
+                <div className="bg-blue-50 rounded-xl p-4">
+                  <p className="text-xs font-semibold text-blue-700 mb-1">Công thức</p>
+                  <p className="text-sm text-blue-900 font-medium">{explainModal.formula}</p>
+                </div>
+                <div className="bg-slate-50 rounded-xl p-4">
+                  <p className="text-xs font-semibold text-slate-600 mb-1">Giải thích</p>
+                  <p className="text-sm text-slate-700 leading-relaxed">{explainModal.description}</p>
+                </div>
+                {explainModal.example && (
+                  <div className="bg-green-50 rounded-xl p-4">
+                    <p className="text-xs font-semibold text-green-700 mb-1">Ví dụ</p>
+                    <p className="text-sm text-green-900">{explainModal.example}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="px-6 pb-5">
+              <button onClick={() => setExplainModal(null)}
+                className="w-full py-2.5 bg-slate-900 text-white rounded-xl text-sm font-medium hover:bg-slate-800 transition-colors">
+                Đóng
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </AdminLayout>
   );
@@ -287,7 +326,7 @@ const pct = (val: number, total: number) => `${Math.round((val / (total || 1)) *
 const prevVal = (cur: number, change: number) => cur - (cur * (change ?? 0)) / 100;
 const changeStr = (v: number) => `${v > 0 ? '+' : ''}${v ?? 0}%`;
 
-function FinanceTab({ data, period, customFrom, customTo, onStatClick, onDrilldown, clubName }: { data: any; period: string; customFrom?: string; customTo?: string; onStatClick?: (metric: string) => void; onDrilldown?: (d: { title: string; subtitle?: string; columns: string[]; rows: any[]; totalLabel?: string; totalValue?: number }) => void; clubName?: string }) {
+function FinanceTab({ data, period, customFrom, customTo, onStatClick, onDrilldown, onExplain, clubName }: { data: any; period: string; customFrom?: string; customTo?: string; onStatClick?: (metric: string) => void; onDrilldown?: (d: { title: string; subtitle?: string; columns: string[]; rows: any[]; totalLabel?: string; totalValue?: number }) => void; onExplain?: (d: { title: string; formula: string; description: string; example?: string }) => void; clubName?: string }) {
   if (!data?.summary) return <div className="text-slate-400 text-sm">Đang tải dữ liệu tài chính...</div>;
   const s = data.summary;
   const c = s.change || {};
@@ -655,6 +694,160 @@ function FinanceTab({ data, period, customFrom, customTo, onStatClick, onDrilldo
           <div className="flex items-center justify-center h-[260px] text-sm text-slate-400">Chưa có sản phẩm nào</div>
         )}
       </div>
+
+      {/* 5. PHÂN TÍCH HỘI VIÊN */}
+      {data.memberAnalytics && (
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+          <div className="flex items-center justify-between mb-1">
+            <h2 className="text-lg font-bold text-slate-900">Phân tích hội viên</h2>
+            <span className="text-xs bg-blue-50 text-blue-600 px-2.5 py-1 rounded-full font-medium">Retention & ARPU</span>
+          </div>
+          <p className="text-xs text-slate-500 mb-4">Tỷ lệ giữ chân, giá trị TB mỗi hội viên và thời gian sử dụng</p>
+          {(() => {
+            const m = data.memberAnalytics;
+            const cards = [
+              { label: 'Hội viên active', value: m.activeMembers, sub: `/${m.totalMembers} tổng`, color: 'bg-blue-500', icon: '👤',
+                explain: { title: 'Hội viên active', formula: 'Đếm số khách hàng có ít nhất 1 gói tập còn hiệu lực (end_date >= today)', description: 'Hội viên active là những người đang sở hữu gói tập chưa hết hạn. Đây là chỉ số cơ bản để đo lường quy mô khách hàng hiện tại của phòng gym.', example: 'Nếu có 10 khách hàng đăng ký nhưng chỉ 6 người có gói chưa hết hạn → Active = 6' },
+                drill: { title: 'Hội viên đang active', subtitle: `${m.activeMembers} hội viên có gói còn hiệu lực`, columns: ['Họ tên', 'SĐT', 'Gói', 'Ngày bắt đầu', 'Ngày hết hạn', 'Giá trị'], rows: (m.activeList || []).map((r: any) => ({ 'Họ tên': r.name, 'SĐT': r.phone, 'Gói': r.package, 'Ngày bắt đầu': r.startDate ? new Date(r.startDate).toLocaleDateString('vi-VN') : '—', 'Ngày hết hạn': r.endDate ? new Date(r.endDate).toLocaleDateString('vi-VN') : '—', 'Giá trị': r.totalPrice ? fmtVnd(r.totalPrice) : '—' })) } },
+              { label: 'Tỷ lệ giữ chân', value: `${m.retentionRate}%`, sub: `${m.renewedPackages}/${m.expiredPackages} gói gia hạn`, color: 'bg-green-500', icon: '🔄',
+                explain: { title: 'Tỷ lệ giữ chân (Retention Rate)', formula: '(Số gói hết hạn trong kỳ mà khách mua gói mới) / (Tổng số gói hết hạn trong kỳ) × 100%', description: 'Đo lường tỷ lệ khách hàng tiếp tục gia hạn khi gói tập hết hạn. Tỷ lệ giữ chân cao cho thấy dịch vụ tốt, khách hàng hài lòng. Nếu giữ chân = 100% nghĩa là tất cả khách hết hạn đều gia hạn.', example: `Trong kỳ có ${m.expiredPackages} gói hết hạn, ${m.renewedPackages} gói được gia hạn → Tỷ lệ = ${m.retentionRate}%` },
+                drill: { title: 'Hội viên giữ chân', subtitle: `${m.renewedPackages} gói hết hạn đã gia hạn`, columns: ['Họ tên', 'SĐT', 'Gói', 'Ngày hết hạn', 'Giá trị'], rows: (m.retainedList || []).map((r: any) => ({ 'Họ tên': r.name, 'SĐT': r.phone, 'Gói': r.package, 'Ngày hết hạn': r.endDate ? new Date(r.endDate).toLocaleDateString('vi-VN') : '—', 'Giá trị': r.totalPrice ? fmtVnd(r.totalPrice) : '—' })) } },
+              { label: 'Tỷ lệ rời bỏ', value: `${m.churnRate}%`, sub: `${m.expiredPackages - m.renewedPackages} gói không gia hạn`, color: 'bg-red-500', icon: '📤',
+                explain: { title: 'Tỷ lệ rời bỏ (Churn Rate)', formula: '(Số gói hết hạn trong kỳ KHÔNG gia hạn) / (Tổng số gói hết hạn trong kỳ) × 100% = 100% − Tỷ lệ giữ chân', description: 'Đo lường tỷ lệ khách hàng ngừng sử dụng dịch vụ sau khi gói hết hạn. Tỷ lệ rời bỏ cao là dấu hiệu cần cải thiện chất lượng dịch vụ, giá cả hoặc chương trình khuyến mãi.', example: `Trong kỳ có ${m.expiredPackages} gói hết hạn, ${m.expiredPackages - m.renewedPackages} gói không gia hạn → Tỷ lệ = ${m.churnRate}%` },
+                drill: { title: 'Hội viên rời bỏ', subtitle: `${m.expiredPackages - m.renewedPackages} gói hết hạn không gia hạn`, columns: ['Họ tên', 'SĐT', 'Gói', 'Ngày hết hạn', 'Giá trị'], rows: (m.churnedList || []).map((r: any) => ({ 'Họ tên': r.name, 'SĐT': r.phone, 'Gói': r.package, 'Ngày hết hạn': r.endDate ? new Date(r.endDate).toLocaleDateString('vi-VN') : '—', 'Giá trị': r.totalPrice ? fmtVnd(r.totalPrice) : '—' })) } },
+              { label: 'ARPU', value: fmtVnd(m.arpu), sub: 'DT thực thu / HV active', color: 'bg-purple-500', icon: '💰',
+                explain: { title: 'ARPU (Average Revenue Per User)', formula: 'Tổng doanh thu thực thu trong kỳ / Số hội viên active', description: 'Doanh thu trung bình mang lại từ mỗi hội viên đang active. Chỉ số này giúp đánh giá giá trị kinh tế của mỗi khách hàng. ARPU càng cao cho thấy khả năng upsell/cross-sell tốt.', example: `DT thực thu = ${fmtVnd(m.arpu * m.activeMembers)}, HV active = ${m.activeMembers} → ARPU = ${fmtVnd(m.arpu)}` },
+                drill: null },
+              { label: 'Thời gian giữ chân TB', value: `${m.avgLifetime} tháng`, sub: `Hội viên mới: ${m.newMembers}`, color: 'bg-amber-500', icon: '📅',
+                explain: { title: 'Thời gian giữ chân trung bình', formula: 'Tổng (thời hạn các gói tập) / Số gói tập', description: 'Thời gian trung bình mà khách hàng sử dụng dịch vụ. Được tính bằng cách lấy tổng thời hạn (duration_months) của tất cả gói tập chia cho số gói. Chỉ số càng cao cho thấy khách hàng trung thành lâu dài.', example: `Tổng thời hạn các gói = X tháng, số gói = Y → TB = ${m.avgLifetime} tháng` },
+                drill: { title: 'Hội viên mới trong kỳ', subtitle: `${m.newMembers} hội viên mới đăng ký`, columns: ['Họ tên', 'SĐT', 'Giới tính', 'Ngày đăng ký'], rows: (m.newList || []).map((r: any) => ({ 'Họ tên': r.name, 'SĐT': r.phone, 'Giới tính': r.gender || '—', 'Ngày đăng ký': r.registerDate ? new Date(r.registerDate).toLocaleDateString('vi-VN') : '—' })) } },
+              { label: 'Lượt check-in kỳ', value: m.checkinsThisPeriod.toLocaleString(), sub: `${m.expiredPackages} gói hết hạn`, color: 'bg-indigo-500', icon: '✅',
+                explain: { title: 'Lượt check-in trong kỳ', formula: 'Đếm số lượt check-in có checkInTime trong khoảng [đầu kỳ, cuối kỳ]', description: 'Tổng số lần hội viên đến phòng gym và quét thẻ/check-in trong kỳ báo cáo. Chỉ số này thể hiện tần suất sử dụng thực tế của khách hàng.', example: `Có ${m.checkinsThisPeriod} lượt check-in trong kỳ này` },
+                drill: null },
+            ];
+            return (
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                {cards.map((c, i) => (
+                  <div key={i}
+                    onClick={() => c.drill && onDrilldown?.(c.drill)}
+                    className={`bg-slate-50 rounded-xl p-4 text-center ${c.drill ? 'cursor-pointer hover:shadow-md hover:bg-white hover:border-indigo-200 border border-transparent transition-all' : ''}`}>
+                    <div className="text-2xl mb-1">{c.icon}</div>
+                    <p className="text-xl font-bold text-slate-900">{c.value}</p>
+                    <p className="text-xs font-medium text-slate-600 mt-1 underline decoration-dotted underline-offset-2 cursor-help hover:text-blue-600 transition-colors"
+                      onClick={(e) => { e.stopPropagation(); onExplain?.(c.explain); }}>{c.label}</p>
+                    <p className="text-[10px] text-slate-400 mt-0.5">{c.sub}</p>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
+      {/* 6. HIỆU SUẤT HLV */}
+      {data.trainerPerformance && data.trainerPerformance.length > 0 && (
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+          <div className="flex items-center justify-between mb-1">
+            <h2 className="text-lg font-bold text-slate-900">Hiệu suất HLV</h2>
+            <span className="text-xs bg-violet-50 text-violet-600 px-2.5 py-1 rounded-full font-medium">DT & PT Sessions</span>
+          </div>
+          <p className="text-xs text-slate-500 mb-4">Xếp hạng huấn luyện viên theo doanh thu và số buổi tập</p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-200">
+                  <th className="text-left py-3 px-3 text-slate-500 font-medium w-8">#</th>
+                  <th className="text-left py-3 px-3 text-slate-500 font-medium">HLV</th>
+                  <th className="text-right py-3 px-3 text-slate-500 font-medium">Doanh thu</th>
+                  <th className="text-right py-3 px-3 text-slate-500 font-medium">Buổi PT</th>
+                  <th className="text-right py-3 px-3 text-slate-500 font-medium">Khách hàng</th>
+                  <th className="text-center py-3 px-3 text-slate-500 font-medium">Đánh giá</th>
+                  <th className="text-right py-3 px-3 text-slate-500 font-medium">Hoa hồng</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.trainerPerformance.map((t: any, i: number) => (
+                  <tr key={i} className="border-b border-slate-50 hover:bg-slate-50">
+                    <td className="py-3 px-3">
+                      <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${i === 0 ? 'bg-yellow-100 text-yellow-700' : i === 1 ? 'bg-slate-200 text-slate-600' : i === 2 ? 'bg-orange-100 text-orange-700' : 'bg-slate-50 text-slate-500'}`}>
+                        {i + 1}
+                      </span>
+                    </td>
+                    <td className="py-3 px-3 font-medium text-slate-800">{t.name}</td>
+                    <td className="py-3 px-3 text-right font-semibold text-slate-800">{fmtVnd(t.revenue)}</td>
+                    <td className="py-3 px-3 text-right text-slate-700">{t.sessions}</td>
+                    <td className="py-3 px-3 text-right text-slate-700">{t.uniqueCustomers}</td>
+                    <td className="py-3 px-3 text-center">
+                      {t.rating > 0 ? (
+                        <span className="text-amber-500 font-medium">★ {t.rating.toFixed(1)}</span>
+                      ) : <span className="text-slate-400">—</span>}
+                    </td>
+                    <td className="py-3 px-3 text-right text-slate-700">{fmtVnd(t.estimatedCommission)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* 7. SO SÁNH CLB */}
+      {data.clubComparison && data.clubComparison.length > 0 && (
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+          <div className="flex items-center justify-between mb-1">
+            <h2 className="text-lg font-bold text-slate-900">So sánh câu lạc bộ</h2>
+            <span className="text-xs bg-teal-50 text-teal-600 px-2.5 py-1 rounded-full font-medium">Revenue & Margin</span>
+          </div>
+          <p className="text-xs text-slate-500 mb-4">So sánh hiệu quả kinh doanh giữa các chi nhánh trong kỳ</p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-200">
+                  <th className="text-left py-3 px-3 text-slate-500 font-medium">CLB</th>
+                  <th className="text-right py-3 px-3 text-slate-500 font-medium">Doanh thu</th>
+                  <th className="text-right py-3 px-3 text-slate-500 font-medium">Chi phí</th>
+                  <th className="text-right py-3 px-3 text-slate-500 font-medium">Lợi nhuận</th>
+                  <th className="text-center py-3 px-3 text-slate-500 font-medium">Margin</th>
+                  <th className="text-center py-3 px-3 text-slate-500 font-medium">Hội viên</th>
+                  <th className="text-center py-3 px-3 text-slate-500 font-medium">HLV</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.clubComparison.map((c: any, i: number) => (
+                  <tr key={i} className="border-b border-slate-50 hover:bg-slate-50">
+                    <td className="py-3 px-3 font-medium text-slate-800">{c.name}</td>
+                    <td className="py-3 px-3 text-right font-semibold text-slate-800">{fmtVnd(c.revenue)}</td>
+                    <td className="py-3 px-3 text-right text-red-600">{fmtVnd(c.expense)}</td>
+                    <td className={`py-3 px-3 text-right font-semibold ${c.profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>{fmtVnd(c.profit)}</td>
+                    <td className="py-3 px-3 text-center">
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${c.margin >= 30 ? 'bg-green-100 text-green-700' : c.margin >= 10 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>
+                        {c.margin}%
+                      </span>
+                    </td>
+                    <td className="py-3 px-3 text-center text-slate-700">{c.memberCount}</td>
+                    <td className="py-3 px-3 text-center text-slate-700">{c.trainerCount}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {/* Bar chart so sánh */}
+          <div className="mt-4">
+            <ResponsiveContainer width="100%" height={250}>
+              <BarChart data={data.clubComparison}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                <YAxis tickFormatter={fmt} tick={{ fontSize: 11 }} />
+                <Tooltip formatter={(v: number) => fmtVnd(v)} />
+                <Legend />
+                <Bar dataKey="revenue" fill="#6366f1" name="Doanh thu" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="expense" fill="#f59e0b" name="Chi phí" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="profit" fill="#10b981" name="Lợi nhuận" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
     </>
   );
 }
