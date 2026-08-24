@@ -1,12 +1,15 @@
 import { AdminLayout } from '../../components/AdminLayout';
 import { Pagination } from '../../components/Pagination';
 import { Button } from '@mui/material';
-import { Search, Edit, Trash2, Eye, X, Check, X as XIcon, Clock, Package, Star } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { Search, Edit, Trash2, Eye, X, Check, X as XIcon, Clock, Package, Star, ScanFace, Loader2, Camera } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router';
 import { getAuthHeaders, getApiUrl } from '../../context/AuthContext';
 import { useClub } from '../../context/ClubContext';
 import { toast } from 'sonner';
+import Webcam from 'react-webcam';
+import * as faceapi from 'face-api.js';
+import axios from 'axios';
 
 interface Customer {
   _id: string;
@@ -23,6 +26,7 @@ interface Customer {
   status: 'pending' | 'pending_approval' | 'approved' | 'rejected' | 'locked';
   rejectionReason?: string;
   createdAt: string;
+  faceDescriptor?: number[];
 }
 
 interface PackageItem {
@@ -34,6 +38,128 @@ interface PackageItem {
   disciplineId?: { _id: string; name: string };
   locationId?: { _id: string; title: string };
   is_active: boolean;
+}
+
+function FaceRegisterModal({
+  customer,
+  isOpen,
+  onClose,
+  onSuccess
+}: {
+  customer: Customer | null;
+  isOpen: boolean;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const webcamRef = useRef<Webcam>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState(false);
+
+  if (!isOpen || !customer) return null;
+
+  const handleCaptureAndRegister = async () => {
+    if (!webcamRef.current || !webcamRef.current.video) return;
+
+    setLoading(true);
+    setError('');
+
+    try {
+      const MODEL_URL = '/models';
+      await Promise.all([
+        faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+        faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+        faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
+      ]);
+
+      const video = webcamRef.current.video;
+      const detection = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 224 }))
+        .withFaceLandmarks()
+        .withFaceDescriptor();
+
+      if (!detection) {
+        setError('Không phát hiện khuôn mặt rõ ràng. Vui lòng nhìn thẳng vào camera!');
+        setLoading(false);
+        return;
+      }
+
+      const descriptorArray = Array.from(detection.descriptor);
+      const backendUrl = getApiUrl() || 'http://localhost:5000';
+
+      const res = await axios.post(`${backendUrl}/api/checkin/face/register`, {
+        customerId: customer._id,
+        faceDescriptor: descriptorArray
+      }, { headers: getAuthHeaders() });
+
+      if (res.status === 200) {
+        setSuccess(true);
+        toast.success(`Đã đăng ký FaceID thành công cho ${customer.fullName}`);
+        setTimeout(() => {
+          setSuccess(false);
+          onSuccess();
+          onClose();
+        }, 1500);
+      }
+    } catch (err: any) {
+      setError(err.response?.data?.error || err.message || 'Đăng ký khuôn mặt thất bại');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
+        <button onClick={onClose} className="absolute right-4 top-4 text-slate-400 hover:text-slate-600">
+          <X className="w-5 h-5" />
+        </button>
+
+        <div className="flex items-center gap-2.5 mb-1">
+          <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
+            <ScanFace className="w-5 h-5" />
+          </div>
+          <h3 className="font-bold text-slate-900 text-lg">Đăng ký khuôn mặt FaceID</h3>
+        </div>
+        <p className="text-xs text-slate-500 mb-4">Hội viên: <b className="text-indigo-600">{customer.fullName}</b></p>
+
+        {error && (
+          <div className="bg-red-50 text-red-600 text-xs p-3 rounded-xl mb-3 border border-red-200">
+            {error}
+          </div>
+        )}
+
+        {success ? (
+          <div className="py-12 flex flex-col items-center justify-center text-emerald-600 space-y-2">
+            <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center">
+              <Check className="w-6 h-6 stroke-[3]" />
+            </div>
+            <p className="font-bold text-sm">Đăng ký FaceID thành công!</p>
+          </div>
+        ) : (
+          <>
+            <div className="w-full aspect-[4/3] rounded-xl overflow-hidden bg-black relative mb-4 border border-slate-200">
+              <Webcam
+                ref={webcamRef}
+                audio={false}
+                className="w-full h-full object-cover"
+                screenshotFormat="image/jpeg"
+              />
+              <div className="absolute inset-0 border-2 border-dashed border-indigo-400/70 rounded-full m-8 pointer-events-none" />
+            </div>
+
+            <button
+              onClick={handleCaptureAndRegister}
+              disabled={loading}
+              className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-sm rounded-xl flex items-center justify-center gap-2 shadow-md transition"
+            >
+              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Camera className="w-4 h-4" />}
+              {loading ? 'Đang trích xuất dữ liệu...' : 'Chụp và Lưu FaceID'}
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
 }
 
 export function CustomerList() {
@@ -58,16 +184,23 @@ export function CustomerList() {
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
 
+  const [faceModal, setFaceModal] = useState<{ open: boolean; customer: Customer | null }>({
+    open: false,
+    customer: null
+  });
+
+  const backendUrl = getApiUrl() || 'http://localhost:5000';
+
   const fetchCustomers = async (p = page) => {
     try {
       const base = selectedClub !== 'all' ? `?locationId=${selectedClub}` : '?';
-      const url = `${getApiUrl()}/api/customers${base}&page=${p}&limit=15`;
-      const res = await fetch(url, { headers: getAuthHeaders() });
+      const url = `${backendUrl}/api/customers${base}&page=${p}&limit=15`;
+      const res = await fetch(url, { headers: getAuthHeaders() as any });
       const data = await res.json();
       setCustomers(data.data || []);
       setTotalPages(data.totalPages || 1);
       setTotal(data.total || 0);
-    } catch {}
+    } catch { }
   };
 
   useEffect(() => { setPage(1); fetchCustomers(1); }, [selectedClub]);
@@ -75,8 +208,8 @@ export function CustomerList() {
   const fetchReviews = async (customerId: string) => {
     setLoadingReviews(true);
     try {
-      const res = await fetch(`${getApiUrl()}/api/reviews/customer/${customerId}`, {
-        headers: getAuthHeaders()
+      const res = await fetch(`${backendUrl}/api/reviews/customer/${customerId}`, {
+        headers: getAuthHeaders() as any
       });
       const data = await res.json();
       setCustomerReviews(Array.isArray(data) ? data : []);
@@ -100,30 +233,33 @@ export function CustomerList() {
 
   const handleApprove = async (id: string) => {
     try {
-      const res = await fetch(`${getApiUrl()}/api/customers/${id}/approve`, { method: 'POST', headers: getAuthHeaders() });
+      const res = await fetch(`${backendUrl}/api/customers/${id}/approve`, { method: 'POST', headers: getAuthHeaders() as any });
       if (res.ok) {
-        alert('Đã xác nhận khách hàng!');
+        toast.success('Đã xác nhận khách hàng!');
         fetchCustomers(page);
       }
-    } catch {}
+    } catch { }
   };
 
   const handleReject = async () => {
     if (!rejectTarget) return;
     try {
-      const res = await fetch(`${getApiUrl()}/api/customers/${rejectTarget}/reject`, {
+      const res = await fetch(`${backendUrl}/api/customers/${rejectTarget}/reject`, {
         method: 'POST',
-        headers: getAuthHeaders(),
+        headers: {
+          ...(getAuthHeaders() as any),
+          'Content-Type': 'application/json'
+        },
         body: JSON.stringify({ reason: rejectReason || 'Thông tin không đúng' })
       });
       if (res.ok) {
-        alert('Đã từ chối khách hàng!');
+        toast.success('Đã từ chối khách hàng!');
         setShowRejectModal(false);
         setRejectTarget(null);
         setRejectReason('');
         fetchCustomers(page);
       }
-    } catch {}
+    } catch { }
   };
 
   const openRegModal = async (customer: Customer) => {
@@ -132,16 +268,18 @@ export function CustomerList() {
     setRegSelectedDuration(null);
     setShowRegModal(true);
     try {
-      const res = await fetch(`${getApiUrl()}/api/packages?page=1&limit=50`);
+      const res = await fetch(`${backendUrl}/api/packages?page=1&limit=50`, {
+        headers: getAuthHeaders() as any
+      });
       const json = await res.json();
       const list = json?.data || (Array.isArray(json) ? json : []);
       setRegPackages(list.filter((p: PackageItem) => p.is_active));
-    } catch {}
+    } catch { }
   };
 
   const handleRegSubmit = async () => {
     if (!regCustomer || !regSelectedPkg || !regSelectedDuration) {
-      alert('Vui lòng chọn đầy đủ thông tin!');
+      toast.error('Vui lòng chọn đầy đủ thông tin!');
       return;
     }
     setRegSubmitting(true);
@@ -149,19 +287,23 @@ export function CustomerList() {
       const body = {
         customerId: regCustomer._id,
         package_id: regSelectedPkg._id,
-        locationId: regCustomer.locationId || (selectedClub !== 'all' ? selectedClub : null),
+        locationId: (regCustomer as any).locationId || (selectedClub !== 'all' ? selectedClub : null),
         duration_months: regSelectedDuration.months,
         total_price: regSelectedPkg.unitPrice * regSelectedDuration.months * (1 - (regSelectedDuration.discount || 0) / 100),
         signature: ''
       };
-      const headers = getAuthHeaders();
-      const res = await fetch(`${getApiUrl()}/api/user-packages/admin-register`, {
+
+      const res = await fetch(`${backendUrl}/api/user-packages/admin-register`, {
         method: 'POST',
-        headers,
+        headers: {
+          ...(getAuthHeaders() as any),
+          'Content-Type': 'application/json'
+        },
         body: JSON.stringify(body)
       });
+
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Đăng ký thất bại!');
+      if (!res.ok) throw new Error(data.error || data.message || 'Đăng ký thất bại!');
       toast.success('Đăng ký gói tập thành công!');
       setShowRegModal(false);
       fetchCustomers(page);
@@ -175,12 +317,12 @@ export function CustomerList() {
   const handleDelete = async (id: string) => {
     if (!confirm('Bạn có chắc chắn muốn xóa khách hàng này?')) return;
     try {
-      const res = await fetch(`${getApiUrl()}/api/customers/${id}`, { method: 'DELETE', headers: getAuthHeaders() });
+      const res = await fetch(`${backendUrl}/api/customers/${id}`, { method: 'DELETE', headers: getAuthHeaders() as any });
       if (res.ok) {
-        alert('Đã xóa khách hàng!');
+        toast.success('Đã xóa khách hàng!');
         fetchCustomers(page);
       }
-    } catch {}
+    } catch { }
   };
 
   const statusBadge = (status: string) => {
@@ -206,15 +348,14 @@ export function CustomerList() {
       <div className="max-w-7xl mx-auto space-y-6">
         <div>
           <h1 className="text-3xl font-bold text-slate-900 mb-2">Danh sách khách hàng</h1>
-          <p className="text-slate-600">Quản lý thông tin khách hàng</p>
+          <p className="text-slate-600">Quản lý thông tin khách hàng và FaceID</p>
         </div>
 
         <div className="flex gap-2 bg-white rounded-2xl shadow-sm border border-slate-100 p-2 overflow-x-auto">
           {(['all', 'pending', 'pending_approval', 'approved', 'rejected'] as const).map(tab => (
             <button key={tab} onClick={() => setActiveTab(tab)}
-              className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all whitespace-nowrap ${
-                activeTab === tab ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-100'
-              }`}>
+              className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all whitespace-nowrap ${activeTab === tab ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-100'
+                }`}>
               {tab === 'all' ? 'Tất cả' : tab === 'pending' ? 'Chưa điền TT' : tab === 'pending_approval' ? 'Chờ xác nhận' : tab === 'approved' ? 'Đã duyệt' : 'Từ chối'}
               {tab === 'pending_approval' && customers.filter(c => c.status === 'pending_approval').length > 0 && (
                 <span className="ml-2 bg-red-500 text-white px-2 py-0.5 rounded-full text-xs">{customers.filter(c => c.status === 'pending_approval').length}</span>
@@ -260,7 +401,15 @@ export function CustomerList() {
                     <td className="px-6 py-4 text-sm text-slate-600">{customer.email || '-'}</td>
                     <td className="px-6 py-4">{statusBadge(customer.status)}</td>
                     <td className="px-6 py-4">
-                      <div className="flex gap-2">
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => setFaceModal({ open: true, customer })}
+                          className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition"
+                          title="Đăng ký FaceID"
+                        >
+                          <ScanFace className="w-4 h-4" />
+                        </button>
+
                         <button onClick={() => { setSelectedCustomer(customer); fetchReviews(customer._id); }} className="p-2 text-green-600 hover:bg-green-50 rounded-lg" title="Chi tiết">
                           <Eye className="w-4 h-4" />
                         </button>
@@ -297,6 +446,13 @@ export function CustomerList() {
           </div>
           <Pagination page={page} totalPages={totalPages} total={total} limit={15} onPageChange={(p) => { setPage(p); fetchCustomers(p); }} />
         </div>
+
+        <FaceRegisterModal
+          isOpen={faceModal.open}
+          customer={faceModal.customer}
+          onClose={() => setFaceModal({ open: false, customer: null })}
+          onSuccess={() => fetchCustomers(page)}
+        />
 
         {selectedCustomer && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setSelectedCustomer(null)}>
@@ -357,19 +513,18 @@ export function CustomerList() {
                     {selectedCustomer.idCardFront && (
                       <div>
                         <p className="text-sm text-slate-600 mb-2">Mặt trước căn cước</p>
-                        <img src={`${getApiUrl()}/uploads/customers/${selectedCustomer.idCardFront}`} alt="Front" className="w-full rounded-xl border border-slate-200" />
+                        <img src={`${backendUrl}/uploads/customers/${selectedCustomer.idCardFront}`} alt="Front" className="w-full rounded-xl border border-slate-200" />
                       </div>
                     )}
                     {selectedCustomer.idCardBack && (
                       <div>
                         <p className="text-sm text-slate-600 mb-2">Mặt sau căn cước</p>
-                        <img src={`${getApiUrl()}/uploads/customers/${selectedCustomer.idCardBack}`} alt="Back" className="w-full rounded-xl border border-slate-200" />
+                        <img src={`${backendUrl}/uploads/customers/${selectedCustomer.idCardBack}`} alt="Back" className="w-full rounded-xl border border-slate-200" />
                       </div>
                     )}
                   </div>
                 )}
 
-                {/* Customer Reviews */}
                 <div className="pt-4 border-t border-slate-200">
                   <h3 className="text-lg font-bold text-slate-900 mb-3 flex items-center gap-2">
                     <Star className="w-5 h-5 text-amber-400" /> Đánh giá của khách hàng
@@ -421,7 +576,6 @@ export function CustomerList() {
           </div>
         )}
 
-        {/* Register Package Modal */}
         {showRegModal && regCustomer && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowRegModal(false)}>
             <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
@@ -432,7 +586,6 @@ export function CustomerList() {
                 </button>
               </div>
               <div className="p-6 space-y-6">
-                {/* 1. Chọn gói tập */}
                 <div>
                   <h3 className="text-lg font-bold text-slate-900 mb-3">1. Chọn gói tập</h3>
                   <select
@@ -455,7 +608,6 @@ export function CustomerList() {
                   </select>
                 </div>
 
-                {/* 2. Thông tin gói tập */}
                 {regSelectedPkg && (
                   <div className="bg-indigo-50 p-4 rounded-xl">
                     <h3 className="text-lg font-bold text-slate-900 mb-3">2. Thông tin gói tập</h3>
@@ -476,7 +628,6 @@ export function CustomerList() {
                   </div>
                 )}
 
-                {/* 3. Chọn thời gian tập */}
                 {regSelectedPkg && (
                   <div>
                     <h3 className="text-lg font-bold text-slate-900 mb-3">3. Chọn thời gian tập</h3>
@@ -492,11 +643,10 @@ export function CustomerList() {
                                   if (!stillExists) setRegSelectedDuration(monthlyDurs[0]);
                                 }
                               }}
-                              className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${
-                                (regSelectedDuration?.months || 1) < 12
+                              className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${(regSelectedDuration?.months || 1) < 12
                                   ? 'bg-white text-indigo-700 shadow-sm'
                                   : 'text-slate-500 hover:text-slate-700'
-                              }`}
+                                }`}
                             >
                               Theo tháng
                             </button>
@@ -508,11 +658,10 @@ export function CustomerList() {
                                   if (!stillExists) setRegSelectedDuration(yearlyDurs[0]);
                                 }
                               }}
-                              className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${
-                                (regSelectedDuration?.months || 0) >= 12
+                              className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${(regSelectedDuration?.months || 0) >= 12
                                   ? 'bg-white text-indigo-700 shadow-sm'
                                   : 'text-slate-500 hover:text-slate-700'
-                              }`}
+                                }`}
                             >
                               Theo năm
                             </button>
@@ -528,11 +677,10 @@ export function CustomerList() {
                                 <button
                                   key={idx}
                                   onClick={() => setRegSelectedDuration(dur)}
-                                  className={`p-4 rounded-xl border-2 transition-all text-center ${
-                                    isSelected
+                                  className={`p-4 rounded-xl border-2 transition-all text-center ${isSelected
                                       ? 'border-indigo-600 bg-indigo-50 ring-2 ring-indigo-200'
                                       : 'border-slate-200 hover:border-slate-300 bg-white'
-                                  }`}
+                                    }`}
                                 >
                                   <div className="font-bold text-slate-900 mb-1">{dur.months} tháng</div>
                                   <div className="text-xl font-extrabold text-indigo-600 mb-1">
@@ -560,7 +708,6 @@ export function CustomerList() {
                   </div>
                 )}
 
-                {/* Summary */}
                 {regSelectedPkg && regSelectedDuration && (
                   <div className="border-t border-slate-200 pt-4">
                     <div className="flex justify-between items-center mb-4">

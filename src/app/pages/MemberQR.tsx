@@ -1,318 +1,211 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
+import Webcam from 'react-webcam';
+import * as faceapi from 'face-api.js';
 import axios from 'axios';
-import { QRCodeSVG } from 'qrcode.react';
-import { Copy, Check } from 'lucide-react';
+import { ScanFace, CheckCircle2, AlertCircle, Camera, RefreshCw, Sparkles, ShieldCheck } from 'lucide-react';
+import { useAuth, getApiUrl, getAuthHeaders } from '../context/AuthContext';
 
-const MemberQR: React.FC = () => {
-    const [qrToken, setQrToken] = useState<string>('');
-    const [error, setError] = useState<string>('');
-    const [countdown, setCountdown] = useState<number>(30);
-    const [copied, setCopied] = useState<boolean>(false);
+export default function MemberQR() {
+    const { user } = useAuth();
+    const backendUrl = getApiUrl() || 'http://localhost:5000';
 
-    // Tính toán góc xoay của vòng tròn đếm ngược (30 giây tương ứng với 360 độ)
-    // Chiều dài chu vi vòng tròn SVG bán kính r=18 là 2 * pi * 18 = 113.1
-    const strokeDashoffset = 113.1 - (113.1 * countdown) / 30;
+    const [isModelLoaded, setIsModelLoaded] = useState(false);
+    const [capturing, setCapturing] = useState(false);
+    const [statusText, setStatusText] = useState('Đang khởi tạo AI...');
+    const [successMessage, setSuccessMessage] = useState('');
+    const [errorMessage, setErrorMessage] = useState('');
+    const [hasFaceDetected, setHasFaceDetected] = useState(false);
 
-    const getNewQRCode = async () => {
-        try {
-            setError('');
-            setCopied(false);
+    const webcamRef = useRef<Webcam>(null);
+    const isProcessingRef = useRef(false);
 
-            let userLoginToken = '';
-            const authUserData = localStorage.getItem('auth_user');
-
-            if (authUserData) {
-                try {
-                    const parsedUser = JSON.parse(authUserData);
-                    userLoginToken = parsedUser.token || '';
-                } catch (e) {
-                    console.error("Lỗi parse dữ liệu auth_user:", e);
-                }
+    // 1. Nạp Model AI nhận diện khuôn mặt
+    useEffect(() => {
+        const loadModels = async () => {
+            try {
+                setStatusText('Đang tải mô hình Face AI...');
+                const MODEL_URL = '/models';
+                await Promise.all([
+                    faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+                    faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+                    faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
+                ]);
+                setIsModelLoaded(true);
+                setStatusText('Sẵn sàng quét khuôn mặt');
+            } catch (err) {
+                console.error("Lỗi nạp model:", err);
+                setErrorMessage('Không thể nạp mô hình nhận diện khuôn mặt. Vui lòng tải lại trang.');
             }
+        };
+        loadModels();
+    }, []);
 
-            if (!userLoginToken) {
-                setError('Bạn chưa đăng nhập hệ thống. Vui lòng đăng nhập trước!');
+    // 2. Vòng lặp phát hiện khuôn mặt thời gian thực
+    useEffect(() => {
+        if (!isModelLoaded) return;
+
+        const interval = setInterval(async () => {
+            if (
+                isProcessingRef.current ||
+                capturing ||
+                !webcamRef.current?.video ||
+                webcamRef.current.video.readyState !== 4
+            ) {
                 return;
             }
 
-            const response = await axios.get('http://localhost:5000/api/checkin/qr', {
-                headers: {
-                    Authorization: `Bearer ${userLoginToken}`
+            try {
+                isProcessingRef.current = true;
+                const video = webcamRef.current.video;
+                const detection = await faceapi.detectSingleFace(
+                    video,
+                    new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.35 })
+                );
+
+                if (detection) {
+                    setHasFaceDetected(true);
+                    setStatusText('Đã phát hiện khuôn mặt hợp lệ! Bạn có thể nhấn Cập nhật');
+                } else {
+                    setHasFaceDetected(false);
+                    setStatusText('Vui lòng đưa khuôn mặt vào giữa vòng tròn');
                 }
+            } catch (e) {
+            } finally {
+                isProcessingRef.current = false;
+            }
+        }, 400);
+
+        return () => clearInterval(interval);
+    }, [isModelLoaded, capturing]);
+
+    // 3. Chụp và gửi dữ liệu Face Descriptor về server
+    const handleRegisterFace = async () => {
+        if (!webcamRef.current?.video || !user) return;
+        setCapturing(true);
+        setErrorMessage('');
+        setSuccessMessage('');
+
+        try {
+            setStatusText('Đang trích xuất đặc trưng khuôn mặt...');
+            const video = webcamRef.current.video;
+            const detection = await faceapi.detectSingleFace(
+                video,
+                new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.4 })
+            )
+                .withFaceLandmarks()
+                .withFaceDescriptor();
+
+            if (!detection) {
+                setErrorMessage('Không thể nhận diện rõ khuôn mặt. Vui lòng nhìn thẳng và đủ sáng!');
+                setCapturing(false);
+                return;
+            }
+
+            const descriptorArray = Array.from(detection.descriptor);
+            const customerId = (user as any)._id || (user as any).id || (user as any).customerId;
+
+            setStatusText('Đang lưu dữ liệu FaceID vào hệ thống...');
+            const res = await axios.post(`${backendUrl}/api/checkin/face/register`, {
+                customerId,
+                faceDescriptor: descriptorArray
+            }, {
+                headers: getAuthHeaders() as any
             });
 
-            if (response.data && response.data.token) {
-                setQrToken(response.data.token);
-                setCountdown(30);
+            if (res.data?.success) {
+                setSuccessMessage('Cập nhật khuôn mặt FaceID thành công! Bây giờ bạn có thể điểm danh trực tiếp bằng FaceID tại quầy.');
+            } else {
+                setErrorMessage(res.data?.error || 'Không thể cập nhật khuôn mặt');
             }
         } catch (err: any) {
-            setError(err.response?.data?.error || 'Không thể kết nối đến máy chủ phòng gym');
-            setQrToken('');
+            console.error("Lỗi cập nhật FaceID:", err);
+            setErrorMessage(err.response?.data?.error || err.message || 'Lỗi kết nối máy chủ');
+        } finally {
+            setCapturing(false);
         }
-    };
-
-    useEffect(() => {
-        getNewQRCode();
-        const intervalId = setInterval(() => {
-            getNewQRCode();
-        }, 30000);
-
-        return () => clearInterval(intervalId);
-    }, []);
-
-    useEffect(() => {
-        if (countdown > 0 && qrToken) {
-            const timerId = setTimeout(() => setCountdown(countdown - 1), 1000);
-            return () => clearTimeout(timerId);
-        }
-    }, [countdown, qrToken]);
-
-    const handleCopyToken = () => {
-        if (!qrToken) return;
-        navigator.clipboard.writeText(qrToken);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
     };
 
     return (
-        <div style={styles.container}>
-            <div style={styles.card}>
-                {/* ĐIỂM NHẤN: Ô tiêu đề đổ màu xám nhẹ sang trọng, chữ đen rõ nét */}
-                <div style={styles.headerContainer}>
-                    <p style={styles.headerSub}>QR ĐIỂM DANH</p>
-                    <h1 style={styles.headerTitle}>QR Check-in</h1>
+        <div className="min-h-[85vh] flex items-center justify-center p-4 bg-slate-50/50">
+            <div className="max-w-lg w-full bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 shadow-xl space-y-6 text-slate-900">
+
+                {/* Tiêu đề */}
+                <div className="text-center space-y-2">
+                    <div className="inline-flex p-3 bg-indigo-50 border border-indigo-100 rounded-2xl text-indigo-600 mb-1">
+                        <ScanFace className="w-8 h-8 animate-pulse" />
+                    </div>
+                    <h1 className="text-2xl font-black tracking-tight text-slate-950">
+                        Cập Nhật FaceID Hội Viên
+                    </h1>
+                    <p className="text-xs sm:text-sm text-slate-500 max-w-sm mx-auto">
+                        Cập nhật lại khuôn mặt của bạn để tự động nhận diện và mở cửa/tủ đồ nhanh chóng tại phòng tập.
+                    </p>
                 </div>
 
-                {/* Khối báo lỗi với nền đỏ nhạt nổi bật hẳn lên */}
-                {error && (
-                    <div style={styles.errorBox}>
-                        <p style={{ margin: '0 0 12px 0' }}>⚠️ {error}</p>
-                        <button onClick={getNewQRCode} style={styles.retryButton}>Thử lại</button>
+                {/* Thông báo thành công */}
+                {successMessage && (
+                    <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-2xl flex items-start gap-3 text-xs sm:text-sm">
+                        <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+                        <div className="font-semibold">{successMessage}</div>
                     </div>
                 )}
 
-                {/* Giao diện QR chính */}
-                {qrToken && !error && (
-                    <div style={styles.qrContent}>
-                        {/* Khung viền bọc QR vững chãi */}
-                        <div style={styles.qrWrapper}>
-                            <QRCodeSVG
-                                value={qrToken}
-                                size={240}
-                                fgColor="#000000"
-                                bgColor="#ffffff"
-                                includeMargin={true}
-                            />
-                        </div>
-
-                        {/* Vòng tròn đếm ngược màu đậm tương phản */}
-                        <div style={styles.countdownContainer}>
-                            <svg width="50" height="50" style={styles.svgCircle}>
-                                <circle cx="25" cy="25" r="18" style={styles.bgCircle} />
-                                <circle
-                                    cx="25"
-                                    cy="25"
-                                    r="18"
-                                    style={{
-                                        ...styles.fgCircle,
-                                        strokeDashoffset: strokeDashoffset
-                                    }}
-                                />
-                            </svg>
-                            <span style={styles.countdownText}>{countdown}s</span>
-                        </div>
-
-                        {/* CHỮ ĐEN ĐẬM: Dễ đọc trên nền sáng */}
-                        <p style={styles.subText}>Tự động làm mới sau mỗi 30 giây</p>
-
-                        {/* Ô CHỨA TOKEN MÀU XÁM: Tạo điểm nhấn bọc khối rõ ràng, chữ đen dễ đối chiếu */}
-                        <div style={styles.tokenContainer} onClick={handleCopyToken} title="Nhấn để sao chép chuỗi mã">
-                            <p style={styles.tokenText}>{qrToken}</p>
-                            <div style={styles.copyBadge}>
-                                {copied ? (
-                                    <>
-                                        <Check size={14} style={{ color: '#10b981' }} />
-                                        <span style={{ color: '#10b981', fontWeight: '700' }}>Copied</span>
-                                    </>
-                                ) : (
-                                    <>
-                                        <Copy size={14} style={{ color: '#0f172a' }} />
-                                        <span>Copy token</span>
-                                    </>
-                                )}
-                            </div>
-                        </div>
+                {/* Thông báo lỗi */}
+                {errorMessage && (
+                    <div className="p-4 bg-red-50 border border-red-200 text-red-800 rounded-2xl flex items-start gap-3 text-xs sm:text-sm">
+                        <AlertCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+                        <div className="font-semibold">{errorMessage}</div>
                     </div>
                 )}
 
-                {!qrToken && !error && (
-                    <p style={styles.loadingText}>Đang khởi tạo mã bảo mật...</p>
-                )}
+                {/* Khung Camera */}
+                <div className="relative w-full aspect-square max-w-[340px] mx-auto rounded-3xl overflow-hidden bg-slate-950 border-4 border-slate-100 shadow-inner flex items-center justify-center">
+                    <Webcam
+                        ref={webcamRef}
+                        audio={false}
+                        screenshotFormat="image/jpeg"
+                        className="w-full h-full object-cover"
+                    />
+
+                    {/* Vòng hướng dẫn quét khuôn mặt */}
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                        <div className={`w-56 h-56 rounded-full border-4 border-dashed transition-all duration-300 ${hasFaceDetected ? 'border-emerald-400 scale-105' : 'border-slate-500 opacity-60'
+                            }`} />
+                    </div>
+
+                    {/* Trạng thái quét */}
+                    <div className="absolute bottom-3 left-3 right-3 bg-slate-900/80 backdrop-blur-sm text-white px-3 py-1.5 rounded-xl text-[11px] text-center font-medium border border-slate-800">
+                        {statusText}
+                    </div>
+                </div>
+
+                {/* Nút bấm hành động */}
+                <div className="space-y-3">
+                    <button
+                        onClick={handleRegisterFace}
+                        disabled={!isModelLoaded || capturing}
+                        className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white font-bold rounded-2xl text-sm shadow-lg hover:shadow-indigo-200 transition flex items-center justify-center gap-2"
+                    >
+                        {capturing ? (
+                            <>
+                                <RefreshCw className="w-4 h-4 animate-spin" />
+                                <span>Đang phân tích & Cập nhật FaceID...</span>
+                            </>
+                        ) : (
+                            <>
+                                <Camera className="w-4 h-4" />
+                                <span>Chụp & Cập Nhật Lại Khuôn Mặt</span>
+                            </>
+                        )}
+                    </button>
+
+                    <div className="flex items-center justify-center gap-1.5 text-[11px] text-slate-400 font-medium text-center">
+                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
+                        <span>Dữ liệu khuôn mặt được mã hóa an toàn dưới dạng vector 128-D</span>
+                    </div>
+                </div>
+
             </div>
         </div>
     );
-};
-
-// ĐỊNH NGHĨA CSS OBJECTS - ĐÃ ĐƯỢC TỐI ƯU HÓA PADDING TRÁNH BỊ ĐÈ BỞI MENU NAVBAR
-const styles: { [key: string]: React.CSSProperties } = {
-    container: {
-        display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'center',
-        minHeight: '100vh',
-        backgroundColor: '#f8fafc', // Màu nền xám/trắng dịu mắt
-        fontFamily: '"Segoe UI", Tahoma, Geneva, Verdana, sans-serif',
-        padding: '120px 20px 60px 20px' // Đẩy phần trên xuống 120px để tránh bị Header che khuất
-    },
-    card: {
-        width: '100%',
-        maxWidth: '450px',
-        textAlign: 'center',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center'
-    },
-    headerContainer: {
-        backgroundColor: '#f1f5f9', // Ô TIÊU ĐỀ: Chuyển sang màu xám nhẹ làm điểm nhấn
-        border: '1px solid #cbd5e1', // Viền xám đậm nét hơn một chút
-        borderRadius: '24px',
-        padding: '20px 40px',
-        width: '100%',
-        marginBottom: '40px',
-        boxShadow: '0 4px 12px rgba(15, 23, 42, 0.03)'
-    },
-    headerSub: {
-        color: '#475569', // Chữ phụ xám đậm sắc sảo
-        fontSize: '12px',
-        fontWeight: '700',
-        letterSpacing: '4px',
-        margin: '0 0 8px 0'
-    },
-    headerTitle: {
-        color: '#0f172a', // CHỮ ĐEN ĐẬM: Tuyệt đối rõ ràng
-        fontSize: '26px',
-        fontWeight: '800',
-        margin: 0
-    },
-    qrContent: {
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        width: '100%'
-    },
-    qrWrapper: {
-        padding: '16px',
-        backgroundColor: '#ffffff',
-        borderRadius: '24px',
-        boxShadow: '0 10px 25px rgba(15, 23, 42, 0.06)',
-        marginBottom: '30px',
-        border: '1px solid #e2e8f0'
-    },
-    countdownContainer: {
-        position: 'relative',
-        width: '50px',
-        height: '50px',
-        display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginBottom: '15px'
-    },
-    svgCircle: {
-        transform: 'rotate(-90deg)',
-    },
-    bgCircle: {
-        fill: 'none',
-        stroke: '#e2e8f0', // Vòng chạy nền xám rõ nét
-        strokeWidth: 4
-    },
-    fgCircle: {
-        fill: 'none',
-        stroke: '#4f46e5', // Màu indigo/tím công nghệ làm tâm điểm nhấn
-        strokeWidth: 4,
-        strokeDasharray: '113.1',
-        transition: 'stroke-dashoffset 1s linear',
-        strokeLinecap: 'round'
-    },
-    countdownText: {
-        position: 'absolute',
-        color: '#0f172a', // CHỮ ĐEN ĐẬM
-        fontSize: '13px',
-        fontWeight: '700'
-    },
-    subText: {
-        color: '#334155', // CHỮ ĐEN XÁM: Không lo bị mờ hay khó nhìn nữa
-        fontSize: '14px',
-        margin: '0 0 35px 0',
-        fontWeight: '600'
-    },
-    tokenContainer: {
-        position: 'relative',
-        width: '100%',
-        maxHeight: '110px',
-        backgroundColor: '#f1f5f9', // Ô CHỨA MÃ: Đổi sang màu xám nhẹ để bọc khối làm điểm nhấn
-        border: '1px solid #e2e8f0',
-        borderRadius: '16px',
-        cursor: 'pointer',
-        padding: '16px 14px 45px 14px', // Tăng padding để đẩy ô chữ cân đối
-        overflow: 'hidden',
-        boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.02)'
-    },
-    tokenText: {
-        color: '#475569', // CHỮ ĐEN XÁM: Tăng tương phản sắc nét hơn rất nhiều
-        fontSize: '11px',
-        lineHeight: '1.6',
-        margin: 0,
-        wordBreak: 'break-all',
-        textAlign: 'center',
-        userSelect: 'none',
-        fontWeight: '500'
-    },
-    copyBadge: {
-        position: 'absolute',
-        bottom: '8px',
-        right: '50%',
-        transform: 'translateX(50%)', // Căn chỉnh nút copy ra chính giữa đáy ô xám cho cân bằng tỉ lệ
-        backgroundColor: '#ffffff',
-        color: '#0f172a', // CHỮ ĐEN ĐẬM
-        padding: '5px 14px',
-        borderRadius: '8px',
-        fontSize: '11px',
-        fontWeight: '700',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '6px',
-        boxShadow: '0 2px 6px rgba(15, 23, 42, 0.08)',
-        border: '1px solid #cbd5e1'
-    },
-    errorBox: {
-        color: '#991b1b',
-        backgroundColor: '#fef2f2',
-        padding: '20px',
-        borderRadius: '16px',
-        fontSize: '14px',
-        border: '1px solid #fca5a5',
-        width: '100%',
-        fontWeight: '700',
-        marginBottom: '20px'
-    },
-    retryButton: {
-        backgroundColor: '#ef4444',
-        color: '#ffffff',
-        border: 'none',
-        padding: '8px 22px',
-        borderRadius: '10px',
-        cursor: 'pointer',
-        fontWeight: '700',
-        fontSize: '12px',
-        marginTop: '8px',
-        boxShadow: '0 2px 6px rgba(239, 68, 68, 0.2)'
-    },
-    loadingText: {
-        color: '#4f46e5',
-        fontSize: '14px',
-        fontWeight: '700',
-        fontStyle: 'italic'
-    }
-};
-
-export default MemberQR;
+}

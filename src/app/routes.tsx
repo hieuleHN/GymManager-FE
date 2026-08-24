@@ -1,6 +1,7 @@
 import MemberQR from './pages/MemberQR';
 import { StaffQR } from './pages/StaffQR';
 import { AttendanceScanner } from './pages/admin/AttendanceScanner';
+import { FaceScannerPopup } from './pages/admin/FaceScannerPopup';
 import { createBrowserRouter, Navigate, useLocation } from 'react-router';
 import { Layout } from './components/Layout';
 import { Home } from './pages/Home';
@@ -125,6 +126,7 @@ const routeFeatures: Record<string, string> = {
   '/admin/services': 'services',
   '/admin/services/history': 'services',
   '/admin/attendance': 'attendance',
+  '/admin/attendance/face-popup': 'attendance',
   '/admin/attendance/history': 'attendance',
   '/admin/staff-attendance/history': 'attendance',
   '/admin/products': 'products',
@@ -160,6 +162,7 @@ const routeFeatures: Record<string, string> = {
   '/admin/articles': 'services',
   '/admin/community': 'services'
 };
+
 function ProtectedRoute({ children, role }: { children: React.ReactNode, role?: 'member' | 'staff' }) {
   const { user, loading, hasPermission } = useAuth();
   const location = useLocation();
@@ -279,6 +282,10 @@ export const router = createBrowserRouter([
   {
     path: '/admin/attendance',
     element: <ProtectedRoute role="staff"><AttendanceScanner /></ProtectedRoute>
+  },
+  {
+    path: '/admin/attendance/face-popup',
+    element: <ProtectedRoute role="staff"><FaceScannerPopup /></ProtectedRoute>
   },
   {
     path: '/dashboard/settings',
@@ -411,7 +418,8 @@ export const router = createBrowserRouter([
   {
     path: '/admin/jobs/add',
     element: <ProtectedRoute role="staff"><AddJob /></ProtectedRoute>
-  }, {
+  },
+  {
     path: '/admin/jobs/:id/edit',
     element: <ProtectedRoute role="staff"><EditJob /></ProtectedRoute>
   },
@@ -419,7 +427,6 @@ export const router = createBrowserRouter([
     path: '/admin/statistics',
     element: <ProtectedRoute role="staff"><Statistics /></ProtectedRoute>
   },
-  
   {
     path: '/admin/clubs',
     element: <ProtectedRoute role="staff"><ClubManagement /></ProtectedRoute>
