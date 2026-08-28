@@ -15,7 +15,8 @@ import {
     KeyRound,
     ScanFace,
     ExternalLink,
-    Trash2
+    Trash2,
+    Download
 } from 'lucide-react';
 import { AdminLayout } from '../../components/AdminLayout';
 import { getApiUrl, getAuthHeaders, useAuth } from '../../context/AuthContext';
@@ -662,6 +663,40 @@ export function AttendanceScanner() {
                         </span>
                     </div>
                 )}
+
+                {/* Export Excel */}
+                <div className="bg-white border border-slate-200 rounded-2xl p-4 flex flex-col sm:flex-row gap-3">
+                    <button
+                        onClick={async () => {
+                            const date = new Date().toISOString().slice(0,10);
+                            try {
+                                const res = await fetch(`${backendUrl}/api/checkin/export/excel?date=${date}`, { headers: getAuthHeaders() as any });
+                                if (!res.ok) { const d=await res.json(); throw new Error(d.message||'Không có dữ liệu'); }
+                                const blob = await res.blob();
+                                const url = window.URL.createObjectURL(blob);
+                                const a = document.createElement('a'); a.href=url; a.download=`DiemDanh_HoiVien_${date}.xlsx`; document.body.appendChild(a); a.click(); a.remove();
+                            } catch (e:any) { alert(e.message); }
+                        }}
+                        className="flex items-center justify-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-sm"
+                    >
+                        <Download className="w-4 h-4" /> Xuất Excel điểm danh hội viên hôm nay
+                    </button>
+                    <button
+                        onClick={async () => {
+                            const date = new Date().toISOString().slice(0,10);
+                            try {
+                                const res = await fetch(`${backendUrl}/api/staff-attendance/export/excel?date=${date}`, { headers: getAuthHeaders() as any });
+                                if (!res.ok) { const d=await res.json(); throw new Error(d.message||'Không có dữ liệu'); }
+                                const blob = await res.blob();
+                                const url = window.URL.createObjectURL(blob);
+                                const a = document.createElement('a'); a.href=url; a.download=`ChamCong_NhanVien_${date}.xlsx`; document.body.appendChild(a); a.click(); a.remove();
+                            } catch (e:any) { alert(e.message); }
+                        }}
+                        className="flex items-center justify-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-sm"
+                    >
+                        <Download className="w-4 h-4" /> Xuất Excel chấm công nhân viên hôm nay
+                    </button>
+                </div>
 
                 {scanResult && !scanResult.success && (
                     <div className="p-4 rounded-xl border bg-red-50 border-red-200 text-red-900 text-sm font-bold animate-pulse shadow-sm flex items-center gap-2">

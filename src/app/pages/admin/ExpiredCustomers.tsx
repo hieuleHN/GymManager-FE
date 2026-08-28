@@ -1,69 +1,52 @@
 import { AdminLayout } from '../../components/AdminLayout';
-import { Search, Edit, Trash2, Eye, X } from 'lucide-react';
-import { useState } from 'react';
+import { Search, Eye, X, Loader2, Package, Phone, Calendar } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router';
+import { getAuthHeaders, getApiUrl } from '../../context/AuthContext';
+import { useClub } from '../../context/ClubContext';
+import { toast } from 'sonner';
 
-const expiredCustomers = [
-  {
-    id: 3,
-    fullName: 'Lê Văn C',
-    account: 'levanc',
-    gender: 'Nam',
-    phone: '0909876543',
-    registerDate: '2023-12-10',
-    email: 'levanc@email.com',
-    discipline: 'Boxing',
-    duration: '3 tháng',
-    remaining: '0 ngày',
-    status: 'expired',
-    avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=300',
-    idNumber: '001234567892',
-    idImage: 'https://images.unsplash.com/photo-1589829545856-d10d557cf95f?auto=format&fit=crop&q=80&w=400',
-    hometown: 'Huế',
-    address: '789 Đường DEF, Quận 3, TP.HCM'
-  },
-  {
-    id: 5,
-    fullName: 'Hoàng Văn E',
-    account: 'hoangvane',
-    gender: 'Nam',
-    phone: '0905554321',
-    registerDate: '2023-11-20',
-    email: 'hoangvane@email.com',
-    discipline: 'Gym',
-    duration: '6 tháng',
-    remaining: '0 ngày',
-    status: 'expired',
-    avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=300',
-    idNumber: '001234567894',
-    idImage: 'https://images.unsplash.com/photo-1589829545856-d10d557cf95f?auto=format&fit=crop&q=80&w=400',
-    hometown: 'Vũng Tàu',
-    address: '999 Đường KLM, Quận 5, TP.HCM'
-  }
-];
+interface AlertItem {
+  _id: string;
+  customer: any;
+  packageName: string;
+  end_date: string;
+  daysLeft?: number;
+  daysOverdue?: number;
+  total_price: number;
+}
 
 export function ExpiredCustomers() {
+  const navigate = useNavigate();
+  const { selectedClub } = useClub();
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCustomer, setSelectedCustomer] = useState<typeof expiredCustomers[0] | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [expired, setExpired] = useState<AlertItem[]>([]);
+  const [selected, setSelected] = useState<AlertItem | null>(null);
 
-  const filteredCustomers = expiredCustomers.filter(customer =>
-    customer.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    customer.account.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    customer.phone.includes(searchTerm)
-  );
-
-  const handleEdit = (id: number) => {
-    alert(`Gia hạn khách hàng ID: ${id}`);
-  };
-
-  const handleDelete = (id: number) => {
-    if (confirm('Bạn có chắc chắn muốn xóa khách hàng này?')) {
-      alert(`Đã xóa khách hàng ID: ${id}`);
+  const fetchAlerts = async () => {
+    setLoading(true);
+    try {
+      const base = selectedClub !== 'all' ? `?locationId=${selectedClub}` : '';
+      const res = await fetch(`${getApiUrl()}/api/customers/alerts${base}`, { headers: getAuthHeaders() as any });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Lỗi tải dữ liệu');
+      setExpired(data.expired || []);
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleViewDetail = (customer: typeof expiredCustomers[0]) => {
-    setSelectedCustomer(customer);
-  };
+  useEffect(() => { fetchAlerts(); }, [selectedClub]);
+
+  const filtered = expired.filter(item => {
+    const c = item.customer || {};
+    return (c.fullName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (c.account || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (c.phone || '').includes(searchTerm);
+  });
 
   return (
     <AdminLayout>
@@ -77,171 +60,70 @@ export function ExpiredCustomers() {
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
           <div className="relative">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Tìm kiếm theo tên, tài khoản, số điện thoại..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-12 pr-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            />
+            <input type="text" placeholder="Tìm theo tên, tài khoản, SĐT..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-12 pr-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" />
           </div>
         </div>
 
         {/* Table */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-slate-50 border-b border-slate-200">
-                <tr>
-                  <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">STT</th>
-                  <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Họ và tên</th>
-                  <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Tài khoản</th>
-                  <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Giới tính</th>
-                  <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Số điện thoại</th>
-                  <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Ngày đăng ký</th>
-                  <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Email</th>
-                  <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Bộ môn</th>
-                  <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Thời gian</th>
-                  <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Còn lại</th>
-                  <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Trạng thái</th>
-                  <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Thao tác</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredCustomers.map((customer, index) => (
-                  <tr key={customer.id} className="border-b border-slate-100 hover:bg-slate-50">
-                    <td className="px-6 py-4 text-sm text-slate-900">{index + 1}</td>
-                    <td className="px-6 py-4 text-sm font-medium text-slate-900">{customer.fullName}</td>
-                    <td className="px-6 py-4 text-sm text-slate-600">{customer.account}</td>
-                    <td className="px-6 py-4 text-sm text-slate-600">{customer.gender}</td>
-                    <td className="px-6 py-4 text-sm text-slate-600">{customer.phone}</td>
-                    <td className="px-6 py-4 text-sm text-slate-600">{customer.registerDate}</td>
-                    <td className="px-6 py-4 text-sm text-slate-600">{customer.email}</td>
-                    <td className="px-6 py-4 text-sm text-slate-600">{customer.discipline}</td>
-                    <td className="px-6 py-4 text-sm text-slate-600">{customer.duration}</td>
-                    <td className="px-6 py-4 text-sm text-red-600 font-semibold">{customer.remaining}</td>
-                    <td className="px-6 py-4">
-                      <span className="inline-flex px-3 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700">
-                        Hết hạn
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => handleViewDetail(customer)}
-                          className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
-                          title="Chi tiết"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleEdit(customer.id)}
-                          className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                          title="Gia hạn"
-                        >
-                          <Edit className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(customer.id)}
-                          className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                          title="Xóa"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </td>
+          {loading ? (
+            <div className="flex items-center justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-indigo-600" /></div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-slate-50 border-b border-slate-200">
+                  <tr>
+                    <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">STT</th>
+                    <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Họ và tên</th>
+                    <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Tài khoản</th>
+                    <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">SĐT</th>
+                    <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Gói tập</th>
+                    <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Ngày hết hạn</th>
+                    <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Quá hạn</th>
+                    <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Thao tác</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {filtered.map((item, idx) => (
+                    <tr key={item._id} className="border-b border-slate-100 hover:bg-slate-50">
+                      <td className="px-6 py-4 text-sm text-slate-900">{idx + 1}</td>
+                      <td className="px-6 py-4 text-sm font-medium text-slate-900">{item.customer?.fullName || '-'}</td>
+                      <td className="px-6 py-4 text-sm text-slate-600">{item.customer?.account || '-'}</td>
+                      <td className="px-6 py-4 text-sm text-slate-600">{item.customer?.phone || '-'}</td>
+                      <td className="px-6 py-4 text-sm text-slate-600">{item.packageName}</td>
+                      <td className="px-6 py-4 text-sm text-slate-600">{new Date(item.end_date).toLocaleDateString('vi-VN')}</td>
+                      <td className="px-6 py-4 text-sm font-semibold text-red-600">Quá {item.daysOverdue} ngày</td>
+                      <td className="px-6 py-4">
+                        <div className="flex gap-2">
+                          <button onClick={() => setSelected(item)} className="p-2 text-green-600 hover:bg-green-50 rounded-lg" title="Chi tiết"><Eye className="w-4 h-4" /></button>
+                          <button onClick={() => navigate(`/admin/customers/${item.customer?._id}/edit`)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg" title="Gia hạn"><Package className="w-4 h-4" /></button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {filtered.length===0 && <tr><td colSpan={8} className="px-6 py-10 text-center text-slate-500">Không có khách hàng nào đã hết hạn</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
 
         {/* Detail Modal */}
-        {selectedCustomer && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setSelectedCustomer(null)}>
-            <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-              <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between">
-                <h2 className="text-2xl font-bold text-slate-900">Chi tiết khách hàng</h2>
-                <button
-                  onClick={() => setSelectedCustomer(null)}
-                  className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
-                >
-                  <X className="w-5 h-5 text-slate-600" />
-                </button>
+        {selected && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setSelected(null)}>
+            <div className="bg-white rounded-2xl max-w-lg w-full p-6" onClick={(e)=>e.stopPropagation()}>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-bold text-slate-900">Chi tiết</h2>
+                <button onClick={() => setSelected(null)} className="p-2 hover:bg-slate-100 rounded-lg"><X className="w-5 h-5" /></button>
               </div>
-
-              <div className="p-6 space-y-6">
-                <div className="flex justify-center">
-                  <img
-                    src={selectedCustomer.avatar}
-                    alt={selectedCustomer.fullName}
-                    className="w-32 h-32 rounded-full object-cover ring-4 ring-red-100"
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="bg-slate-50 p-4 rounded-xl">
-                    <p className="text-sm text-slate-600 mb-1">Họ và tên</p>
-                    <p className="text-lg font-semibold text-slate-900">{selectedCustomer.fullName}</p>
-                  </div>
-                  <div className="bg-slate-50 p-4 rounded-xl">
-                    <p className="text-sm text-slate-600 mb-1">Tài khoản</p>
-                    <p className="text-lg font-semibold text-slate-900">{selectedCustomer.account}</p>
-                  </div>
-                  <div className="bg-slate-50 p-4 rounded-xl">
-                    <p className="text-sm text-slate-600 mb-1">Giới tính</p>
-                    <p className="text-lg font-semibold text-slate-900">{selectedCustomer.gender}</p>
-                  </div>
-                  <div className="bg-slate-50 p-4 rounded-xl">
-                    <p className="text-sm text-slate-600 mb-1">Số điện thoại</p>
-                    <p className="text-lg font-semibold text-slate-900">{selectedCustomer.phone}</p>
-                  </div>
-                  <div className="bg-slate-50 p-4 rounded-xl">
-                    <p className="text-sm text-slate-600 mb-1">Email</p>
-                    <p className="text-lg font-semibold text-slate-900">{selectedCustomer.email}</p>
-                  </div>
-                  <div className="bg-slate-50 p-4 rounded-xl">
-                    <p className="text-sm text-slate-600 mb-1">Quê quán</p>
-                    <p className="text-lg font-semibold text-slate-900">{selectedCustomer.hometown}</p>
-                  </div>
-                  <div className="bg-slate-50 p-4 rounded-xl md:col-span-2">
-                    <p className="text-sm text-slate-600 mb-1">Địa chỉ</p>
-                    <p className="text-lg font-semibold text-slate-900">{selectedCustomer.address}</p>
-                  </div>
-                  <div className="bg-slate-50 p-4 rounded-xl">
-                    <p className="text-sm text-slate-600 mb-1">Số căn cước</p>
-                    <p className="text-lg font-semibold text-slate-900">{selectedCustomer.idNumber}</p>
-                  </div>
-                  <div className="bg-slate-50 p-4 rounded-xl">
-                    <p className="text-sm text-slate-600 mb-1">Ngày đăng ký</p>
-                    <p className="text-lg font-semibold text-slate-900">{selectedCustomer.registerDate}</p>
-                  </div>
-                </div>
-
-                <div>
-                  <p className="text-sm text-slate-600 mb-2">Ảnh căn cước</p>
-                  <img
-                    src={selectedCustomer.idImage}
-                    alt="ID Card"
-                    className="w-full rounded-xl border border-slate-200"
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t border-slate-200">
-                  <div className="bg-red-50 p-4 rounded-xl">
-                    <p className="text-sm text-red-600 mb-1">Bộ môn</p>
-                    <p className="text-lg font-semibold text-slate-900">{selectedCustomer.discipline}</p>
-                  </div>
-                  <div className="bg-red-50 p-4 rounded-xl">
-                    <p className="text-sm text-red-600 mb-1">Thời gian</p>
-                    <p className="text-lg font-semibold text-slate-900">{selectedCustomer.duration}</p>
-                  </div>
-                  <div className="bg-red-50 p-4 rounded-xl">
-                    <p className="text-sm text-red-600 mb-1">Còn lại</p>
-                    <p className="text-lg font-semibold text-red-700">{selectedCustomer.remaining}</p>
-                  </div>
-                </div>
+              <div className="space-y-3">
+                <div className="bg-slate-50 p-4 rounded-xl flex items-center gap-3"><Phone className="w-5 h-5 text-slate-400" /><div><p className="text-xs text-slate-500">Khách hàng</p><p className="font-semibold text-slate-900">{selected.customer?.fullName} ({selected.customer?.account}) - {selected.customer?.phone}</p></div></div>
+                <div className="bg-slate-50 p-4 rounded-xl flex items-center gap-3"><Package className="w-5 h-5 text-slate-400" /><div><p className="text-xs text-slate-500">Gói</p><p className="font-semibold text-slate-900">{selected.packageName} - {selected.total_price?.toLocaleString('vi-VN')}đ</p></div></div>
+                <div className="bg-slate-50 p-4 rounded-xl flex items-center gap-3"><Calendar className="w-5 h-5 text-slate-400" /><div><p className="text-xs text-slate-500">Ngày hết hạn</p><p className="font-semibold text-slate-900">{new Date(selected.end_date).toLocaleDateString('vi-VN')} {selected.daysOverdue?`(Quá ${selected.daysOverdue} ngày)`: `(Còn ${selected.daysLeft} ngày)`}</p></div></div>
+              </div>
+              <div className="flex gap-3 mt-6">
+                <button onClick={() => setSelected(null)} className="flex-1 py-2.5 border border-slate-200 rounded-xl font-semibold text-slate-600 hover:bg-slate-50">Đóng</button>
+                <button onClick={() => { setSelected(null); if(selected.customer?._id) navigate(`/admin/customers/${selected.customer._id}/edit`); }} className="flex-1 py-2.5 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700">Gia hạn ngay</button>
               </div>
             </div>
           </div>

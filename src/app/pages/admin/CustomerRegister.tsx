@@ -2,7 +2,7 @@ import { AdminLayout } from '../../components/AdminLayout';
 import { Button } from '@mui/material';
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
-import { Camera } from 'lucide-react';
+
 import { getAuthHeaders, getApiUrl } from '../../context/AuthContext';
 import { useClub } from '../../context/ClubContext';
 import { useForm } from 'react-hook-form';
@@ -24,10 +24,6 @@ export function CustomerRegister() {
   const { selectedClub } = useClub();
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [idCardFront, setIdCardFront] = useState<File | null>(null);
-  const [idCardBack, setIdCardBack] = useState<File | null>(null);
-  const [frontPreview, setFrontPreview] = useState('');
-  const [backPreview, setBackPreview] = useState('');
 
   const { register, handleSubmit, formState: { errors } } = useForm<CustomerFormData>({
     defaultValues: {
@@ -43,18 +39,6 @@ export function CustomerRegister() {
     }
   });
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, side: 'front' | 'back') => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (side === 'front') {
-      setIdCardFront(file);
-      setFrontPreview(URL.createObjectURL(file));
-    } else {
-      setIdCardBack(file);
-      setBackPreview(URL.createObjectURL(file));
-    }
-  };
-
   const onSubmit = async (data: CustomerFormData) => {
     setError('');
     if (!selectedClub || selectedClub === 'all') {
@@ -66,8 +50,6 @@ export function CustomerRegister() {
       const form = new FormData();
       Object.entries(data).forEach(([k, v]) => form.append(k, v));
       if (selectedClub && selectedClub !== 'all') form.append('locationId', selectedClub);
-      if (idCardFront) form.append('idCardFront', idCardFront);
-      if (idCardBack) form.append('idCardBack', idCardBack);
 
       const res = await fetch(`${getApiUrl()}/api/customers/register`, {
         method: 'POST',
@@ -144,24 +126,6 @@ export function CustomerRegister() {
                 <label className="block text-sm font-medium text-slate-700 mb-2">Ngày đăng ký</label>
                 <input type="date" {...register('registerDate')}
                   className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Ảnh mặt trước căn cước</label>
-                <label className="flex items-center gap-3 p-3 border border-dashed border-slate-300 rounded-xl cursor-pointer hover:border-indigo-400">
-                  <Camera className="w-5 h-5 text-slate-400" />
-                  <span className="text-sm text-slate-500">Chọn ảnh</span>
-                  <input type="file" accept="image/*" className="hidden" onChange={(e) => handleFileChange(e, 'front')} />
-                </label>
-                {frontPreview && <img src={frontPreview} alt="Front" className="mt-2 w-full h-24 object-cover rounded-lg" />}
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Ảnh mặt sau căn cước</label>
-                <label className="flex items-center gap-3 p-3 border border-dashed border-slate-300 rounded-xl cursor-pointer hover:border-indigo-400">
-                  <Camera className="w-5 h-5 text-slate-400" />
-                  <span className="text-sm text-slate-500">Chọn ảnh</span>
-                  <input type="file" accept="image/*" className="hidden" onChange={(e) => handleFileChange(e, 'back')} />
-                </label>
-                {backPreview && <img src={backPreview} alt="Back" className="mt-2 w-full h-24 object-cover rounded-lg" />}
               </div>
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-slate-700 mb-2">Địa chỉ</label>
