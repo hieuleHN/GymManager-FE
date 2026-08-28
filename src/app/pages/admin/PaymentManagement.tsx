@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { CreditCard, QrCode, Edit2, Save, X, Loader2, CheckCircle, XCircle, Check, X as XIcon, Search, FileText, User, Package, MapPin } from 'lucide-react';
+import { CreditCard, QrCode, Edit2, Save, X, Loader2, CheckCircle, XCircle, Check, X as XIcon, Search, FileText, User, Package, MapPin, Bell } from 'lucide-react';
 import { Button } from '@mui/material';
 import { AdminLayout } from '../../components/AdminLayout';
 import { useClub } from '../../context/ClubContext';
@@ -118,6 +118,26 @@ export function PaymentManagement() {
       fetchPendingPayments();
     } catch {
       toast.error('Thao tác thất bại');
+    }
+  };
+
+  // Gửi notification nhắc thanh toán cho hội viên (đơn sẽ tự hủy sau 72h)
+  const handleSendPaymentReminder = async (id: string) => {
+    try {
+      const res = await fetch(`${getApiUrl()}/api/user-packages/${id}/payment-reminder`, {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' } as any,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Nhắc thanh toán thất bại');
+      toast.success(
+        data.hoursLeftToCancel !== undefined
+          ? `Đã gửi nhắc thanh toán! Đơn tự hủy sau ~${data.hoursLeftToCancel} giờ nếu chưa đóng tiền.`
+          : 'Đã gửi nhắc thanh toán!'
+      );
+      fetchPendingPayments(paymentFilter, paymentPage);
+    } catch (err: any) {
+      toast.error(err.message || 'Gửi nhắc thất bại');
     }
   };
 
@@ -413,10 +433,28 @@ export function PaymentManagement() {
                         </td>
                         <td className="py-3 px-4 text-slate-600">
                           {new Date(reg.createdAt).toLocaleDateString('vi-VN')}
+                          {reg.payment_status === 'chờ thanh toán' && (
+                            (() => {
+                              const hoursLeft = Math.max(0, Math.ceil(72 - (Date.now() - new Date(reg.createdAt).getTime()) / 3600000));
+                              return (
+                                <p className={`text-xs mt-0.5 font-medium ${hoursLeft <= 24 ? 'text-red-500' : 'text-slate-400'}`}>
+                                  Tự hủy sau ~{hoursLeft}h
+                                </p>
+                              );
+                            })()
+                          )}
                         </td>
                         <td className="py-3 px-4 text-center">
                           {reg.payment_status === 'chờ thanh toán' ? (
                             <div className="flex items-center justify-center gap-2">
+                              <button
+                                onClick={() => handleSendPaymentReminder(reg._id)}
+                                className="flex items-center gap-1 px-3 py-1.5 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors text-xs font-medium"
+                                title="Gửi thông báo nhắc thanh toán cho hội viên"
+                              >
+                                <Bell className="w-3.5 h-3.5" />
+                                Nhắc thanh toán
+                              </button>
                               <button
                                 onClick={() => handleConfirmPayment(reg._id)}
                                 className="flex items-center gap-1 px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-xs font-medium"

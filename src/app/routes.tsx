@@ -54,6 +54,7 @@ import { Statistics } from './pages/admin/Statistics';
 import { PackageList } from './pages/admin/PackageList';
 import { AddPackage } from './pages/admin/AddPackage';
 import { EditPackage } from './pages/admin/EditPackage';
+import { PackagePriceHistory } from './pages/admin/PackagePriceHistory';
 import { ContractList } from './pages/admin/ContractList';
 import { EditContract } from './pages/admin/EditContract';
 import { EditProduct } from './pages/admin/EditProduct';
@@ -119,6 +120,7 @@ const routeFeatures: Record<string, string> = {
   '/admin/packages': 'packages',
   '/admin/packages/add': 'packages',
   '/admin/packages/:id/edit': 'packages',
+  '/admin/packages/:id/price-history': 'packages',
   '/admin/contracts': 'packages',
   '/admin/contracts/:id/edit': 'packages',
   '/admin/services': 'services',
@@ -337,6 +339,10 @@ export const router = createBrowserRouter([
   {
     path: '/admin/packages/:id/edit',
     element: <ProtectedRoute role="staff"><EditPackage /></ProtectedRoute>
+  },
+  {
+    path: '/admin/packages/:id/price-history',
+    element: <ProtectedRoute role="staff"><PackagePriceHistory /></ProtectedRoute>
   },
   {
     path: '/admin/contracts',
