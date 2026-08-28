@@ -51,6 +51,7 @@ import { JobList } from './pages/admin/JobList';
 import { AddJob } from './pages/admin/AddJob';
 import { EditJob } from './pages/admin/EditJob';
 import { Statistics } from './pages/admin/Statistics';
+import { PackageAnalytics } from './pages/admin/PackageAnalytics';
 import { PackageList } from './pages/admin/PackageList';
 import { AddPackage } from './pages/admin/AddPackage';
 import { EditPackage } from './pages/admin/EditPackage';
@@ -140,6 +141,7 @@ const routeFeatures: Record<string, string> = {
   '/admin/jobs/add': 'tasks',
   '/admin/jobs/:id/edit': 'tasks',
   '/admin/statistics': 'statistics',
+  '/admin/package-analytics': 'statistics',
   '/admin/clubs': 'clubs',
   '/admin/disciplines': 'clubs',
   '/admin/policies': 'services',
@@ -422,6 +424,10 @@ export const router = createBrowserRouter([
   {
     path: '/admin/statistics',
     element: <ProtectedRoute role="staff"><Statistics /></ProtectedRoute>
+  },
+  {
+    path: '/admin/package-analytics',
+    element: <ProtectedRoute role="staff"><PackageAnalytics /></ProtectedRoute>
   },
   
   {

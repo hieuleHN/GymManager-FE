@@ -203,6 +203,12 @@ export function AdminLayout({ children }: AdminLayoutProps) {
       feature: "statistics",
     },
     {
+      name: "Phân tích gói tập",
+      href: "/admin/package-analytics",
+      icon: BarChart3,
+      feature: "statistics",
+    },
+    {
       name: "Quản lý cơ sở",
       href: "/admin/clubs",
       icon: MapPin,
