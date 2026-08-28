@@ -203,6 +203,12 @@ export function CustomerList() {
   const [transferRecipient, setTransferRecipient] = useState('');
   const [transferReason, setTransferReason] = useState('');
   const [transferSubmitting, setTransferSubmitting] = useState(false);
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancelCustomer, setCancelCustomer] = useState<Customer | null>(null);
+  const [cancelPackageId, setCancelPackageId] = useState('');
+  const [cancelReason, setCancelReason] = useState('');
+  const [cancelNoRefund, setCancelNoRefund] = useState(false);
+  const [cancelSubmitting, setCancelSubmitting] = useState(false);
   const [showLockerModal, setShowLockerModal] = useState(false);
   const [lockerCustomer, setLockerCustomer] = useState<Customer | null>(null);
   const [lockers, setLockers] = useState<any[]>([]);
@@ -210,6 +216,7 @@ export function CustomerList() {
   const [lockerDays, setLockerDays] = useState(7);
   const [lockerReason, setLockerReason] = useState('');
   const [lockerSubmitting, setLockerSubmitting] = useState(false);
+  const [lockerFee, setLockerFee] = useState(0);
   const [filterNoActive, setFilterNoActive] = useState(false);
   const [filterNoFace, setFilterNoFace] = useState(false);
 
@@ -285,8 +292,8 @@ export function CustomerList() {
     const d = await res.json(); if (!res.ok) toast.error(d.error); else { toast.success(d.message); setSelectedIds(new Set()); }
   };
 
-  const openTransferModal = async (customer: Customer) => {
-    setTransferCustomer(customer); setTransferPackageId(''); setTransferRecipient(''); setTransferReason(''); setShowTransferModal(true);
+  const openTransferModal = async (customer: Customer, pkgId?: string) => {
+    setTransferCustomer(customer); setTransferPackageId(pkgId||''); setTransferRecipient(''); setTransferReason(''); setShowTransferModal(true);
     if (!detail360 || detail360.customer?._id !== customer._id) await fetchDetail360(customer._id);
   };
   const handleTransferSubmit = async () => {
@@ -301,11 +308,36 @@ export function CustomerList() {
       toast.success('Đã tạo yêu cầu chuyển nhượng -> admin/services chờ duyệt'); setShowTransferModal(false);
     } catch (e:any) { toast.error(e.message); } finally { setTransferSubmitting(false); }
   };
+  const openCancelModal = (customer: Customer, pkgId: string) => {
+    setCancelCustomer(customer); setCancelPackageId(pkgId); setCancelReason(''); setCancelNoRefund(false); setShowCancelModal(true);
+  };
+  const handleCancelSubmit = async () => {
+    if (!cancelCustomer || !cancelPackageId) { toast.error('Thiếu gói'); return; }
+    setCancelSubmitting(true);
+    try {
+      const res = await fetch(`${backendUrl}/api/customers/${cancelCustomer._id}/cancel-refund-request`, {
+        method: 'POST', headers: { ...getAuthHeaders() as any, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ packageId: cancelPackageId, reason: cancelReason, noRefund: cancelNoRefund })
+      });
+      const d = await res.json(); if (!res.ok) throw new Error(d.error);
+      toast.success('Đã tạo yêu cầu hủy/hoàn phí -> admin/services chờ duyệt'); setShowCancelModal(false);
+    } catch (e:any) { toast.error(e.message); } finally { setCancelSubmitting(false); }
+  };
   const openLockerModal = async (customer: Customer) => {
-    setLockerCustomer(customer); setSelectedLocker(''); setLockerDays(7); setLockerReason(''); setShowLockerModal(true);
+    setLockerCustomer(customer); setSelectedLocker(''); setLockerDays(7); setLockerReason(''); setLockerFee(0); setShowLockerModal(true);
     try {
       const res = await fetch(`${backendUrl}/api/v2/lockers`, { headers: getAuthHeaders() as any });
       const data = await res.json(); setLockers(data.data || []);
+      // Lấy phí tủ như hội viên (memberLocationId)
+      const locId = (customer as any).locationId || selectedClub;
+      if (locId && locId !== 'all') {
+        const feeRes = await fetch(`${getApiUrl()}/api/locations/${locId}/services`);
+        if (feeRes.ok) {
+          const feeData = await feeRes.json();
+          const cfg = (feeData.serviceFees||[]).find((f:any)=>f.service_type==='locker');
+          if (cfg && cfg.hasFee) setLockerFee(Math.floor(Number(cfg.fee)||0));
+        }
+      }
     } catch { setLockers([]); }
   };
   const handleLockerSubmit = async () => {
@@ -313,12 +345,29 @@ export function CustomerList() {
     const locker = lockers.find(l=>l._id===selectedLocker);
     setLockerSubmitting(true);
     try {
-      const res = await fetch(`${backendUrl}/api/customers/${lockerCustomer._id}/locker-request`, {
+      // Cho thuê luôn, không qua phê duyệt
+      const res = await fetch(`${backendUrl}/api/v2/lockers/${selectedLocker}/assign`, {
+        method: 'POST', headers: { ...getAuthHeaders() as any, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ personType: 'MEMBER', name: lockerCustomer.fullName, phone: lockerCustomer.phone, rentalDays: lockerDays, note: lockerReason })
+      });
+      const d = await res.json(); if (!res.ok) throw new Error(d.message||d.error||'Gán tủ thất bại');
+      // Ghi lại lịch sử dịch vụ đã cho thuê (accepted)
+      await fetch(`${backendUrl}/api/customers/${lockerCustomer._id}/locker-request`, {
         method: 'POST', headers: { ...getAuthHeaders() as any, 'Content-Type': 'application/json' },
         body: JSON.stringify({ lockerId: selectedLocker, lockerNumber: locker?.lockerNumber||'', durationDays: lockerDays, reason: lockerReason })
-      });
-      const d = await res.json(); if (!res.ok) throw new Error(d.error);
-      toast.success('Đã tạo yêu cầu thuê tủ -> admin/services chờ duyệt'); setShowLockerModal(false);
+      }).catch(()=>{});
+      // Cập nhật ServiceRequest vừa tạo thành accepted để không chờ duyệt
+      try {
+        const listRes = await fetch(`${getApiUrl()}/api/service-requests?service_type=locker&status=pending&limit=5`, { headers: getAuthHeaders() as any });
+        if (listRes.ok) {
+          const listData = await listRes.json();
+          const pending = (listData.data||[]).find((r:any)=> r.customer_id?._id===lockerCustomer._id && r.data?.lockerId===selectedLocker);
+          if (pending) {
+            await fetch(`${getApiUrl()}/api/service-requests/${pending._id}`, { method: 'PATCH', headers: { ...getAuthHeaders() as any, 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'accepted' }) });
+          }
+        }
+      } catch {}
+      toast.success(`Đã cho thuê tủ ${locker?.lockerNumber} cho ${lockerCustomer.fullName} ${lockerDays} ngày`); setShowLockerModal(false);
     } catch (e:any) { toast.error(e.message); } finally { setLockerSubmitting(false); }
   };
 
@@ -658,9 +707,6 @@ export function CustomerList() {
                             <Package className="w-4 h-4" />
                           </button>
                         )}
-                        <button onClick={() => openTransferModal(customer)} className="p-2 text-amber-600 hover:bg-amber-50 rounded-lg" title="Chuyển nhượng">
-                          <ArrowRightLeft className="w-4 h-4" />
-                        </button>
                         <button onClick={() => openLockerModal(customer)} className="p-2 text-cyan-600 hover:bg-cyan-50 rounded-lg" title="Thuê tủ">
                           <KeyRound className="w-4 h-4" />
                         </button>
@@ -791,29 +837,7 @@ export function CustomerList() {
                       </div>
                     </div>
 
-                    <div className="pt-4 border-t border-slate-200">
-                      <h3 className="text-lg font-bold text-slate-900 mb-3 flex items-center gap-2">
-                        <Star className="w-5 h-5 text-amber-400" /> Đánh giá của khách hàng
-                      </h3>
-                      {loadingReviews ? (
-                        <p className="text-sm text-slate-500">Đang tải...</p>
-                      ) : customerReviews.length === 0 ? (
-                        <p className="text-sm text-slate-400">Chưa có đánh giá nào</p>
-                      ) : (
-                        <div className="space-y-3">
-                          {customerReviews.map((r: any) => (
-                            <div key={r._id} className="p-3 bg-slate-50 rounded-xl">
-                              <div className="flex items-center gap-2 mb-1">
-                                <div className="flex">{renderStars(r.rating)}</div>
-                                <span className="text-sm font-semibold text-slate-900">{r.trainerId?.fullName || 'HLV'}</span>
-                              </div>
-                              {r.comment && <p className="text-sm text-slate-600">{r.comment}</p>}
-                              <p className="text-xs text-slate-400 mt-1">{new Date(r.createdAt).toLocaleDateString('vi-VN')}</p>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+
                   </>
                 )}
 
@@ -844,9 +868,33 @@ export function CustomerList() {
                               </div>
                               <div className="text-right shrink-0">
                                 <p className="font-bold text-indigo-600">{p.total_price?.toLocaleString('vi-VN')}đ</p>
-                                {p.isFrozen ? (
+                                {(() => {
+                                  const isCancelled = p.status === 'đã hủy';
+                                  const isExpired = p.status === 'hết hạn' || (p.daysLeft !== undefined && p.daysLeft < 0) || new Date(p.end_date) < new Date();
+                                  if (isCancelled) return null;
+                                  if (isExpired) return (
+                                  <div className="mt-2 flex flex-col items-end gap-1">
+                                    <div className="flex gap-1">
+                                      <button disabled className="px-3 py-1.5 bg-slate-100 text-slate-400 border border-slate-200 rounded-lg text-xs font-bold cursor-not-allowed">Đóng băng</button>
+                                      <span className="px-2 py-1.5 text-xs text-slate-400">•</span>
+                                    </div>
+                                    <div className="flex gap-1">
+                                      <button disabled className="px-2 py-1 rounded-lg text-xs font-bold border bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed">Chuyển</button>
+                                      <button onClick={async ()=>{
+                                        if (!confirm('Hủy gói đã hết hạn này?')) return;
+                                        try {
+                                          const res = await fetch(`${backendUrl}/api/customers/${selectedCustomer!._id}/cancel-refund-request`, { method: 'POST', headers: { ...getAuthHeaders() as any, 'Content-Type': 'application/json' }, body: JSON.stringify({ packageId: p._id, reason: '', noRefund: true }) });
+                                          const d = await res.json(); if (!res.ok) throw new Error(d.error);
+                                          toast.success('Đã tạo yêu cầu hủy (hết hạn) -> admin/services');
+                                        } catch(e:any){ toast.error(e.message); }
+                                      }} disabled={detail360.customer.status === 'locked'} className={`px-2 py-1 rounded-lg text-xs font-bold border ${detail360.customer.status === 'locked' ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed' : 'bg-white text-red-600 border-red-200 hover:bg-red-50'}`}>Hủy</button>
+                                    </div>
+                                  </div>
+                                  );
+                                  if (p.isFrozen) return (
                                   <button onClick={()=>handleUnfreeze(p._id)} disabled={detail360.customer.status === 'locked'} className={`mt-2 px-3 py-1.5 text-white rounded-lg text-xs font-bold ${detail360.customer.status === 'locked' ? 'bg-slate-300 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700'}`}>Kích hoạt</button>
-                                ) : freezingPkgId === p._id ? (
+                                  );
+                                  if (freezingPkgId === p._id) return (
                                   <div className="mt-2 flex items-center gap-1">
                                     <select value={freezeMonthsSingle} onChange={(e)=>setFreezeMonthsSingle(parseInt(e.target.value))} disabled={detail360.customer.status === 'locked'} className={`px-2 py-1.5 border border-slate-200 rounded-lg text-xs bg-white ${detail360.customer.status === 'locked' ? 'opacity-50 cursor-not-allowed' : ''}`}>
                                       {[1,2,3,4,5,6,7,8,9,10].map(n=><option key={n} value={n}>{n} tháng</option>)}
@@ -854,9 +902,21 @@ export function CustomerList() {
                                     <button onClick={()=>handleFreeze(p._id, freezeMonthsSingle)} disabled={detail360.customer.status === 'locked'} className={`px-2 py-1.5 text-white rounded-lg text-xs font-bold ${detail360.customer.status === 'locked' ? 'bg-slate-300 cursor-not-allowed' : 'bg-amber-500 hover:bg-amber-600'}`}>OK</button>
                                     <button onClick={()=>setFreezingPkgId(null)} className="px-2 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-xs">Hủy</button>
                                   </div>
-                                ) : (
+                                  );
+                                  return (
                                   <button onClick={()=>{ setFreezingPkgId(p._id); setFreezeMonthsSingle(2); }} disabled={detail360.customer.status === 'locked'} className={`mt-2 px-3 py-1.5 text-white rounded-lg text-xs font-bold ${detail360.customer.status === 'locked' ? 'bg-slate-300 cursor-not-allowed' : 'bg-amber-500 hover:bg-amber-600'}`}>Đóng băng</button>
-                                )}
+                                  );
+                                })()}
+                                {(() => {
+                                  const isExpired2 = p.status === 'hết hạn' || (p.daysLeft !== undefined && p.daysLeft < 0) || new Date(p.end_date) < new Date();
+                                  if (p.status === 'đã hủy' || isExpired2) return null;
+                                  return (
+                                  <div className="flex gap-1 mt-2 justify-end">
+                                    <button onClick={()=>openTransferModal(selectedCustomer!, p._id)} disabled={detail360.customer.status === 'locked'} className={`px-2 py-1 rounded-lg text-xs font-bold border ${detail360.customer.status === 'locked' ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed' : 'bg-white text-amber-700 border-amber-200 hover:bg-amber-50'}`}>Chuyển</button>
+                                    <button onClick={()=>openCancelModal(selectedCustomer!, p._id)} disabled={detail360.customer.status === 'locked'} className={`px-2 py-1 rounded-lg text-xs font-bold border ${detail360.customer.status === 'locked' ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed' : 'bg-white text-red-600 border-red-200 hover:bg-red-50'}`}>Hủy</button>
+                                  </div>
+                                  );
+                                })()}
                               </div>
                             </div>
                           </div>
@@ -935,13 +995,9 @@ export function CustomerList() {
               <h2 className="text-xl font-bold text-slate-900 mb-1">Chuyển nhượng gói tập</h2>
               <p className="text-sm text-slate-500 mb-4">Khách: <b className="text-indigo-600">{transferCustomer.fullName}</b> - sẽ tạo yêu cầu tại <b>admin/services</b> chờ duyệt</p>
               <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-1">Chọn gói cần chuyển</label>
-                  <select value={transferPackageId} onChange={(e)=>setTransferPackageId(e.target.value)} className="w-full px-3 py-2.5 border border-slate-200 rounded-xl bg-white">
-                    <option value="">-- Chọn gói --</option>
-                    {(detail360?.packages||[]).filter((p:any)=>p.status==='đang hoạt động'||p.status==='còn 10 ngày').map((p:any)=><option key={p._id} value={p._id}>{p.packageName} - {new Date(p.end_date).toLocaleDateString('vi-VN')} ({p.daysLeft>0?`còn ${p.daysLeft} ngày`:'hết hạn'})</option>)}
-                  </select>
-                  {(!detail360?.packages?.length) && <p className="text-xs text-slate-400 mt-1">Chưa có gói đang hoạt động (tải lại chi tiết nếu trống)</p>}
+                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                  <p className="text-xs text-slate-500">Gói sẽ chuyển</p>
+                  <p className="font-semibold text-slate-900">{(detail360?.packages||[]).find((p:any)=>p._id===transferPackageId)?.packageName || '—'} {transferPackageId ? `• ${new Date((detail360?.packages||[]).find((p:any)=>p._id===transferPackageId)?.end_date).toLocaleDateString('vi-VN')} (còn ${(detail360?.packages||[]).find((p:any)=>p._id===transferPackageId)?.daysLeft} ngày)` : ''}</p>
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 mb-1">Người nhận (SĐT hoặc tài khoản)</label>
@@ -960,32 +1016,82 @@ export function CustomerList() {
           </div>
         )}
 
+        {showCancelModal && cancelCustomer && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowCancelModal(false)}>
+            <div className="bg-white rounded-2xl max-w-lg w-full p-6" onClick={(e)=>e.stopPropagation()}>
+              <h2 className="text-xl font-bold text-slate-900 mb-1">Hủy gói / Hoàn phí</h2>
+              <p className="text-sm text-slate-500 mb-4">Khách: <b className="text-indigo-600">{cancelCustomer.fullName}</b> - sẽ tạo yêu cầu tại <b>admin/services</b> chờ duyệt</p>
+              <div className="space-y-4">
+                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                  <p className="text-xs text-slate-500">Gói sẽ hủy</p>
+                  <p className="font-semibold text-slate-900">{(detail360?.packages||[]).find((p:any)=>p._id===cancelPackageId)?.packageName || '—'} {cancelPackageId ? `• ${new Date((detail360?.packages||[]).find((p:any)=>p._id===cancelPackageId)?.end_date).toLocaleDateString('vi-VN')}` : ''}</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1">Lý do hủy</label>
+                  <textarea value={cancelReason} onChange={(e)=>setCancelReason(e.target.value)} rows={3} placeholder="Lý do hủy gói..." className="w-full px-3 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                </div>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={cancelNoRefund} onChange={(e)=>setCancelNoRefund(e.target.checked)} className="w-4 h-4 accent-red-600" />
+                  <span className="text-sm font-medium text-slate-700">Không hoàn tiền</span>
+                  <span className="text-xs text-slate-400">(tích nếu hủy không hoàn)</span>
+                </label>
+              </div>
+              <div className="flex gap-3 mt-6">
+                <Button variant="outlined" onClick={()=>setShowCancelModal(false)} sx={{flex:1, borderColor:'#cbd5e1', color:'#475569', textTransform:'none', borderRadius:2}}>Hủy</Button>
+                <Button variant="contained" onClick={handleCancelSubmit} disabled={cancelSubmitting} sx={{flex:1, bgcolor:'#dc2626', '&:hover':{bgcolor:'#b91c1c'}, textTransform:'none', borderRadius:2}}>{cancelSubmitting?'Đang gửi...':'Tạo yêu cầu'}</Button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {showLockerModal && lockerCustomer && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowLockerModal(false)}>
-            <div className="bg-white rounded-2xl max-w-lg w-full p-6" onClick={(e)=>e.stopPropagation()}>
+            <div className="bg-white rounded-2xl max-w-lg w-full p-6 max-h-[90vh] overflow-y-auto" onClick={(e)=>e.stopPropagation()}>
               <h2 className="text-xl font-bold text-slate-900 mb-1">Thuê tủ đồ</h2>
               <p className="text-sm text-slate-500 mb-4">Khách: <b className="text-indigo-600">{lockerCustomer.fullName}</b> - sẽ tạo yêu cầu tại <b>admin/services</b> chờ duyệt</p>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-1">Chọn tủ trống</label>
-                  <select value={selectedLocker} onChange={(e)=>setSelectedLocker(e.target.value)} className="w-full px-3 py-2.5 border border-slate-200 rounded-xl bg-white">
-                    <option value="">-- Chọn tủ --</option>
-                    {lockers.filter(l=>l.status==='AVAILABLE').map((l:any)=><option key={l._id} value={l._id}>{l.lockerNumber} - Dãy {l.prefix} {l.locationId?`(${String(l.locationId).slice(-4)})`:''}</option>)}
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Chọn tủ trống</label>
+                  {(() => {
+                    const available = lockers.filter((l:any)=>l.status==='AVAILABLE');
+                    if (!available.length) return <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl text-sm text-amber-800">Hiện tại không còn tủ nào trống tại cơ sở của khách.</div>;
+                    const rows = available.reduce((acc: Record<string, any[]>, l:any)=>{ const p=l.prefix||'LK'; if(!acc[p]) acc[p]=[]; acc[p].push(l); return acc; }, {} as Record<string, any[]>);
+                    return (
+                      <div className="max-h-56 overflow-y-auto rounded-xl border border-slate-200 p-3 space-y-3">
+                        {Object.keys(rows).sort().map(prefix=>(
+                          <div key={prefix}>
+                            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Dãy {prefix}</p>
+                            <div className="grid grid-cols-4 sm:grid-cols-5 gap-2">
+                              {rows[prefix].map((l:any)=>(
+                                <button key={l._id} type="button" onClick={()=>setSelectedLocker(l._id)} className={`p-2 rounded-lg text-sm font-semibold border transition-colors ${selectedLocker===l._id ? 'bg-cyan-600 text-white border-cyan-600' : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'}`}>{l.lockerNumber}</button>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                  {selectedLocker && <p className="mt-2 text-sm text-cyan-700 font-medium">Đã chọn: Tủ {lockers.find((l:any)=>l._id===selectedLocker)?.lockerNumber}</p>}
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Thời gian thuê</label>
+                  <select value={lockerDays} onChange={(e)=>setLockerDays(parseInt(e.target.value))} className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
+                    {Array.from({length:19},(_,i)=>i+2).map(d=><option key={d} value={d}>{d} ngày</option>)}
                   </select>
-                  {lockers.filter(l=>l.status==='AVAILABLE').length===0 && <p className="text-xs text-amber-600 mt-1">Không có tủ trống (thử chọn cơ sở khác)</p>}
                 </div>
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-1">Số ngày thuê (1-20)</label>
-                  <input type="number" min={1} max={20} value={lockerDays} onChange={(e)=>setLockerDays(Math.min(20, Math.max(1, parseInt(e.target.value)||1)))} className="w-full px-3 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-1">Ghi chú</label>
-                  <textarea value={lockerReason} onChange={(e)=>setLockerReason(e.target.value)} rows={2} placeholder="Ghi chú..." className="w-full px-3 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-                </div>
+                {lockerFee > 0 && (
+                  <div className="flex items-center justify-between bg-cyan-50 border border-cyan-200 p-4 rounded-xl">
+                    <div>
+                      <p className="text-sm text-cyan-800"><strong>{lockerFee.toLocaleString('vi-VN')}₫</strong> / ngày</p>
+                      <p className="text-xs text-cyan-700 mt-0.5">Tổng cho {lockerDays} ngày</p>
+                    </div>
+                    <p className="text-lg font-bold text-cyan-800">{(lockerFee * lockerDays).toLocaleString('vi-VN')}₫</p>
+                  </div>
+                )}
               </div>
               <div className="flex gap-3 mt-6">
                 <Button variant="outlined" onClick={()=>setShowLockerModal(false)} sx={{flex:1, borderColor:'#cbd5e1', color:'#475569', textTransform:'none', borderRadius:2}}>Hủy</Button>
-                <Button variant="contained" onClick={handleLockerSubmit} disabled={lockerSubmitting} sx={{flex:1, bgcolor:'#06b6d4', '&:hover':{bgcolor:'#0891b2'}, textTransform:'none', borderRadius:2}}>{lockerSubmitting?'Đang gửi...':'Tạo yêu cầu'}</Button>
+                <Button variant="contained" onClick={handleLockerSubmit} disabled={lockerSubmitting || !selectedLocker} sx={{flex:1, bgcolor:'#06b6d4', '&:hover':{bgcolor:'#0891b2'}, textTransform:'none', borderRadius:2}}>{lockerSubmitting?'Đang thuê...':'Cho thuê'}</Button>
               </div>
             </div>
           </div>
