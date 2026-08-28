@@ -1,7 +1,7 @@
 import { AdminLayout } from '../../components/AdminLayout';
 import { Pagination } from '../../components/Pagination';
 import { Button } from '@mui/material';
-import { Search, Edit, Trash2, Eye, X, Check, X as XIcon, Clock, Package, Star, ScanFace, Loader2, Camera } from 'lucide-react';
+import { Search, Edit, Trash2, Eye, X, Check, X as XIcon, Clock, Package, Star, ScanFace, Loader2, Camera, ArrowRightLeft, Lock, KeyRound } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router';
 import { getAuthHeaders, getApiUrl } from '../../context/AuthContext';
@@ -188,13 +188,42 @@ export function CustomerList() {
     open: false,
     customer: null
   });
+  const [kpi, setKpi] = useState<any>(null);
+  const [detail360, setDetail360] = useState<any>(null);
+  const [loading360, setLoading360] = useState(false);
+  const [detailTab, setDetailTab] = useState<'info' | 'packages' | 'checkins' | 'payment'>('info');
+  const [freezeMonthsAll, setFreezeMonthsAll] = useState(2);
+  const [freezingPkgId, setFreezingPkgId] = useState<string | null>(null);
+  const [freezeMonthsSingle, setFreezeMonthsSingle] = useState(2);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkMonths, setBulkMonths] = useState(2);
+  const [showTransferModal, setShowTransferModal] = useState(false);
+  const [transferCustomer, setTransferCustomer] = useState<Customer | null>(null);
+  const [transferPackageId, setTransferPackageId] = useState('');
+  const [transferRecipient, setTransferRecipient] = useState('');
+  const [transferReason, setTransferReason] = useState('');
+  const [transferSubmitting, setTransferSubmitting] = useState(false);
+  const [showLockerModal, setShowLockerModal] = useState(false);
+  const [lockerCustomer, setLockerCustomer] = useState<Customer | null>(null);
+  const [lockers, setLockers] = useState<any[]>([]);
+  const [selectedLocker, setSelectedLocker] = useState('');
+  const [lockerDays, setLockerDays] = useState(7);
+  const [lockerReason, setLockerReason] = useState('');
+  const [lockerSubmitting, setLockerSubmitting] = useState(false);
+  const [filterNoActive, setFilterNoActive] = useState(false);
+  const [filterNoFace, setFilterNoFace] = useState(false);
 
   const backendUrl = getApiUrl() || 'http://localhost:5000';
 
   const fetchCustomers = async (p = page) => {
     try {
-      const base = selectedClub !== 'all' ? `?locationId=${selectedClub}` : '?';
-      const url = `${backendUrl}/api/customers${base}&page=${p}&limit=15`;
+      const params = new URLSearchParams();
+      if (selectedClub !== 'all') params.set('locationId', selectedClub);
+      params.set('page', String(p));
+      params.set('limit', '15');
+      if (filterNoActive) params.set('hasActivePackage', 'false');
+      if (filterNoFace) params.set('hasFaceId', 'false');
+      const url = `${backendUrl}/api/customers?${params.toString()}`;
       const res = await fetch(url, { headers: getAuthHeaders() as any });
       const data = await res.json();
       setCustomers(data.data || []);
@@ -203,7 +232,155 @@ export function CustomerList() {
     } catch { }
   };
 
-  useEffect(() => { setPage(1); fetchCustomers(1); }, [selectedClub]);
+  const fetchKpi = async () => {
+    try {
+      const base = selectedClub !== 'all' ? `?locationId=${selectedClub}` : '';
+      const res = await fetch(`${backendUrl}/api/customers/kpi${base}`, { headers: getAuthHeaders() as any });
+      const data = await res.json();
+      if (res.ok) setKpi(data);
+    } catch {}
+  };
+
+  const fetchDetail360 = async (customerId: string) => {
+    setLoading360(true);
+    try {
+      const res = await fetch(`${backendUrl}/api/customers/${customerId}/detail360`, { headers: getAuthHeaders() as any });
+      const data = await res.json();
+      if (res.ok) setDetail360(data);
+      else setDetail360(null);
+    } catch { setDetail360(null); }
+    setLoading360(false);
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id); else n.add(id);
+      return n;
+    });
+  };
+  const toggleSelectAll = () => {
+    if (selectedIds.size === filteredCustomers.length) setSelectedIds(new Set());
+    else setSelectedIds(new Set(filteredCustomers.map(c => c._id)));
+  };
+  const handleBulkLock = async () => {
+    if (!selectedIds.size) return;
+    if (!confirm(`Khóa ${selectedIds.size} tài khoản?`)) return;
+    const res = await fetch(`${backendUrl}/api/customers/bulk/lock`, { method: 'POST', headers: { ...getAuthHeaders() as any, 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: Array.from(selectedIds) }) });
+    const d = await res.json(); if (!res.ok) toast.error(d.error); else { toast.success(d.message); setSelectedIds(new Set()); fetchCustomers(page); fetchKpi(); }
+  };
+  const handleBulkUnlock = async () => {
+    if (!selectedIds.size) return;
+    const res = await fetch(`${backendUrl}/api/customers/bulk/unlock`, { method: 'POST', headers: { ...getAuthHeaders() as any, 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: Array.from(selectedIds) }) });
+    const d = await res.json(); if (!res.ok) toast.error(d.error); else { toast.success(d.message); setSelectedIds(new Set()); fetchCustomers(page); fetchKpi(); }
+  };
+  const handleBulkFreeze = async () => {
+    if (!selectedIds.size) return;
+    const res = await fetch(`${backendUrl}/api/customers/bulk/freeze`, { method: 'POST', headers: { ...getAuthHeaders() as any, 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: Array.from(selectedIds), months: bulkMonths }) });
+    const d = await res.json(); if (!res.ok) toast.error(d.error); else { toast.success(d.message); setSelectedIds(new Set()); }
+  };
+  const handleBulkUnfreeze = async () => {
+    if (!selectedIds.size) return;
+    const res = await fetch(`${backendUrl}/api/customers/bulk/unfreeze`, { method: 'POST', headers: { ...getAuthHeaders() as any, 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: Array.from(selectedIds) }) });
+    const d = await res.json(); if (!res.ok) toast.error(d.error); else { toast.success(d.message); setSelectedIds(new Set()); }
+  };
+
+  const openTransferModal = async (customer: Customer) => {
+    setTransferCustomer(customer); setTransferPackageId(''); setTransferRecipient(''); setTransferReason(''); setShowTransferModal(true);
+    if (!detail360 || detail360.customer?._id !== customer._id) await fetchDetail360(customer._id);
+  };
+  const handleTransferSubmit = async () => {
+    if (!transferCustomer || !transferPackageId || !transferRecipient.trim()) { toast.error('Chọn gói và nhập người nhận (SĐT/tài khoản)'); return; }
+    setTransferSubmitting(true);
+    try {
+      const res = await fetch(`${backendUrl}/api/customers/${transferCustomer._id}/transfer-request`, {
+        method: 'POST', headers: { ...getAuthHeaders() as any, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ packageId: transferPackageId, recipient: transferRecipient.trim(), reason: transferReason })
+      });
+      const d = await res.json(); if (!res.ok) throw new Error(d.error);
+      toast.success('Đã tạo yêu cầu chuyển nhượng -> admin/services chờ duyệt'); setShowTransferModal(false);
+    } catch (e:any) { toast.error(e.message); } finally { setTransferSubmitting(false); }
+  };
+  const openLockerModal = async (customer: Customer) => {
+    setLockerCustomer(customer); setSelectedLocker(''); setLockerDays(7); setLockerReason(''); setShowLockerModal(true);
+    try {
+      const res = await fetch(`${backendUrl}/api/v2/lockers`, { headers: getAuthHeaders() as any });
+      const data = await res.json(); setLockers(data.data || []);
+    } catch { setLockers([]); }
+  };
+  const handleLockerSubmit = async () => {
+    if (!lockerCustomer || !selectedLocker) { toast.error('Chọn tủ'); return; }
+    const locker = lockers.find(l=>l._id===selectedLocker);
+    setLockerSubmitting(true);
+    try {
+      const res = await fetch(`${backendUrl}/api/customers/${lockerCustomer._id}/locker-request`, {
+        method: 'POST', headers: { ...getAuthHeaders() as any, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lockerId: selectedLocker, lockerNumber: locker?.lockerNumber||'', durationDays: lockerDays, reason: lockerReason })
+      });
+      const d = await res.json(); if (!res.ok) throw new Error(d.error);
+      toast.success('Đã tạo yêu cầu thuê tủ -> admin/services chờ duyệt'); setShowLockerModal(false);
+    } catch (e:any) { toast.error(e.message); } finally { setLockerSubmitting(false); }
+  };
+
+  const handleFreeze = async (pkgId: string, months: number) => {
+    if (!months || months < 1 || months > 10) { toast.error('Vui lòng chọn 1-10 tháng'); return; }
+    try {
+      const res = await fetch(`${backendUrl}/api/customers/${selectedCustomer?._id}/packages/${pkgId}/freeze`, {
+        method: 'POST', headers: { ...getAuthHeaders() as any, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ months })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      toast.success(data.message); setFreezingPkgId(null); fetchDetail360(selectedCustomer!._id);
+    } catch (e:any) { toast.error(e.message); }
+  };
+  const handleUnfreeze = async (pkgId: string) => {
+    try {
+      const res = await fetch(`${backendUrl}/api/customers/${selectedCustomer?._id}/packages/${pkgId}/unfreeze`, { method: 'POST', headers: getAuthHeaders() as any });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      toast.success(data.message); fetchDetail360(selectedCustomer!._id);
+    } catch (e:any) { toast.error(e.message); }
+  };
+  const handleFreezeAll = async () => {
+    if (!freezeMonthsAll || freezeMonthsAll<1 || freezeMonthsAll>10) { toast.error('Chọn 1-10 tháng'); return; }
+    try {
+      const res = await fetch(`${backendUrl}/api/customers/${selectedCustomer?._id}/freeze-all`, {
+        method: 'POST', headers: { ...getAuthHeaders() as any, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ months: freezeMonthsAll })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      toast.success(data.message); fetchDetail360(selectedCustomer!._id);
+    } catch (e:any) { toast.error(e.message); }
+  };
+  const handleUnfreezeAll = async () => {
+    try {
+      const res = await fetch(`${backendUrl}/api/customers/${selectedCustomer?._id}/unfreeze-all`, { method: 'POST', headers: getAuthHeaders() as any });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      toast.success(data.message); fetchDetail360(selectedCustomer!._id);
+    } catch (e:any) { toast.error(e.message); }
+  };
+  const handleLock = async () => {
+    if (!confirm('Khóa tài khoản? Mọi hoạt động sẽ tạm dừng và gói sẽ được bảo lưu.')) return;
+    try {
+      const res = await fetch(`${backendUrl}/api/customers/${selectedCustomer?._id}/lock`, { method: 'POST', headers: getAuthHeaders() as any });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      toast.success(data.message); fetchDetail360(selectedCustomer!._id); fetchCustomers(page);
+    } catch (e:any) { toast.error(e.message); }
+  };
+  const handleUnlock = async () => {
+    try {
+      const res = await fetch(`${backendUrl}/api/customers/${selectedCustomer?._id}/unlock`, { method: 'POST', headers: getAuthHeaders() as any });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      toast.success(data.message); fetchDetail360(selectedCustomer!._id); fetchCustomers(page);
+    } catch (e:any) { toast.error(e.message); }
+  };
+
+  useEffect(() => { setPage(1); fetchCustomers(1); fetchKpi(); }, [selectedClub, filterNoActive, filterNoFace]);
 
   const fetchReviews = async (customerId: string) => {
     setLoadingReviews(true);
@@ -237,6 +414,7 @@ export function CustomerList() {
       if (res.ok) {
         toast.success('Đã xác nhận khách hàng!');
         fetchCustomers(page);
+        fetchKpi();
       }
     } catch { }
   };
@@ -258,6 +436,7 @@ export function CustomerList() {
         setRejectTarget(null);
         setRejectReason('');
         fetchCustomers(page);
+        fetchKpi();
       }
     } catch { }
   };
@@ -321,6 +500,7 @@ export function CustomerList() {
       if (res.ok) {
         toast.success('Đã xóa khách hàng!');
         fetchCustomers(page);
+        fetchKpi();
       }
     } catch { }
   };
@@ -348,10 +528,34 @@ export function CustomerList() {
       <div className="max-w-7xl mx-auto space-y-6">
         <div>
           <h1 className="text-3xl font-bold text-slate-900 mb-2">Danh sách khách hàng</h1>
-          <p className="text-slate-600">Quản lý thông tin khách hàng và FaceID</p>
+          <p className="text-slate-600">Quản lý thông tin khách hàng và FaceID - KPI giữ chân & ARPU</p>
         </div>
 
-        <div className="flex gap-2 bg-white rounded-2xl shadow-sm border border-slate-100 p-2 overflow-x-auto">
+        {/* KPI 4 cards */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Tổng hội viên</p>
+            <p className="text-2xl font-bold text-slate-900 mt-1">{kpi ? kpi.totalMembers.toLocaleString('vi-VN') : '-'}</p>
+            <p className="text-xs text-slate-400 mt-1">Đang hoạt động: {kpi ? kpi.activeMembers : '-'}</p>
+          </div>
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Mới tháng này</p>
+            <p className="text-2xl font-bold text-indigo-600 mt-1">{kpi ? kpi.newThisMonth : '-'}</p>
+            <p className={`text-xs mt-1 ${kpi && kpi.change?.newMembers > 0 ? 'text-green-600' : kpi && kpi.change?.newMembers < 0 ? 'text-red-600' : 'text-slate-400'}`}>{kpi ? `${kpi.change.newMembers > 0 ? '+' : ''}${kpi.change.newMembers}% vs tháng trước` : ''}</p>
+          </div>
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Tỷ lệ mua lại gói tập</p>
+            <p className="text-2xl font-bold text-emerald-600 mt-1">{kpi ? `${kpi.retentionRate}%` : '-'}</p>
+            <p className="text-xs text-slate-400 mt-1">Không mua lại: {kpi ? `${100 - kpi.retentionRate}%` : '-'}</p>
+          </div>
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">ARPU tháng này</p>
+            <p className="text-2xl font-bold text-amber-600 mt-1">{kpi ? `${kpi.arpu.toLocaleString('vi-VN')}đ` : '-'}</p>
+            <p className="text-xs text-slate-400 mt-1">Doanh thu: {kpi ? `${kpi.cashThisMonth.toLocaleString('vi-VN')}đ` : '-'}</p>
+          </div>
+        </div>
+
+        <div className="flex gap-2 bg-white rounded-2xl shadow-sm border border-slate-100 p-2 overflow-x-auto items-center">
           {(['all', 'pending', 'pending_approval', 'approved', 'rejected'] as const).map(tab => (
             <button key={tab} onClick={() => setActiveTab(tab)}
               className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all whitespace-nowrap ${activeTab === tab ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-100'
@@ -362,6 +566,13 @@ export function CustomerList() {
               )}
             </button>
           ))}
+          <div className="h-6 w-px bg-slate-200 mx-1 shrink-0" />
+          <button onClick={() => setFilterNoActive(v => !v)} className={`px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap border ${filterNoActive ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>
+            Chưa có gói
+          </button>
+          <button onClick={() => setFilterNoFace(v => !v)} className={`px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap border ${filterNoFace ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>
+            Chưa FaceID
+          </button>
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
@@ -373,11 +584,26 @@ export function CustomerList() {
           </div>
         </div>
 
+        {selectedIds.size > 0 && (
+          <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-4 flex flex-wrap items-center gap-2">
+            <span className="text-sm font-bold text-indigo-700">Đã chọn {selectedIds.size}</span>
+            <select value={bulkMonths} onChange={(e)=>setBulkMonths(parseInt(e.target.value))} className="px-2 py-1.5 border border-slate-200 rounded-lg text-xs bg-white">
+              {[1,2,3,4,5,6,7,8,9,10].map(n=><option key={n} value={n}>{n} tháng</option>)}
+            </select>
+            <button onClick={handleBulkFreeze} className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-bold">Đóng băng</button>
+            <button onClick={handleBulkUnfreeze} className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold">Kích hoạt</button>
+            <button onClick={handleBulkLock} className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold">Khóa TK</button>
+            <button onClick={handleBulkUnlock} className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs font-bold">Kích hoạt TK</button>
+            <button onClick={()=>setSelectedIds(new Set())} className="ml-auto px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-600">Bỏ chọn</button>
+          </div>
+        )}
+
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
+                  <th className="px-3 py-4"><input type="checkbox" checked={selectedIds.size===filteredCustomers.length && filteredCustomers.length>0} onChange={toggleSelectAll} /></th>
                   <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">STT</th>
                   <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Họ và tên</th>
                   <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Tài khoản</th>
@@ -392,6 +618,7 @@ export function CustomerList() {
               <tbody>
                 {filteredCustomers.map((customer, index) => (
                   <tr key={customer._id} className="border-b border-slate-100 hover:bg-slate-50">
+                    <td className="px-3 py-4"><input type="checkbox" checked={selectedIds.has(customer._id)} onChange={()=>toggleSelect(customer._id)} /></td>
                     <td className="px-6 py-4 text-sm text-slate-900">{index + 1}</td>
                     <td className="px-6 py-4 text-sm font-medium text-slate-900">{customer.fullName || '-'}</td>
                     <td className="px-6 py-4 text-sm text-slate-600">{customer.account}</td>
@@ -410,7 +637,7 @@ export function CustomerList() {
                           <ScanFace className="w-4 h-4" />
                         </button>
 
-                        <button onClick={() => { setSelectedCustomer(customer); fetchReviews(customer._id); }} className="p-2 text-green-600 hover:bg-green-50 rounded-lg" title="Chi tiết">
+                        <button onClick={() => { setSelectedCustomer(customer); setDetailTab('info'); fetchReviews(customer._id); fetchDetail360(customer._id); }} className="p-2 text-green-600 hover:bg-green-50 rounded-lg" title="Chi tiết 360°">
                           <Eye className="w-4 h-4" />
                         </button>
                         <button onClick={() => navigate(`/admin/customers/${customer._id}/edit`)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg" title="Sửa">
@@ -431,6 +658,12 @@ export function CustomerList() {
                             <Package className="w-4 h-4" />
                           </button>
                         )}
+                        <button onClick={() => openTransferModal(customer)} className="p-2 text-amber-600 hover:bg-amber-50 rounded-lg" title="Chuyển nhượng">
+                          <ArrowRightLeft className="w-4 h-4" />
+                        </button>
+                        <button onClick={() => openLockerModal(customer)} className="p-2 text-cyan-600 hover:bg-cyan-50 rounded-lg" title="Thuê tủ">
+                          <KeyRound className="w-4 h-4" />
+                        </button>
                         <button onClick={() => handleDelete(customer._id)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg" title="Xóa">
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -439,7 +672,7 @@ export function CustomerList() {
                   </tr>
                 ))}
                 {filteredCustomers.length === 0 && (
-                  <tr><td colSpan={9} className="px-6 py-8 text-center text-slate-500">Không tìm thấy khách hàng nào</td></tr>
+                  <tr><td colSpan={10} className="px-6 py-8 text-center text-slate-500">Không tìm thấy khách hàng nào</td></tr>
                 )}
               </tbody>
             </table>
@@ -455,99 +688,219 @@ export function CustomerList() {
         />
 
         {selectedCustomer && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setSelectedCustomer(null)}>
-            <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => { setSelectedCustomer(null); setDetail360(null); }}>
+            <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
               <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between">
-                <h2 className="text-2xl font-bold text-slate-900">Chi tiết khách hàng</h2>
-                <button onClick={() => setSelectedCustomer(null)} className="p-2 hover:bg-slate-100 rounded-lg">
+                <h2 className="text-xl font-bold text-slate-900">Hồ sơ 360° - {selectedCustomer.fullName || selectedCustomer.account}</h2>
+                <button onClick={() => { setSelectedCustomer(null); setDetail360(null); }} className="p-2 hover:bg-slate-100 rounded-lg">
                   <X className="w-5 h-5 text-slate-600" />
                 </button>
               </div>
-              <div className="p-6 space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="bg-slate-50 p-4 rounded-xl">
-                    <p className="text-sm text-slate-600 mb-1">Họ và tên</p>
-                    <p className="text-lg font-semibold text-slate-900">{selectedCustomer.fullName || '-'}</p>
+
+              {/* LTV summary */}
+              {detail360 && (
+                <div className="mx-6 mt-4 grid grid-cols-3 gap-3">
+                  <div className="bg-indigo-50 border border-indigo-100 p-3 rounded-xl text-center">
+                    <p className="text-xs text-indigo-600 font-semibold">Tổng chi tiêu (LTV)</p>
+                    <p className="text-lg font-bold text-indigo-700">{detail360.ltv?.toLocaleString('vi-VN')}đ</p>
                   </div>
-                  <div className="bg-slate-50 p-4 rounded-xl">
-                    <p className="text-sm text-slate-600 mb-1">Tài khoản</p>
-                    <p className="text-lg font-semibold text-slate-900">{selectedCustomer.account}</p>
+                  <div className="bg-emerald-50 border border-emerald-100 p-3 rounded-xl text-center">
+                    <p className="text-xs text-emerald-600 font-semibold">Số gói đã mua</p>
+                    <p className="text-lg font-bold text-emerald-700">{detail360.packageCount}</p>
                   </div>
-                  <div className="bg-slate-50 p-4 rounded-xl">
-                    <p className="text-sm text-slate-600 mb-1">Giới tính</p>
-                    <p className="text-lg font-semibold text-slate-900">{selectedCustomer.gender || '-'}</p>
-                  </div>
-                  <div className="bg-slate-50 p-4 rounded-xl">
-                    <p className="text-sm text-slate-600 mb-1">Số điện thoại</p>
-                    <p className="text-lg font-semibold text-slate-900">{selectedCustomer.phone || '-'}</p>
-                  </div>
-                  <div className="bg-slate-50 p-4 rounded-xl">
-                    <p className="text-sm text-slate-600 mb-1">Email</p>
-                    <p className="text-lg font-semibold text-slate-900">{selectedCustomer.email || '-'}</p>
-                  </div>
-                  <div className="bg-slate-50 p-4 rounded-xl">
-                    <p className="text-sm text-slate-600 mb-1">Số căn cước</p>
-                    <p className="text-lg font-semibold text-slate-900">{selectedCustomer.idNumber || 'Chưa cập nhật'}</p>
-                  </div>
-                  <div className="bg-slate-50 p-4 rounded-xl">
-                    <p className="text-sm text-slate-600 mb-1">Ngày đăng ký</p>
-                    <p className="text-lg font-semibold text-slate-900">{selectedCustomer.registerDate ? new Date(selectedCustomer.registerDate).toLocaleDateString('vi-VN') : ''}</p>
-                  </div>
-                  <div className="bg-slate-50 p-4 rounded-xl">
-                    <p className="text-sm text-slate-600 mb-1">Trạng thái</p>
-                    <p className="text-lg font-semibold">{statusBadge(selectedCustomer.status)}</p>
-                  </div>
-                  {selectedCustomer.rejectionReason && (
-                    <div className="bg-red-50 p-4 rounded-xl md:col-span-2">
-                      <p className="text-sm text-red-600 mb-1">Lý do từ chối</p>
-                      <p className="text-lg font-semibold text-red-700">{selectedCustomer.rejectionReason}</p>
-                    </div>
-                  )}
-                  <div className="md:col-span-2">
-                    <p className="text-sm text-slate-600 mb-1">Địa chỉ</p>
-                    <p className="text-lg font-semibold text-slate-900">{selectedCustomer.address || 'Chưa cập nhật'}</p>
+                  <div className="bg-amber-50 border border-amber-100 p-3 rounded-xl text-center">
+                    <p className="text-xs text-amber-600 font-semibold">Lượt check-in</p>
+                    <p className="text-lg font-bold text-amber-700">{detail360.totalCheckins}</p>
                   </div>
                 </div>
-                {(selectedCustomer.idCardFront || selectedCustomer.idCardBack) && (
-                  <div className="grid grid-cols-2 gap-4 pt-4 border-t border-slate-200">
-                    {selectedCustomer.idCardFront && (
-                      <div>
-                        <p className="text-sm text-slate-600 mb-2">Mặt trước căn cước</p>
-                        <img src={`${backendUrl}/uploads/customers/${selectedCustomer.idCardFront}`} alt="Front" className="w-full rounded-xl border border-slate-200" />
-                      </div>
+              )}
+
+              {/* Dịch vụ: Đóng băng / Khóa */}
+              {selectedCustomer && detail360 && (
+                <div className="mx-6 mt-3 p-3 bg-slate-50 border border-slate-200 rounded-xl flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-bold text-slate-700">Dịch vụ:</span>
+                  <select value={freezeMonthsAll} onChange={(e)=>setFreezeMonthsAll(parseInt(e.target.value))} disabled={detail360.customer.status === 'locked'} className={`px-2 py-1.5 border border-slate-200 rounded-lg text-xs bg-white ${detail360.customer.status === 'locked' ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                    {[1,2,3,4,5,6,7,8,9,10].map(n=><option key={n} value={n}>{n} tháng</option>)}
+                  </select>
+                  <button onClick={handleFreezeAll} disabled={detail360.customer.status === 'locked'} className={`px-3 py-1.5 text-white rounded-lg text-xs font-bold ${detail360.customer.status === 'locked' ? 'bg-slate-300 cursor-not-allowed' : 'bg-amber-500 hover:bg-amber-600'}`}>Đóng băng toàn bộ</button>
+                  <button onClick={handleUnfreezeAll} disabled={detail360.customer.status === 'locked'} className={`px-3 py-1.5 text-white rounded-lg text-xs font-bold ${detail360.customer.status === 'locked' ? 'bg-slate-300 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700'}`}>Kích hoạt toàn bộ</button>
+                  <div className="ml-auto">
+                    {detail360.customer.status === 'locked' ? (
+                      <button onClick={handleUnlock} className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs font-bold">Kích hoạt TK</button>
+                    ) : (
+                      <button onClick={handleLock} className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold">Khóa TK</button>
                     )}
-                    {selectedCustomer.idCardBack && (
-                      <div>
-                        <p className="text-sm text-slate-600 mb-2">Mặt sau căn cước</p>
-                        <img src={`${backendUrl}/uploads/customers/${selectedCustomer.idCardBack}`} alt="Back" className="w-full rounded-xl border border-slate-200" />
+                  </div>
+                </div>
+              )}
+
+              {/* Tabs */}
+              <div className="px-6 pt-4 flex gap-2 border-b border-slate-100">
+                {(['info','packages','checkins','payment'] as const).map(tab => (
+                  <button key={tab} onClick={() => setDetailTab(tab)} className={`px-4 py-2 rounded-t-xl text-sm font-semibold border-b-2 ${detailTab===tab?'border-indigo-600 text-indigo-600 bg-indigo-50':'border-transparent text-slate-500 hover:text-slate-700'}`}>
+                    {tab==='info'?'Thông tin':tab==='packages'?`Gói tập (${detail360?.packages?.length||0})`:tab==='checkins'?`Check-in (${detail360?.checkins?.length||0})`:'Thanh toán'}
+                  </button>
+                ))}
+              </div>
+
+              <div className="p-6 space-y-6">
+                {detailTab==='info' && (
+                  <>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="bg-slate-50 p-4 rounded-xl">
+                        <p className="text-sm text-slate-600 mb-1">Họ và tên</p>
+                        <p className="text-lg font-semibold text-slate-900">{selectedCustomer.fullName || '-'}</p>
                       </div>
-                    )}
+                      <div className="bg-slate-50 p-4 rounded-xl">
+                        <p className="text-sm text-slate-600 mb-1">Tài khoản</p>
+                        <p className="text-lg font-semibold text-slate-900">{selectedCustomer.account}</p>
+                      </div>
+                      <div className="bg-slate-50 p-4 rounded-xl">
+                        <p className="text-sm text-slate-600 mb-1">Giới tính</p>
+                        <p className="text-lg font-semibold text-slate-900">{selectedCustomer.gender || '-'}</p>
+                      </div>
+                      <div className="bg-slate-50 p-4 rounded-xl">
+                        <p className="text-sm text-slate-600 mb-1">Số điện thoại</p>
+                        <p className="text-lg font-semibold text-slate-900">{selectedCustomer.phone || '-'}</p>
+                      </div>
+                      <div className="bg-slate-50 p-4 rounded-xl">
+                        <p className="text-sm text-slate-600 mb-1">Email</p>
+                        <p className="text-lg font-semibold text-slate-900">{selectedCustomer.email || '-'}</p>
+                      </div>
+                      <div className="bg-slate-50 p-4 rounded-xl">
+                        <p className="text-sm text-slate-600 mb-1">Số căn cước</p>
+                        <p className="text-lg font-semibold text-slate-900">{selectedCustomer.idNumber || 'Chưa cập nhật'}</p>
+                      </div>
+                      <div className="bg-slate-50 p-4 rounded-xl">
+                        <p className="text-sm text-slate-600 mb-1">Ngày đăng ký</p>
+                        <p className="text-lg font-semibold text-slate-900">{selectedCustomer.registerDate ? new Date(selectedCustomer.registerDate).toLocaleDateString('vi-VN') : ''}</p>
+                      </div>
+                      <div className="bg-slate-50 p-4 rounded-xl">
+                        <p className="text-sm text-slate-600 mb-1">Trạng thái</p>
+                        <p className="text-lg font-semibold">{statusBadge(selectedCustomer.status)}</p>
+                      </div>
+                      {selectedCustomer.rejectionReason && (
+                        <div className="bg-red-50 p-4 rounded-xl md:col-span-2">
+                          <p className="text-sm text-red-600 mb-1">Lý do từ chối</p>
+                          <p className="text-lg font-semibold text-red-700">{selectedCustomer.rejectionReason}</p>
+                        </div>
+                      )}
+                      <div className="md:col-span-2">
+                        <p className="text-sm text-slate-600 mb-1">Địa chỉ</p>
+                        <p className="text-lg font-semibold text-slate-900">{selectedCustomer.address || 'Chưa cập nhật'}</p>
+                      </div>
+                    </div>
+
+                    <div className="pt-4 border-t border-slate-200">
+                      <h3 className="text-lg font-bold text-slate-900 mb-3 flex items-center gap-2">
+                        <Star className="w-5 h-5 text-amber-400" /> Đánh giá của khách hàng
+                      </h3>
+                      {loadingReviews ? (
+                        <p className="text-sm text-slate-500">Đang tải...</p>
+                      ) : customerReviews.length === 0 ? (
+                        <p className="text-sm text-slate-400">Chưa có đánh giá nào</p>
+                      ) : (
+                        <div className="space-y-3">
+                          {customerReviews.map((r: any) => (
+                            <div key={r._id} className="p-3 bg-slate-50 rounded-xl">
+                              <div className="flex items-center gap-2 mb-1">
+                                <div className="flex">{renderStars(r.rating)}</div>
+                                <span className="text-sm font-semibold text-slate-900">{r.trainerId?.fullName || 'HLV'}</span>
+                              </div>
+                              {r.comment && <p className="text-sm text-slate-600">{r.comment}</p>}
+                              <p className="text-xs text-slate-400 mt-1">{new Date(r.createdAt).toLocaleDateString('vi-VN')}</p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+
+                {detailTab==='packages' && (
+                  <div>
+                    {loading360 ? <p className="text-sm text-slate-500 flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin"/> Đang tải...</p> :
+                      !detail360?.packages?.length ? <p className="text-sm text-slate-400">Chưa có gói tập nào</p> :
+                      <div className="space-y-3">
+                        <p className="text-xs text-slate-500">Lịch sử: {detail360.packages.length} gói (đang tập + đã tập + gia hạn) • Mỗi gói hiển thị trạng thái / còn lại / ngày kết thúc</p>
+                        {detail360.packages.map((p:any)=>{
+                          const statusColor = p.status==='đang hoạt động'?'bg-emerald-100 text-emerald-700': p.status==='còn 10 ngày'?'bg-amber-100 text-amber-700': p.status==='đang tạm ngưng'?'bg-slate-200 text-slate-700': p.status==='hết hạn'?'bg-red-100 text-red-700':'bg-slate-100 text-slate-500';
+                          return (
+                          <div key={p._id} className="p-4 border border-slate-200 rounded-xl">
+                            <div className="flex justify-between items-start gap-4">
+                              <div className="flex-1">
+                                <p className="font-semibold text-slate-900">{p.packageName} {p.isFrozen && <span className="ml-2 px-2 py-0.5 rounded-full bg-slate-800 text-white text-xs">Đang đóng băng</span>}</p>
+                                <p className="text-xs text-slate-500 mt-1">Từ {new Date(p.start_date).toLocaleDateString('vi-VN')} đến <b className="text-slate-700">{new Date(p.end_date).toLocaleDateString('vi-VN')}</b> {p.location?`• ${p.location}`:''}</p>
+                                <div className="flex flex-wrap items-center gap-2 mt-2">
+                                  <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${statusColor}`}>{p.status}</span>
+                                  <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${p.payment_status==='đã thanh toán'?'bg-green-100 text-green-700':'bg-amber-100 text-amber-700'}`}>{p.payment_status}</span>
+                                  {p.daysLeft !== undefined && (
+                                    <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${p.daysLeft>10?'bg-emerald-50 text-emerald-700 border border-emerald-200': p.daysLeft>0?'bg-amber-50 text-amber-700 border border-amber-200':'bg-red-50 text-red-700 border border-red-200'}`}>
+                                      {p.daysLeft>0?`Còn ${p.daysLeft} ngày`:`Quá hạn ${Math.abs(p.daysLeft)} ngày`}
+                                    </span>
+                                  )}
+                                  {p.isFrozen && p.frozenUntil && <span className="text-xs text-slate-500">• Đóng băng đến {new Date(p.frozenUntil).toLocaleDateString('vi-VN')}</span>}
+                                </div>
+                              </div>
+                              <div className="text-right shrink-0">
+                                <p className="font-bold text-indigo-600">{p.total_price?.toLocaleString('vi-VN')}đ</p>
+                                {p.isFrozen ? (
+                                  <button onClick={()=>handleUnfreeze(p._id)} disabled={detail360.customer.status === 'locked'} className={`mt-2 px-3 py-1.5 text-white rounded-lg text-xs font-bold ${detail360.customer.status === 'locked' ? 'bg-slate-300 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700'}`}>Kích hoạt</button>
+                                ) : freezingPkgId === p._id ? (
+                                  <div className="mt-2 flex items-center gap-1">
+                                    <select value={freezeMonthsSingle} onChange={(e)=>setFreezeMonthsSingle(parseInt(e.target.value))} disabled={detail360.customer.status === 'locked'} className={`px-2 py-1.5 border border-slate-200 rounded-lg text-xs bg-white ${detail360.customer.status === 'locked' ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                                      {[1,2,3,4,5,6,7,8,9,10].map(n=><option key={n} value={n}>{n} tháng</option>)}
+                                    </select>
+                                    <button onClick={()=>handleFreeze(p._id, freezeMonthsSingle)} disabled={detail360.customer.status === 'locked'} className={`px-2 py-1.5 text-white rounded-lg text-xs font-bold ${detail360.customer.status === 'locked' ? 'bg-slate-300 cursor-not-allowed' : 'bg-amber-500 hover:bg-amber-600'}`}>OK</button>
+                                    <button onClick={()=>setFreezingPkgId(null)} className="px-2 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-xs">Hủy</button>
+                                  </div>
+                                ) : (
+                                  <button onClick={()=>{ setFreezingPkgId(p._id); setFreezeMonthsSingle(2); }} disabled={detail360.customer.status === 'locked'} className={`mt-2 px-3 py-1.5 text-white rounded-lg text-xs font-bold ${detail360.customer.status === 'locked' ? 'bg-slate-300 cursor-not-allowed' : 'bg-amber-500 hover:bg-amber-600'}`}>Đóng băng</button>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )})}
+                      </div>
+                    }
                   </div>
                 )}
 
-                <div className="pt-4 border-t border-slate-200">
-                  <h3 className="text-lg font-bold text-slate-900 mb-3 flex items-center gap-2">
-                    <Star className="w-5 h-5 text-amber-400" /> Đánh giá của khách hàng
-                  </h3>
-                  {loadingReviews ? (
-                    <p className="text-sm text-slate-500">Đang tải...</p>
-                  ) : customerReviews.length === 0 ? (
-                    <p className="text-sm text-slate-400">Chưa có đánh giá nào</p>
-                  ) : (
-                    <div className="space-y-3">
-                      {customerReviews.map((r: any) => (
-                        <div key={r._id} className="p-3 bg-slate-50 rounded-xl">
-                          <div className="flex items-center gap-2 mb-1">
-                            <div className="flex">{renderStars(r.rating)}</div>
-                            <span className="text-sm font-semibold text-slate-900">{r.trainerId?.fullName || 'HLV'}</span>
+                {detailTab==='checkins' && (
+                  <div>
+                    {loading360 ? <p className="text-sm text-slate-500 flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin"/> Đang tải...</p> :
+                      !detail360?.checkins?.length ? <p className="text-sm text-slate-400">Chưa có lượt check-in nào (20 gần nhất)</p> :
+                      <div className="space-y-2">
+                        {detail360.checkins.map((c:any)=>(
+                          <div key={c._id} className="p-3 bg-slate-50 rounded-xl flex justify-between items-center">
+                            <div>
+                              <p className="text-sm font-semibold text-slate-900">{new Date(c.checkInTime).toLocaleString('vi-VN')}</p>
+                              <p className="text-xs text-slate-500">{c.method || 'QR_CODE'} • {c.status}</p>
+                            </div>
+                            <p className="text-xs text-slate-500">{c.checkOutTime?`Out: ${new Date(c.checkOutTime).toLocaleString('vi-VN')}`:'Chưa out'}</p>
                           </div>
-                          {r.comment && <p className="text-sm text-slate-600">{r.comment}</p>}
-                          <p className="text-xs text-slate-400 mt-1">{new Date(r.createdAt).toLocaleDateString('vi-VN')}</p>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
+                    }
+                  </div>
+                )}
+
+                {detailTab==='payment' && (
+                  <div className="space-y-4">
+                    <div className="bg-indigo-50 border border-indigo-100 p-4 rounded-xl">
+                      <p className="text-sm font-semibold text-indigo-800">Tổng chi tiêu (LTV)</p>
+                      <p className="text-2xl font-bold text-indigo-600 mt-1">{detail360?.ltv?.toLocaleString('vi-VN')||0}đ</p>
+                      <p className="text-xs text-slate-500 mt-1">{detail360?.packageCount||0} gói đã thanh toán • Trung bình {detail360?.packageCount?Math.round(detail360.ltv/detail360.packageCount).toLocaleString('vi-VN'):0}đ/gói</p>
                     </div>
-                  )}
-                </div>
+                    {detail360?.activePackage && (
+                      <div className="p-4 bg-emerald-50 border border-emerald-100 rounded-xl">
+                        <p className="text-sm font-semibold text-emerald-700">Gói đang hoạt động</p>
+                        <p className="text-sm text-slate-700 mt-1">{detail360.activePackage.packageName} - hết hạn {new Date(detail360.activePackage.end_date).toLocaleDateString('vi-VN')}</p>
+                      </div>
+                    )}
+                    {!detail360?.activePackage && <p className="text-sm text-slate-400">Không có gói đang hoạt động</p>}
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -571,6 +924,68 @@ export function CustomerList() {
                   sx={{ flex: 1, textTransform: 'none', borderRadius: 2 }}>
                   Xác nhận từ chối
                 </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showTransferModal && transferCustomer && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowTransferModal(false)}>
+            <div className="bg-white rounded-2xl max-w-lg w-full p-6" onClick={(e)=>e.stopPropagation()}>
+              <h2 className="text-xl font-bold text-slate-900 mb-1">Chuyển nhượng gói tập</h2>
+              <p className="text-sm text-slate-500 mb-4">Khách: <b className="text-indigo-600">{transferCustomer.fullName}</b> - sẽ tạo yêu cầu tại <b>admin/services</b> chờ duyệt</p>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1">Chọn gói cần chuyển</label>
+                  <select value={transferPackageId} onChange={(e)=>setTransferPackageId(e.target.value)} className="w-full px-3 py-2.5 border border-slate-200 rounded-xl bg-white">
+                    <option value="">-- Chọn gói --</option>
+                    {(detail360?.packages||[]).filter((p:any)=>p.status==='đang hoạt động'||p.status==='còn 10 ngày').map((p:any)=><option key={p._id} value={p._id}>{p.packageName} - {new Date(p.end_date).toLocaleDateString('vi-VN')} ({p.daysLeft>0?`còn ${p.daysLeft} ngày`:'hết hạn'})</option>)}
+                  </select>
+                  {(!detail360?.packages?.length) && <p className="text-xs text-slate-400 mt-1">Chưa có gói đang hoạt động (tải lại chi tiết nếu trống)</p>}
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1">Người nhận (SĐT hoặc tài khoản)</label>
+                  <input value={transferRecipient} onChange={(e)=>setTransferRecipient(e.target.value)} placeholder="0901234567 hoặc taikhoan" className="w-full px-3 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1">Lý do</label>
+                  <textarea value={transferReason} onChange={(e)=>setTransferReason(e.target.value)} rows={2} placeholder="Lý do chuyển nhượng..." className="w-full px-3 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                </div>
+              </div>
+              <div className="flex gap-3 mt-6">
+                <Button variant="outlined" onClick={()=>setShowTransferModal(false)} sx={{flex:1, borderColor:'#cbd5e1', color:'#475569', textTransform:'none', borderRadius:2}}>Hủy</Button>
+                <Button variant="contained" onClick={handleTransferSubmit} disabled={transferSubmitting} sx={{flex:1, bgcolor:'#f59e0b', '&:hover':{bgcolor:'#d97706'}, textTransform:'none', borderRadius:2}}>{transferSubmitting?'Đang gửi...':'Tạo yêu cầu'}</Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showLockerModal && lockerCustomer && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowLockerModal(false)}>
+            <div className="bg-white rounded-2xl max-w-lg w-full p-6" onClick={(e)=>e.stopPropagation()}>
+              <h2 className="text-xl font-bold text-slate-900 mb-1">Thuê tủ đồ</h2>
+              <p className="text-sm text-slate-500 mb-4">Khách: <b className="text-indigo-600">{lockerCustomer.fullName}</b> - sẽ tạo yêu cầu tại <b>admin/services</b> chờ duyệt</p>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1">Chọn tủ trống</label>
+                  <select value={selectedLocker} onChange={(e)=>setSelectedLocker(e.target.value)} className="w-full px-3 py-2.5 border border-slate-200 rounded-xl bg-white">
+                    <option value="">-- Chọn tủ --</option>
+                    {lockers.filter(l=>l.status==='AVAILABLE').map((l:any)=><option key={l._id} value={l._id}>{l.lockerNumber} - Dãy {l.prefix} {l.locationId?`(${String(l.locationId).slice(-4)})`:''}</option>)}
+                  </select>
+                  {lockers.filter(l=>l.status==='AVAILABLE').length===0 && <p className="text-xs text-amber-600 mt-1">Không có tủ trống (thử chọn cơ sở khác)</p>}
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1">Số ngày thuê (1-20)</label>
+                  <input type="number" min={1} max={20} value={lockerDays} onChange={(e)=>setLockerDays(Math.min(20, Math.max(1, parseInt(e.target.value)||1)))} className="w-full px-3 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1">Ghi chú</label>
+                  <textarea value={lockerReason} onChange={(e)=>setLockerReason(e.target.value)} rows={2} placeholder="Ghi chú..." className="w-full px-3 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                </div>
+              </div>
+              <div className="flex gap-3 mt-6">
+                <Button variant="outlined" onClick={()=>setShowLockerModal(false)} sx={{flex:1, borderColor:'#cbd5e1', color:'#475569', textTransform:'none', borderRadius:2}}>Hủy</Button>
+                <Button variant="contained" onClick={handleLockerSubmit} disabled={lockerSubmitting} sx={{flex:1, bgcolor:'#06b6d4', '&:hover':{bgcolor:'#0891b2'}, textTransform:'none', borderRadius:2}}>{lockerSubmitting?'Đang gửi...':'Tạo yêu cầu'}</Button>
               </div>
             </div>
           </div>
