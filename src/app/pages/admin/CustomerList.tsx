@@ -1,7 +1,7 @@
 import { AdminLayout } from '../../components/AdminLayout';
 import { Pagination } from '../../components/Pagination';
 import { Button } from '@mui/material';
-import { Search, Edit, Trash2, Eye, X, Check, X as XIcon, Clock, Package, Star, ScanFace, Loader2, Camera, ArrowRightLeft, Lock, KeyRound } from 'lucide-react';
+import { Search, Edit, Eye, X, Check, X as XIcon, Clock, Package, Star, ScanFace, Loader2, Camera, ArrowRightLeft, Lock, KeyRound, UserCheck, LogIn, LogOut } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router';
 import { getAuthHeaders, getApiUrl } from '../../context/AuthContext';
@@ -177,6 +177,8 @@ export function CustomerList() {
   const [regSelectedPkg, setRegSelectedPkg] = useState<PackageItem | null>(null);
   const [regSelectedDuration, setRegSelectedDuration] = useState<{ months: number; discount: number } | null>(null);
   const [regSubmitting, setRegSubmitting] = useState(false);
+  const [regStep, setRegStep] = useState<1 | 2 | 3>(1);
+  const [regSearch, setRegSearch] = useState('');
   const [customerReviews, setCustomerReviews] = useState<any[]>([]);
   const [loadingReviews, setLoadingReviews] = useState(false);
   const { selectedClub } = useClub();
@@ -219,6 +221,8 @@ export function CustomerList() {
   const [lockerFee, setLockerFee] = useState(0);
   const [filterNoActive, setFilterNoActive] = useState(false);
   const [filterNoFace, setFilterNoFace] = useState(false);
+  const [todayCheckMap, setTodayCheckMap] = useState<Map<string, { count: number; latest: any; sessions: any[] }>>(new Map());
+  const [checkDetail, setCheckDetail] = useState<{ customer: Customer; sessions: any[] } | null>(null);
 
   const backendUrl = getApiUrl() || 'http://localhost:5000';
 
@@ -245,6 +249,32 @@ export function CustomerList() {
       const res = await fetch(`${backendUrl}/api/customers/kpi${base}`, { headers: getAuthHeaders() as any });
       const data = await res.json();
       if (res.ok) setKpi(data);
+    } catch {}
+  };
+
+  const fetchTodayChecks = async () => {
+    try {
+      const res = await fetch(`${backendUrl}/api/checkin/history?limit=300`, { headers: getAuthHeaders() as any });
+      const list = await res.json();
+      const arr: any[] = Array.isArray(list) ? list : (list.data || []);
+      const start = new Date(); start.setHours(0, 0, 0, 0);
+      const map = new Map<string, { count: number; latest: any; sessions: any[] }>();
+      arr.forEach((item: any) => {
+        if (!item.checkInTime) return;
+        const t = new Date(item.checkInTime);
+        if (t < start) return;
+        const cid = String(item.customerId?._id || item.customerId || item.customer_id || '');
+        if (!cid) return;
+        if (!map.has(cid)) map.set(cid, { count: 0, latest: null, sessions: [] });
+        const entry = map.get(cid)!;
+        entry.sessions.push(item);
+      });
+      map.forEach((v) => {
+        v.sessions.sort((a: any, b: any) => new Date(a.checkInTime).getTime() - new Date(b.checkInTime).getTime());
+        v.count = v.sessions.length;
+        v.latest = v.sessions[v.sessions.length - 1] || null;
+      });
+      setTodayCheckMap(map);
     } catch {}
   };
 
@@ -291,6 +321,12 @@ export function CustomerList() {
     const res = await fetch(`${backendUrl}/api/customers/bulk/unfreeze`, { method: 'POST', headers: { ...getAuthHeaders() as any, 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: Array.from(selectedIds) }) });
     const d = await res.json(); if (!res.ok) toast.error(d.error); else { toast.success(d.message); setSelectedIds(new Set()); }
   };
+  const handleBulkClearFace = async () => {
+    if (!selectedIds.size) return;
+    if (!confirm(`Xóa FaceID của ${selectedIds.size} tài khoản? Tài khoản sẽ trở về chưa có FaceID (test quét sẽ không nhận diện nữa).`)) return;
+    const res = await fetch(`${backendUrl}/api/customers/bulk/clear-face`, { method: 'POST', headers: { ...getAuthHeaders() as any, 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: Array.from(selectedIds) }) });
+    const d = await res.json(); if (!res.ok) toast.error(d.error); else { toast.success(d.message); setSelectedIds(new Set()); fetchCustomers(page); fetchKpi(); }
+  };
 
   const openTransferModal = async (customer: Customer, pkgId?: string) => {
     setTransferCustomer(customer); setTransferPackageId(pkgId||''); setTransferRecipient(''); setTransferReason(''); setShowTransferModal(true);
@@ -305,7 +341,7 @@ export function CustomerList() {
         body: JSON.stringify({ packageId: transferPackageId, recipient: transferRecipient.trim(), reason: transferReason })
       });
       const d = await res.json(); if (!res.ok) throw new Error(d.error);
-      toast.success('Đã tạo yêu cầu chuyển nhượng -> admin/services chờ duyệt'); setShowTransferModal(false);
+      toast.success(d.message || 'Đã chuyển nhượng thành công (Thành công - do nhân viên tạo)'); setShowTransferModal(false); fetchDetail360(transferCustomer._id); fetchCustomers(page);
     } catch (e:any) { toast.error(e.message); } finally { setTransferSubmitting(false); }
   };
   const openCancelModal = (customer: Customer, pkgId: string) => {
@@ -320,7 +356,7 @@ export function CustomerList() {
         body: JSON.stringify({ packageId: cancelPackageId, reason: cancelReason, noRefund: cancelNoRefund })
       });
       const d = await res.json(); if (!res.ok) throw new Error(d.error);
-      toast.success('Đã tạo yêu cầu hủy/hoàn phí -> admin/services chờ duyệt'); setShowCancelModal(false);
+      toast.success(d.message || 'Đã hủy gói thành công (Thành công - do nhân viên tạo)'); setShowCancelModal(false); fetchDetail360(cancelCustomer._id); fetchCustomers(page);
     } catch (e:any) { toast.error(e.message); } finally { setCancelSubmitting(false); }
   };
   const openLockerModal = async (customer: Customer) => {
@@ -345,29 +381,18 @@ export function CustomerList() {
     const locker = lockers.find(l=>l._id===selectedLocker);
     setLockerSubmitting(true);
     try {
-      // Cho thuê luôn, không qua phê duyệt
+      // Cho thuê luôn, không qua phê duyệt - duyệt thẳng vào Tất cả
       const res = await fetch(`${backendUrl}/api/v2/lockers/${selectedLocker}/assign`, {
         method: 'POST', headers: { ...getAuthHeaders() as any, 'Content-Type': 'application/json' },
         body: JSON.stringify({ personType: 'MEMBER', name: lockerCustomer.fullName, phone: lockerCustomer.phone, rentalDays: lockerDays, note: lockerReason })
       });
       const d = await res.json(); if (!res.ok) throw new Error(d.message||d.error||'Gán tủ thất bại');
-      // Ghi lại lịch sử dịch vụ đã cho thuê (accepted)
+      // Ghi lại lịch sử dịch vụ đã cho thuê (đã duyệt thẳng, hiển thị ở Tất cả)
       await fetch(`${backendUrl}/api/customers/${lockerCustomer._id}/locker-request`, {
         method: 'POST', headers: { ...getAuthHeaders() as any, 'Content-Type': 'application/json' },
         body: JSON.stringify({ lockerId: selectedLocker, lockerNumber: locker?.lockerNumber||'', durationDays: lockerDays, reason: lockerReason })
       }).catch(()=>{});
-      // Cập nhật ServiceRequest vừa tạo thành accepted để không chờ duyệt
-      try {
-        const listRes = await fetch(`${getApiUrl()}/api/service-requests?service_type=locker&status=pending&limit=5`, { headers: getAuthHeaders() as any });
-        if (listRes.ok) {
-          const listData = await listRes.json();
-          const pending = (listData.data||[]).find((r:any)=> r.customer_id?._id===lockerCustomer._id && r.data?.lockerId===selectedLocker);
-          if (pending) {
-            await fetch(`${getApiUrl()}/api/service-requests/${pending._id}`, { method: 'PATCH', headers: { ...getAuthHeaders() as any, 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'accepted' }) });
-          }
-        }
-      } catch {}
-      toast.success(`Đã cho thuê tủ ${locker?.lockerNumber} cho ${lockerCustomer.fullName} ${lockerDays} ngày`); setShowLockerModal(false);
+      toast.success(`Đã cho thuê tủ ${locker?.lockerNumber} cho ${lockerCustomer.fullName} ${lockerDays} ngày (Thành công - do nhân viên tạo)`); setShowLockerModal(false);
     } catch (e:any) { toast.error(e.message); } finally { setLockerSubmitting(false); }
   };
 
@@ -431,6 +456,22 @@ export function CustomerList() {
 
   useEffect(() => { setPage(1); fetchCustomers(1); fetchKpi(); }, [selectedClub, filterNoActive, filterNoFace]);
 
+  useEffect(() => {
+    fetchTodayChecks();
+    const id = setInterval(fetchTodayChecks, 10000);
+    const now = new Date();
+    const msUntilMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 0).getTime() - now.getTime();
+    const midnightTimer = setTimeout(() => { setTodayCheckMap(new Map()); fetchTodayChecks(); }, msUntilMidnight);
+    let channel: any = null;
+    try {
+      channel = new BroadcastChannel('GYM_ATTENDANCE_CHANNEL');
+      channel.onmessage = (e: any) => {
+        if (e.data?.type === 'CHECKIN_EVENT' || e.data?.type === 'FACE_CHECKIN_TRIGGER') fetchTodayChecks();
+      };
+    } catch {}
+    return () => { clearInterval(id); clearTimeout(midnightTimer); try { channel?.close(); } catch {} };
+  }, [selectedClub]);
+
   const fetchReviews = async (customerId: string) => {
     setLoadingReviews(true);
     try {
@@ -449,13 +490,27 @@ export function CustomerList() {
     ));
   };
 
-  const filteredCustomers = customers.filter(c => {
-    const matchSearch = c.fullName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      c.account?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      c.phone?.includes(searchTerm);
-    if (activeTab === 'all') return matchSearch;
-    return matchSearch && c.status === activeTab;
-  });
+  const filteredCustomers = customers
+    .filter(c => {
+      const matchSearch = c.fullName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        c.account?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        c.phone?.includes(searchTerm);
+      if (activeTab === 'all') return matchSearch;
+      return matchSearch && c.status === activeTab;
+    })
+    .sort((a, b) => {
+      const aInfo = todayCheckMap.get(a._id);
+      const bInfo = todayCheckMap.get(b._id);
+      const aHas = !!aInfo;
+      const bHas = !!bInfo;
+      if (aHas !== bHas) return bHas ? 1 : -1;
+      if (aHas && bHas) {
+        const aTime = new Date(aInfo!.latest.checkInTime || aInfo!.latest.createdAt || 0).getTime();
+        const bTime = new Date(bInfo!.latest.checkInTime || bInfo!.latest.createdAt || 0).getTime();
+        return bTime - aTime;
+      }
+      return 0;
+    });
 
   const handleApprove = async (id: string) => {
     try {
@@ -494,7 +549,10 @@ export function CustomerList() {
     setRegCustomer(customer);
     setRegSelectedPkg(null);
     setRegSelectedDuration(null);
+    setRegStep(1);
+    setRegSearch('');
     setShowRegModal(true);
+    fetchDetail360(customer._id);
     try {
       const res = await fetch(`${backendUrl}/api/packages?page=1&limit=50`, {
         headers: getAuthHeaders() as any
@@ -535,23 +593,12 @@ export function CustomerList() {
       toast.success('Đăng ký gói tập thành công!');
       setShowRegModal(false);
       fetchCustomers(page);
+      if (regCustomer) fetchDetail360(regCustomer._id);
     } catch (err: any) {
       toast.error(err.message);
     } finally {
       setRegSubmitting(false);
     }
-  };
-
-  const handleDelete = async (id: string) => {
-    if (!confirm('Bạn có chắc chắn muốn xóa khách hàng này?')) return;
-    try {
-      const res = await fetch(`${backendUrl}/api/customers/${id}`, { method: 'DELETE', headers: getAuthHeaders() as any });
-      if (res.ok) {
-        toast.success('Đã xóa khách hàng!');
-        fetchCustomers(page);
-        fetchKpi();
-      }
-    } catch { }
   };
 
   const statusBadge = (status: string) => {
@@ -574,14 +621,14 @@ export function CustomerList() {
 
   return (
     <AdminLayout>
-      <div className="max-w-7xl mx-auto space-y-6">
+      <div className="w-full max-w-7xl mx-auto space-y-6 min-w-0 overflow-hidden">
         <div>
           <h1 className="text-3xl font-bold text-slate-900 mb-2">Danh sách khách hàng</h1>
           <p className="text-slate-600">Quản lý thông tin khách hàng và FaceID - KPI giữ chân & ARPU</p>
         </div>
 
         {/* KPI 4 cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 w-full min-w-0">
           <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
             <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Tổng hội viên</p>
             <p className="text-2xl font-bold text-slate-900 mt-1">{kpi ? kpi.totalMembers.toLocaleString('vi-VN') : '-'}</p>
@@ -604,7 +651,7 @@ export function CustomerList() {
           </div>
         </div>
 
-        <div className="flex gap-2 bg-white rounded-2xl shadow-sm border border-slate-100 p-2 overflow-x-auto items-center">
+        <div className="flex gap-2 bg-white rounded-2xl shadow-sm border border-slate-100 p-2 overflow-x-auto items-center w-full max-w-full min-w-0">
           {(['all', 'pending', 'pending_approval', 'approved', 'rejected'] as const).map(tab => (
             <button key={tab} onClick={() => setActiveTab(tab)}
               className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all whitespace-nowrap ${activeTab === tab ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-100'
@@ -624,8 +671,8 @@ export function CustomerList() {
           </button>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
-          <div className="relative">
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 w-full max-w-full min-w-0 overflow-hidden">
+          <div className="relative w-full">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
             <input type="text" placeholder="Tìm kiếm theo tên, tài khoản, số điện thoại..." value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -634,7 +681,7 @@ export function CustomerList() {
         </div>
 
         {selectedIds.size > 0 && (
-          <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-4 flex flex-wrap items-center gap-2">
+          <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-4 flex flex-wrap items-center gap-2 w-full max-w-full min-w-0 overflow-hidden">
             <span className="text-sm font-bold text-indigo-700">Đã chọn {selectedIds.size}</span>
             <select value={bulkMonths} onChange={(e)=>setBulkMonths(parseInt(e.target.value))} className="px-2 py-1.5 border border-slate-200 rounded-lg text-xs bg-white">
               {[1,2,3,4,5,6,7,8,9,10].map(n=><option key={n} value={n}>{n} tháng</option>)}
@@ -643,13 +690,14 @@ export function CustomerList() {
             <button onClick={handleBulkUnfreeze} className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold">Kích hoạt</button>
             <button onClick={handleBulkLock} className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold">Khóa TK</button>
             <button onClick={handleBulkUnlock} className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs font-bold">Kích hoạt TK</button>
+            <button onClick={handleBulkClearFace} className="px-3 py-1.5 bg-slate-700 hover:bg-slate-800 text-white rounded-lg text-xs font-bold inline-flex items-center gap-1.5"><ScanFace className="w-3.5 h-3.5" /> Bỏ FaceID</button>
             <button onClick={()=>setSelectedIds(new Set())} className="ml-auto px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-600">Bỏ chọn</button>
           </div>
         )}
 
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full">
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden w-full max-w-full min-w-0">
+          <div className="overflow-x-auto w-full max-w-full overscroll-x-contain">
+            <table className="w-full min-w-[1100px]">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
                   <th className="px-3 py-4"><input type="checkbox" checked={selectedIds.size===filteredCustomers.length && filteredCustomers.length>0} onChange={toggleSelectAll} /></th>
@@ -675,7 +723,23 @@ export function CustomerList() {
                     <td className="px-6 py-4 text-sm text-slate-600">{customer.phone || '-'}</td>
                     <td className="px-6 py-4 text-sm text-slate-600">{customer.registerDate ? new Date(customer.registerDate).toLocaleDateString('vi-VN') : ''}</td>
                     <td className="px-6 py-4 text-sm text-slate-600">{customer.email || '-'}</td>
-                    <td className="px-6 py-4">{statusBadge(customer.status)}</td>
+                    <td className="px-6 py-4">
+                      {(() => {
+                        const info = todayCheckMap.get(customer._id);
+                        if (info) {
+                          const isCheckedOut = !!info.latest.checkOutTime;
+                          const cnt = info.count;
+                          const label = isCheckedOut ? (cnt > 1 ? `đã check out lần ${cnt}` : 'đã check out') : (cnt > 1 ? `đã check in lần ${cnt}` : 'đã check in');
+                          const color = isCheckedOut ? 'bg-blue-100 text-blue-700 border-blue-200' : 'bg-emerald-100 text-emerald-700 border-emerald-200';
+                          return (
+                            <button onClick={() => setCheckDetail({ customer, sessions: info.sessions })} className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold border ${color} hover:opacity-80`} title="Xem chi tiết điểm danh">
+                              {label}
+                            </button>
+                          );
+                        }
+                        return statusBadge(customer.status);
+                      })()}
+                    </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-1.5">
                         <button
@@ -709,9 +773,6 @@ export function CustomerList() {
                         )}
                         <button onClick={() => openLockerModal(customer)} className="p-2 text-cyan-600 hover:bg-cyan-50 rounded-lg" title="Thuê tủ">
                           <KeyRound className="w-4 h-4" />
-                        </button>
-                        <button onClick={() => handleDelete(customer._id)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg" title="Xóa">
-                          <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
                     </td>
@@ -993,7 +1054,7 @@ export function CustomerList() {
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowTransferModal(false)}>
             <div className="bg-white rounded-2xl max-w-lg w-full p-6" onClick={(e)=>e.stopPropagation()}>
               <h2 className="text-xl font-bold text-slate-900 mb-1">Chuyển nhượng gói tập</h2>
-              <p className="text-sm text-slate-500 mb-4">Khách: <b className="text-indigo-600">{transferCustomer.fullName}</b> - sẽ tạo yêu cầu tại <b>admin/services</b> chờ duyệt</p>
+              <p className="text-sm text-slate-500 mb-4">Khách: <b className="text-indigo-600">{transferCustomer.fullName}</b> - sẽ duyệt thẳng, hiển thị ở <b>Tất cả</b> (Thành công)</p>
               <div className="space-y-4">
                 <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
                   <p className="text-xs text-slate-500">Gói sẽ chuyển</p>
@@ -1020,7 +1081,7 @@ export function CustomerList() {
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowCancelModal(false)}>
             <div className="bg-white rounded-2xl max-w-lg w-full p-6" onClick={(e)=>e.stopPropagation()}>
               <h2 className="text-xl font-bold text-slate-900 mb-1">Hủy gói / Hoàn phí</h2>
-              <p className="text-sm text-slate-500 mb-4">Khách: <b className="text-indigo-600">{cancelCustomer.fullName}</b> - sẽ tạo yêu cầu tại <b>admin/services</b> chờ duyệt</p>
+              <p className="text-sm text-slate-500 mb-4">Khách: <b className="text-indigo-600">{cancelCustomer.fullName}</b> - sẽ duyệt thẳng, hiển thị ở <b>Tất cả</b> (Thành công)</p>
               <div className="space-y-4">
                 <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
                   <p className="text-xs text-slate-500">Gói sẽ hủy</p>
@@ -1048,7 +1109,7 @@ export function CustomerList() {
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowLockerModal(false)}>
             <div className="bg-white rounded-2xl max-w-lg w-full p-6 max-h-[90vh] overflow-y-auto" onClick={(e)=>e.stopPropagation()}>
               <h2 className="text-xl font-bold text-slate-900 mb-1">Thuê tủ đồ</h2>
-              <p className="text-sm text-slate-500 mb-4">Khách: <b className="text-indigo-600">{lockerCustomer.fullName}</b> - sẽ tạo yêu cầu tại <b>admin/services</b> chờ duyệt</p>
+              <p className="text-sm text-slate-500 mb-4">Khách: <b className="text-indigo-600">{lockerCustomer.fullName}</b> - sẽ duyệt thẳng, hiển thị ở <b>Tất cả</b> (Thành công)</p>
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 mb-2">Chọn tủ trống</label>
@@ -1099,161 +1160,414 @@ export function CustomerList() {
 
         {showRegModal && regCustomer && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowRegModal(false)}>
-            <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-              <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between">
-                <h2 className="text-xl font-bold text-slate-900">Đăng ký gói tập cho {regCustomer.fullName}</h2>
-                <button onClick={() => setShowRegModal(false)} className="p-2 hover:bg-slate-100 rounded-lg">
-                  <X className="w-5 h-5 text-slate-600" />
-                </button>
-              </div>
-              <div className="p-6 space-y-6">
-                <div>
-                  <h3 className="text-lg font-bold text-slate-900 mb-3">1. Chọn gói tập</h3>
-                  <select
-                    value={regSelectedPkg?._id || ''}
-                    onChange={(e) => {
-                      const pkg = regPackages.find(p => p._id === e.target.value) || null;
-                      setRegSelectedPkg(pkg);
-                      if (pkg?.durations?.length > 0) setRegSelectedDuration(pkg.durations[0]);
-                      else setRegSelectedDuration({ months: 1, discount: 0 });
-                    }}
-                    className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  >
-                    <option value="">-- Chọn gói tập --</option>
-                    {regPackages.map(p => (
-                      <option key={p._id} value={p._id}>
-                        {p.name} - {p.unitPrice?.toLocaleString('vi-VN')}đ/tháng
-                        {p.disciplineId?.name ? ` (${p.disciplineId.name})` : ''}
-                      </option>
-                    ))}
-                  </select>
+            <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[92vh] overflow-hidden flex flex-col shadow-2xl" onClick={(e) => e.stopPropagation()}>
+              {/* Header + Stepper */}
+              <div className="shrink-0 bg-white border-b border-slate-200 px-6 py-4">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h2 className="text-xl font-bold text-slate-900">Đăng ký gói tập</h2>
+                    <p className="text-xs text-slate-500 mt-0.5">Tạo gói tập mới cho hội viên</p>
+                  </div>
+                  <button onClick={() => setShowRegModal(false)} className="p-2 hover:bg-slate-100 rounded-xl">
+                    <X className="w-5 h-5 text-slate-600" />
+                  </button>
                 </div>
+                {/* Stepper */}
+                <div className="flex items-center gap-2">
+                  {[
+                    { n: 1, label: 'Chọn gói' },
+                    { n: 2, label: 'Thời hạn' },
+                    { n: 3, label: 'Xác nhận' },
+                  ].map((s, idx) => (
+                    <div key={s.n} className="flex items-center gap-2 flex-1">
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${regStep === s.n ? 'bg-indigo-600 text-white ring-4 ring-indigo-100' : regStep > s.n ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-500'}`}>
+                        {regStep > s.n ? <Check className="w-4 h-4" /> : s.n}
+                      </div>
+                      <span className={`text-xs font-bold whitespace-nowrap ${regStep === s.n ? 'text-indigo-600' : regStep > s.n ? 'text-emerald-600' : 'text-slate-400'}`}>{s.label}</span>
+                      {idx < 2 && <div className={`flex-1 h-0.5 mx-2 rounded ${regStep > s.n ? 'bg-emerald-500' : 'bg-slate-200'}`} />}
+                    </div>
+                  ))}
+                </div>
+                {/* Member mini card */}
+                <div className="mt-4 bg-gradient-to-r from-indigo-50 to-violet-50 border border-indigo-100 rounded-xl p-3 flex items-center gap-3">
+                  <div className="w-11 h-11 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-sm shrink-0">
+                    {(regCustomer.fullName || regCustomer.account || '?').charAt(0).toUpperCase()}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-bold text-slate-900 text-sm truncate">{regCustomer.fullName || regCustomer.account} <span className="font-normal text-slate-500">• {regCustomer.phone || '—'}</span></p>
+                    <p className="text-xs text-slate-500 truncate">{regCustomer.email || regCustomer.account} • {regCustomer.gender || ''} {regCustomer.status ? `• ${regCustomer.status}` : ''}</p>
+                  </div>
+                  <div className="text-xs text-indigo-700 bg-white border border-indigo-200 px-2.5 py-1 rounded-full font-semibold whitespace-nowrap">
+                    {detail360 ? `${detail360.packageCount || 0} gói • ${detail360.totalCheckins || 0} check-in` : 'Hội viên'}
+                  </div>
+                </div>
+              </div>
+                            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                {/* Step 1: Chọn gói */}
+                {regStep === 1 && (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-bold text-slate-900">Chọn gói tập</h3>
+                      <span className="text-xs text-slate-500">{regPackages.length} gói khả dụng</span>
+                    </div>
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <input
+                        type="text"
+                        placeholder="Tìm gói theo tên, bộ môn..."
+                        value={regSearch}
+                        onChange={(e) => setRegSearch(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                    </div>
+                    {regPackages.length === 0 ? (
+                      <div className="text-center py-8 text-slate-500 text-sm">Chưa có gói tập nào khả dụng</div>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[380px] overflow-y-auto pr-1">
+                        {regPackages
+                          .filter((pkg) => {
+                            if (!regSearch.trim()) return true;
+                            const s = regSearch.toLowerCase();
+                            return (
+                              pkg.name.toLowerCase().includes(s) ||
+                              (pkg.disciplineId?.name || '').toLowerCase().includes(s)
+                            );
+                          })
+                          .map((pkg) => {
+                            const isSelected = regSelectedPkg?._id === pkg._id;
+                            const isOwned = (detail360?.packages || []).some(
+                              (p: any) => String(p.packageId) === String(pkg._id) && ['đang hoạt động', 'còn 10 ngày', 'đang tạm ngưng'].includes(p.status)
+                            );
+                            return (
+                              <button
+                                key={pkg._id}
+                                disabled={isOwned}
+                                onClick={() => {
+                                  if (isOwned) return;
+                                  setRegSelectedPkg(pkg);
+                                  if (pkg.durations?.length > 0) setRegSelectedDuration(pkg.durations[0]);
+                                  else setRegSelectedDuration({ months: 1, discount: 0 });
+                                }}
+                                className={`text-left p-4 rounded-2xl border-2 transition-all ${isOwned ? 'border-slate-200 bg-slate-100 opacity-60 cursor-not-allowed' : isSelected ? 'border-indigo-600 bg-indigo-50 ring-2 ring-indigo-200' : 'border-slate-200 bg-white hover:border-indigo-300 hover:shadow-sm'}`}
+                              >
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="min-w-0 flex-1">
+                                    <p className={`font-bold text-sm truncate ${isOwned ? 'text-slate-500' : 'text-slate-900'}`}>{pkg.name}</p>
+                                    {pkg.disciplineId?.name && (
+                                      <span className={`inline-flex mt-1 px-2 py-0.5 rounded-full text-[11px] font-semibold ${isOwned ? 'bg-slate-200 text-slate-600' : 'bg-violet-100 text-violet-700'}`}>{pkg.disciplineId.name}</span>
+                                    )}
+                                  </div>
+                                  {isOwned ? (
+                                    <span className="px-2.5 py-1 rounded-full bg-slate-800 text-white text-[11px] font-bold whitespace-nowrap">Đã sở hữu</span>
+                                  ) : isSelected ? (
+                                    <div className="w-6 h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center shrink-0">
+                                      <Check className="w-4 h-4" />
+                                    </div>
+                                  ) : null}
+                                </div>
+                                <p className="text-lg font-extrabold text-indigo-600 mt-2">{pkg.unitPrice?.toLocaleString('vi-VN')}đ<span className="text-xs font-normal text-slate-500">/tháng</span></p>
+                                {pkg.features?.length > 0 && (
+                                  <ul className="mt-2 space-y-1">
+                                    {pkg.features.slice(0, 3).map((f, i) => (
+                                      <li key={i} className="flex items-start gap-1.5 text-xs text-slate-600">
+                                        <Star className="w-3 h-3 text-amber-500 mt-0.5 shrink-0" />
+                                        <span className="line-clamp-1">{f}</span>
+                                      </li>
+                                    ))}
+                                    {pkg.features.length > 3 && <li className="text-xs text-slate-400">+{pkg.features.length - 3} quyền lợi khác</li>}
+                                  </ul>
+                                )}
+                                <div className="mt-3 flex items-center gap-2 text-xs text-slate-500">
+                                  <Clock className="w-3.5 h-3.5" />
+                                  <span>{pkg.durations?.length ? `${pkg.durations.length} mốc thời hạn` : '1 tháng mặc định'}</span>
+                                </div>
+                              </button>
+                            );
+                          })}
+                      </div>
+                    )}
+                    {regSelectedPkg && (
+                      <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex items-center gap-2 text-sm text-emerald-800">
+                        <Check className="w-4 h-4" />
+                        Đã chọn: <b>{regSelectedPkg.name}</b> • {regSelectedPkg.unitPrice?.toLocaleString('vi-VN')}đ/tháng
+                      </div>
+                    )}
+                  </div>
+                )}
 
-                {regSelectedPkg && (
-                  <div className="bg-indigo-50 p-4 rounded-xl">
-                    <h3 className="text-lg font-bold text-slate-900 mb-3">2. Thông tin gói tập</h3>
-                    <div className="space-y-2 text-sm">
-                      <p><strong>Tên gói:</strong> {regSelectedPkg.name}</p>
-                      <p><strong>Đơn giá:</strong> {regSelectedPkg.unitPrice?.toLocaleString('vi-VN')}đ / tháng</p>
-                      {regSelectedPkg.features?.length > 0 && (
-                        <div>
-                          <strong>Quyền lợi:</strong>
-                          <ul className="list-disc list-inside ml-2 mt-1 text-slate-600">
-                            {regSelectedPkg.features.map((f, i) => (
-                              <li key={i}>{f}</li>
-                            ))}
-                          </ul>
+                {/* Step 2: Thời hạn */}
+                {regStep === 2 && regSelectedPkg && (
+                  <div className="space-y-4">
+                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold text-sm">{regSelectedPkg.name.charAt(0).toUpperCase()}</div>
+                      <div className="min-w-0 flex-1">
+                        <p className="font-bold text-slate-900 text-sm truncate">{regSelectedPkg.name}</p>
+                        <p className="text-xs text-slate-500">{regSelectedPkg.unitPrice?.toLocaleString('vi-VN')}đ/tháng {regSelectedPkg.disciplineId?.name ? `• ${regSelectedPkg.disciplineId.name}` : ''}</p>
+                      </div>
+                      <button onClick={() => setRegStep(1)} className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 px-3 py-1.5 bg-white border border-indigo-200 rounded-lg">Đổi gói</button>
+                    </div>
+
+                    <div>
+                      <h3 className="font-bold text-slate-900 mb-3">Chọn thời hạn</h3>
+                      {regSelectedPkg.durations && regSelectedPkg.durations.length > 0 ? (
+                        <>
+                          {regSelectedPkg.durations.some((d) => d.months >= 12) && (
+                            <div className="flex gap-2 mb-4 bg-slate-100 p-1 rounded-xl w-fit">
+                              <button
+                                onClick={() => {
+                                  const monthly = regSelectedPkg.durations.filter((d) => d.months < 12);
+                                  if (monthly.length > 0) {
+                                    const exists = monthly.some((d) => d.months === regSelectedDuration?.months);
+                                    if (!exists) setRegSelectedDuration(monthly[0]);
+                                  }
+                                }}
+                                className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${(regSelectedDuration?.months || 1) < 12 ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                              >
+                                Theo tháng
+                              </button>
+                              <button
+                                onClick={() => {
+                                  const yearly = regSelectedPkg.durations.filter((d) => d.months >= 12);
+                                  if (yearly.length > 0) {
+                                    const exists = yearly.some((d) => d.months === regSelectedDuration?.months);
+                                    if (!exists) setRegSelectedDuration(yearly[0]);
+                                  }
+                                }}
+                                className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${(regSelectedDuration?.months || 0) >= 12 ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                              >
+                                Theo năm
+                              </button>
+                            </div>
+                          )}
+                          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                            {regSelectedPkg.durations
+                              .filter((d) => ((regSelectedDuration?.months || 1) < 12 ? d.months < 12 : d.months >= 12))
+                              .map((dur, idx) => {
+                                const isSelected = regSelectedDuration?.months === dur.months && regSelectedDuration?.discount === dur.discount;
+                                const total = regSelectedPkg.unitPrice * dur.months * (1 - (dur.discount || 0) / 100);
+                                const origin = regSelectedPkg.unitPrice * dur.months;
+                                return (
+                                  <button
+                                    key={idx}
+                                    onClick={() => setRegSelectedDuration(dur)}
+                                    className={`p-4 rounded-xl border-2 transition-all text-center ${isSelected ? 'border-indigo-600 bg-indigo-50 ring-2 ring-indigo-200' : 'border-slate-200 hover:border-slate-300 bg-white'}`}
+                                  >
+                                    <div className="font-bold text-slate-900 mb-1">{dur.months} tháng</div>
+                                    <div className="text-xl font-extrabold text-indigo-600 mb-1">{total.toLocaleString('vi-VN')}đ</div>
+                                    {dur.discount > 0 ? (
+                                      <>
+                                        <div className="inline-block px-2 py-0.5 bg-green-100 text-green-700 text-xs font-semibold rounded-full">-{dur.discount}%</div>
+                                        <div className="text-xs text-slate-400 line-through mt-1">{origin.toLocaleString('vi-VN')}đ</div>
+                                      </>
+                                    ) : (
+                                      <div className="text-xs text-slate-400">Không giảm giá</div>
+                                    )}
+                                  </button>
+                                );
+                              })}
+                          </div>
+                        </>
+                      ) : (
+                        <div className="p-4 rounded-xl border-2 border-slate-200 bg-white text-center">
+                          <div className="font-bold text-slate-900 mb-1">1 tháng</div>
+                          <div className="text-xl font-extrabold text-indigo-600 mb-1">{regSelectedPkg.unitPrice?.toLocaleString('vi-VN') || '0'}đ</div>
+                          <div className="text-xs text-slate-400">Giá mặc định</div>
                         </div>
                       )}
                     </div>
-                  </div>
-                )}
 
-                {regSelectedPkg && (
-                  <div>
-                    <h3 className="text-lg font-bold text-slate-900 mb-3">3. Chọn thời gian tập</h3>
-                    {regSelectedPkg.durations && regSelectedPkg.durations.length > 0 ? (
-                      <>
-                        {regSelectedPkg.durations.some(d => d.months >= 12) && (
-                          <div className="flex gap-2 mb-4 bg-slate-100 p-1 rounded-xl w-fit">
-                            <button
-                              onClick={() => {
-                                const monthlyDurs = regSelectedPkg.durations.filter(d => d.months < 12);
-                                if (monthlyDurs.length > 0) {
-                                  const stillExists = monthlyDurs.some(d => d.months === regSelectedDuration?.months);
-                                  if (!stillExists) setRegSelectedDuration(monthlyDurs[0]);
-                                }
-                              }}
-                              className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${(regSelectedDuration?.months || 1) < 12
-                                  ? 'bg-white text-indigo-700 shadow-sm'
-                                  : 'text-slate-500 hover:text-slate-700'
-                                }`}
-                            >
-                              Theo tháng
-                            </button>
-                            <button
-                              onClick={() => {
-                                const yearlyDurs = regSelectedPkg.durations.filter(d => d.months >= 12);
-                                if (yearlyDurs.length > 0) {
-                                  const stillExists = yearlyDurs.some(d => d.months === regSelectedDuration?.months);
-                                  if (!stillExists) setRegSelectedDuration(yearlyDurs[0]);
-                                }
-                              }}
-                              className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${(regSelectedDuration?.months || 0) >= 12
-                                  ? 'bg-white text-indigo-700 shadow-sm'
-                                  : 'text-slate-500 hover:text-slate-700'
-                                }`}
-                            >
-                              Theo năm
-                            </button>
+                    {regSelectedDuration && (
+                      <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4">
+                        <div className="flex justify-between text-sm text-slate-600">
+                          <span>Tạm tính ({regSelectedDuration.months} tháng x {regSelectedPkg.unitPrice?.toLocaleString('vi-VN')}đ)</span>
+                          <span>{(regSelectedPkg.unitPrice * regSelectedDuration.months).toLocaleString('vi-VN')}đ</span>
+                        </div>
+                        {regSelectedDuration.discount > 0 && (
+                          <div className="flex justify-between text-sm text-green-600 mt-1">
+                            <span>Giảm {regSelectedDuration.discount}%</span>
+                            <span>-{((regSelectedPkg.unitPrice * regSelectedDuration.months * regSelectedDuration.discount) / 100).toLocaleString('vi-VN')}đ</span>
                           </div>
                         )}
-                        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                          {regSelectedPkg.durations
-                            .filter(d => (regSelectedDuration?.months || 1) < 12 ? d.months < 12 : d.months >= 12)
-                            .map((dur, idx) => {
-                              const isSelected = regSelectedDuration?.months === dur.months && regSelectedDuration?.discount === dur.discount;
-                              const price = regSelectedPkg.unitPrice * dur.months * (1 - (dur.discount || 0) / 100);
-                              return (
-                                <button
-                                  key={idx}
-                                  onClick={() => setRegSelectedDuration(dur)}
-                                  className={`p-4 rounded-xl border-2 transition-all text-center ${isSelected
-                                      ? 'border-indigo-600 bg-indigo-50 ring-2 ring-indigo-200'
-                                      : 'border-slate-200 hover:border-slate-300 bg-white'
-                                    }`}
-                                >
-                                  <div className="font-bold text-slate-900 mb-1">{dur.months} tháng</div>
-                                  <div className="text-xl font-extrabold text-indigo-600 mb-1">
-                                    {price.toLocaleString('vi-VN')}đ
-                                  </div>
-                                  {dur.discount > 0 && (
-                                    <div className="inline-block px-2 py-0.5 bg-green-100 text-green-700 text-xs font-semibold rounded-full">
-                                      -{dur.discount}%
-                                    </div>
-                                  )}
-                                </button>
-                              );
-                            })}
+                        <div className="border-t border-indigo-200 mt-3 pt-3 flex justify-between items-center">
+                          <span className="font-bold text-slate-900">Tổng tiền cần thanh toán</span>
+                          <span className="text-xl font-extrabold text-indigo-600">{(regSelectedPkg.unitPrice * regSelectedDuration.months * (1 - (regSelectedDuration.discount || 0) / 100)).toLocaleString('vi-VN')}đ</span>
                         </div>
-                      </>
-                    ) : (
-                      <div className="p-4 rounded-xl border-2 border-slate-200 bg-white text-center">
-                        <div className="font-bold text-slate-900 mb-1">1 tháng</div>
-                        <div className="text-xl font-extrabold text-indigo-600 mb-1">
-                          {regSelectedPkg.unitPrice?.toLocaleString('vi-VN') || '0'}đ
-                        </div>
-                        <div className="text-xs text-slate-400">Giá mặc định</div>
+                        <p className="text-xs text-slate-500 mt-2">Chỉ hiển thị tổng tiền, không thực hiện thanh toán tại đây</p>
                       </div>
                     )}
                   </div>
                 )}
 
-                {regSelectedPkg && regSelectedDuration && (
-                  <div className="border-t border-slate-200 pt-4">
-                    <div className="flex justify-between items-center mb-4">
-                      <span className="text-slate-600">Tổng tiền:</span>
-                      <span className="text-2xl font-bold text-indigo-600">
-                        {(regSelectedPkg.unitPrice * regSelectedDuration.months * (1 - (regSelectedDuration.discount || 0) / 100)).toLocaleString('vi-VN')}đ
-                      </span>
+                {/* Step 3: Xác nhận */}
+                {regStep === 3 && regSelectedPkg && regSelectedDuration && (
+                  <div className="space-y-4">
+                    <div className="bg-gradient-to-br from-indigo-600 to-violet-600 rounded-2xl p-5 text-white">
+                      <p className="text-indigo-100 text-xs font-semibold uppercase tracking-wider">Xác nhận đăng ký</p>
+                      <h3 className="text-lg font-bold mt-1">{regSelectedPkg.name}</h3>
+                      <p className="text-indigo-100 text-sm mt-1">{regSelectedDuration.months} tháng {regSelectedDuration.discount > 0 ? `• Giảm ${regSelectedDuration.discount}%` : ''}</p>
+                      <div className="mt-4 bg-white/15 backdrop-blur rounded-xl p-4 flex justify-between items-center">
+                        <div>
+                          <p className="text-indigo-100 text-xs">Tổng tiền cần thanh toán</p>
+                          <p className="text-2xl font-extrabold">{(regSelectedPkg.unitPrice * regSelectedDuration.months * (1 - (regSelectedDuration.discount || 0) / 100)).toLocaleString('vi-VN')}đ</p>
+                        </div>
+                        <Package className="w-8 h-8 text-white/80" />
+                      </div>
                     </div>
-                    {regSelectedDuration.discount > 0 && (
-                      <div className="text-right text-sm text-green-600 mb-4">
-                        Đã giảm {regSelectedDuration.discount}%
+
+                    <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-slate-500">Hội viên</span>
+                        <span className="font-semibold text-slate-900">{regCustomer.fullName} • {regCustomer.phone}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-slate-500">Gói tập</span>
+                        <span className="font-semibold text-slate-900">{regSelectedPkg.name}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-slate-500">Đơn giá</span>
+                        <span className="font-semibold text-slate-900">{regSelectedPkg.unitPrice?.toLocaleString('vi-VN')}đ/tháng</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-slate-500">Thời hạn</span>
+                        <span className="font-semibold text-slate-900">{regSelectedDuration.months} tháng</span>
+                      </div>
+                      {regSelectedDuration.discount > 0 && (
+                        <div className="flex justify-between text-sm text-green-600">
+                          <span>Giảm giá</span>
+                          <span className="font-bold">-{regSelectedDuration.discount}%</span>
+                        </div>
+                      )}
+                      <div className="border-t border-slate-200 pt-3 flex justify-between items-center">
+                        <span className="font-bold text-slate-900">Tổng tiền</span>
+                        <span className="text-xl font-extrabold text-indigo-600">{(regSelectedPkg.unitPrice * regSelectedDuration.months * (1 - (regSelectedDuration.discount || 0) / 100)).toLocaleString('vi-VN')}đ</span>
+                      </div>
+                      <div className="flex justify-between text-xs text-slate-500">
+                        <span>Ngày bắt đầu (dự kiến)</span>
+                        <span className="font-semibold text-slate-700">{new Date().toLocaleDateString('vi-VN')}</span>
+                      </div>
+                      <div className="flex justify-between text-xs text-slate-500">
+                        <span>Ngày kết thúc (dự kiến)</span>
+                        <span className="font-semibold text-slate-700">{(() => { const d = new Date(); d.setMonth(d.getMonth() + regSelectedDuration.months); return d.toLocaleDateString('vi-VN'); })()}</span>
+                      </div>
+                    </div>
+
+                    {regSelectedPkg.features?.length > 0 && (
+                      <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                        <p className="text-xs font-bold text-slate-700 uppercase mb-2">Quyền lợi gói</p>
+                        <ul className="space-y-1.5">
+                          {regSelectedPkg.features.map((f, i) => (
+                            <li key={i} className="flex gap-2 text-sm text-slate-700">
+                              <Check className="w-4 h-4 text-emerald-500 mt-0.5 shrink-0" />
+                              <span>{f}</span>
+                            </li>
+                          ))}
+                        </ul>
                       </div>
                     )}
-                    <div className="flex gap-3">
-                      <Button variant="outlined" onClick={() => setShowRegModal(false)}
-                        sx={{ flex: 1, borderColor: '#cbd5e1', color: '#475569', textTransform: 'none', borderRadius: 2 }}>
-                        Hủy
-                      </Button>
-                      <Button variant="contained" onClick={handleRegSubmit} disabled={regSubmitting}
-                        sx={{ flex: 1, bgcolor: '#4f46e5', '&:hover': { bgcolor: '#4338ca' }, textTransform: 'none', borderRadius: 2 }}>
-                        {regSubmitting ? 'Đang xử lý...' : 'Xác nhận đăng ký'}
-                      </Button>
-                    </div>
                   </div>
                 )}
+              </div>
+              <div className="shrink-0 border-t border-slate-200 p-4 bg-slate-50 flex gap-3">
+                {regStep > 1 && (
+                  <button onClick={() => setRegStep((s) => (s - 1) as any)} className="flex-1 py-3 bg-white border border-slate-200 text-slate-700 font-semibold rounded-xl hover:bg-slate-50">
+                    Quay lại
+                  </button>
+                )}
+                {regStep === 1 && (
+                  <button
+                    onClick={() => {
+                      if (!regSelectedPkg) return;
+                      const owned = (detail360?.packages || []).some(
+                        (p: any) => String(p.packageId) === String(regSelectedPkg._id) && ['đang hoạt động', 'còn 10 ngày', 'đang tạm ngưng'].includes(p.status)
+                      );
+                      if (owned) return;
+                      setRegStep(2);
+                    }}
+                    disabled={
+                      !regSelectedPkg ||
+                      (detail360?.packages || []).some(
+                        (p: any) => String(p.packageId) === String(regSelectedPkg._id) && ['đang hoạt động', 'còn 10 ngày', 'đang tạm ngưng'].includes(p.status)
+                      )
+                    }
+                    className="flex-1 py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Tiếp tục
+                  </button>
+                )}
+                {regStep === 2 && (
+                  <button
+                    onClick={() => regSelectedDuration && setRegStep(3)}
+                    disabled={!regSelectedDuration}
+                    className="flex-1 py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Tiếp tục
+                  </button>
+                )}
+                {regStep === 3 && (
+                  <button
+                    onClick={handleRegSubmit}
+                    disabled={regSubmitting}
+                    className="flex-1 py-3 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {regSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                    {regSubmitting ? 'Đang xử lý...' : `Xác nhận • ${(regSelectedPkg.unitPrice * (regSelectedDuration?.months || 1) * (1 - ((regSelectedDuration?.discount || 0) / 100))).toLocaleString('vi-VN')}đ`}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+        {checkDetail && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setCheckDetail(null)}>
+            <div className="bg-white rounded-2xl max-w-lg w-full max-h-[85vh] overflow-hidden flex flex-col shadow-2xl" onClick={(e) => e.stopPropagation()}>
+              <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-gradient-to-r from-indigo-50 to-violet-50">
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900">Chi tiết điểm danh</h2>
+                  <p className="text-xs text-slate-600 mt-0.5">{checkDetail.customer.fullName} • {checkDetail.customer.phone} • Hôm nay {checkDetail.sessions.length} lần</p>
+                </div>
+                <button onClick={() => setCheckDetail(null)} className="p-2 hover:bg-white rounded-xl border border-slate-200">
+                  <X className="w-5 h-5 text-slate-600" />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-6 space-y-3">
+                {checkDetail.sessions.map((s: any, idx: number) => {
+                  const isOut = !!s.checkOutTime;
+                  const inTime = new Date(s.checkInTime).toLocaleTimeString('vi-VN');
+                  const outTime = isOut ? new Date(s.checkOutTime).toLocaleTimeString('vi-VN') : '—';
+                  const locker = s.lockerNumber || 'Không dùng tủ';
+                  return (
+                    <div key={s._id || idx} className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                      <div className="flex items-center justify-between">
+                        <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${isOut ? 'bg-blue-100 text-blue-700 border-blue-200' : 'bg-emerald-100 text-emerald-700 border-emerald-200'}`}>
+                          Lần {idx + 1} • {isOut ? 'Đã check out' : 'Đã check in'}
+                        </span>
+                        <span className="text-xs text-slate-500 flex items-center gap-1.5">
+                          <Clock className="w-3.5 h-3.5" />{inTime} → {outTime}
+                        </span>
+                      </div>
+                      <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
+                        <div className="bg-white border border-slate-200 rounded-lg p-2.5">
+                          <p className="text-slate-500">Vào</p>
+                          <p className="font-semibold text-slate-900">{new Date(s.checkInTime).toLocaleString('vi-VN')}</p>
+                        </div>
+                        <div className="bg-white border border-slate-200 rounded-lg p-2.5">
+                          <p className="text-slate-500">Ra</p>
+                          <p className="font-semibold text-slate-900">{isOut ? new Date(s.checkOutTime).toLocaleString('vi-VN') : 'Chưa ra'}</p>
+                        </div>
+                      </div>
+                      <div className="mt-2 flex items-center gap-2 text-xs">
+                        <span className="flex items-center gap-1.5 text-slate-600">
+                          <KeyRound className="w-3.5 h-3.5" /> Tủ: <b className="text-slate-900">{locker}</b>
+                        </span>
+                        {s.totalMinutes ? <span className="ml-auto px-2 py-1 bg-indigo-50 text-indigo-700 rounded-full font-bold">{Math.floor(s.totalMinutes / 60)}h{s.totalMinutes % 60}p</span> : null}
+                        {s.status && <span className="px-2 py-1 bg-white border border-slate-200 rounded-full text-slate-600">{s.status}</span>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="p-4 border-t border-slate-200 flex justify-end gap-2 bg-slate-50">
+                <button onClick={() => setCheckDetail(null)} className="px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-xl text-sm font-semibold hover:bg-slate-50">Đóng</button>
               </div>
             </div>
           </div>

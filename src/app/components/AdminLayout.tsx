@@ -46,6 +46,7 @@ import { useAuth, getApiUrl, getAuthHeaders } from '../context/AuthContext';
 import { useClub } from '../context/ClubContext';
 import { useChatContext } from '../context/ChatContext';
 import { AddClubModal } from './AddClubModal';
+import { GlobalFaceAttendance } from './GlobalFaceAttendance';
 import logo from '../../imports/ChatGPT_Image_May_14__2026__09_48_52_PM.png';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 
@@ -615,7 +616,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
       </aside>
 
       <div
-        className={`flex-1 transition-all duration-300 ${
+        className={`flex-1 min-w-0 overflow-hidden transition-all duration-300 ${
           isSidebarOpen ? "ml-72" : "ml-0"
         }`}
       >
@@ -809,7 +810,8 @@ export function AdminLayout({ children }: AdminLayoutProps) {
             </div>
           </div>
         </header>
-        <main className="p-6">{children}</main>
+        <main className="p-6 w-full max-w-full overflow-x-hidden box-border">{children}</main>
+        <GlobalFaceAttendance />
       </div>
 
       {isSidebarOpen && (
