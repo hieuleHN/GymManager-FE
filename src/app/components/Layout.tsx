@@ -105,7 +105,7 @@ export function Layout() {
         const data = await res.json();
         setNotifications(data.data || []);
       }
-    } catch {}
+    } catch { }
   };
 
   const fetchUnreadCount = async () => {
@@ -122,7 +122,7 @@ export function Layout() {
         const data = await res.json();
         setUnreadCount(data.count || 0);
       }
-    } catch {}
+    } catch { }
   };
 
   const handleNotificationClick = async (notif: any) => {
@@ -131,7 +131,7 @@ export function Layout() {
         method: "PUT",
         headers: getAuthHeaders(),
       });
-    } catch {}
+    } catch { }
     setShowNotifications(false);
     if (notif.type === "booking_transferred") {
       navigate("/dashboard/schedule");
@@ -160,7 +160,7 @@ export function Layout() {
       });
       setUnreadCount(0);
       setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
-    } catch {}
+    } catch { }
   };
 
   const getNotifIcon = (type: string) => {
@@ -191,9 +191,9 @@ export function Layout() {
       items:
         clubs.length > 0
           ? clubs.map((c) => ({
-              name: c.name || c.address,
-              href: `/clubs/${c._id}`,
-            }))
+            name: c.name || c.address,
+            href: `/clubs/${c._id}`,
+          }))
           : [{ name: "Đang cập nhật...", href: "#" }],
     },
     {
@@ -204,9 +204,9 @@ export function Layout() {
       items:
         disciplines.length > 0
           ? disciplines.map((d) => ({
-              name: d.name,
-              href: `/disciplines/${d._id}`,
-            }))
+            name: d.name,
+            href: `/disciplines/${d._id}`,
+          }))
           : [{ name: "Đang cập nhật...", href: "#" }],
     },
     { name: "Gói tập", href: "/packages", icon: CreditCard },
@@ -220,7 +220,6 @@ export function Layout() {
       href: "/dashboard",
       icon: LayoutDashboard,
     });
-    navigation.push({ name: "Điểm danh", href: "/dashboard/qr", icon: QrCode });
   }
 
   const handleLogout = () => {
@@ -277,11 +276,10 @@ export function Layout() {
                     <Link
                       key={item.name}
                       to={item.href}
-                      className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium h-full ${
-                        location.pathname === item.href
+                      className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium h-full ${location.pathname === item.href
                           ? "border-indigo-500 text-slate-900 font-semibold"
                           : "border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700"
-                      }`}
+                        }`}
                     >
                       {item.name}
                     </Link>
@@ -336,20 +334,18 @@ export function Layout() {
                             <button
                               key={notif._id}
                               onClick={() => handleNotificationClick(notif)}
-                              className={`w-full text-left p-4 flex gap-3 hover:bg-slate-50 transition-colors border-b border-slate-50 ${
-                                !notif.read ? "bg-indigo-50/50" : ""
-                              }`}
+                              className={`w-full text-left p-4 flex gap-3 hover:bg-slate-50 transition-colors border-b border-slate-50 ${!notif.read ? "bg-indigo-50/50" : ""
+                                }`}
                             >
                               <div className="mt-0.5 shrink-0">
                                 {getNotifIcon(notif.type)}
                               </div>
                               <div className="flex-1 min-w-0">
                                 <p
-                                  className={`text-sm ${
-                                    !notif.read
+                                  className={`text-sm ${!notif.read
                                       ? "font-semibold text-slate-900"
                                       : "text-slate-700"
-                                  }`}
+                                    }`}
                                 >
                                   {notif.title}
                                 </p>
@@ -471,11 +467,10 @@ export function Layout() {
                     <Link
                       to={item.href}
                       onClick={() => setIsMobileMenuOpen(false)}
-                      className={`flex items-center px-3 py-2 rounded-md text-base font-medium ${
-                        location.pathname === item.href
+                      className={`flex items-center px-3 py-2 rounded-md text-base font-medium ${location.pathname === item.href
                           ? "bg-indigo-50 text-indigo-700 font-semibold"
                           : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-                      }`}
+                        }`}
                     >
                       <item.icon className="mr-3 h-5 w-5" />
                       {item.name}

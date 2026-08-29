@@ -174,19 +174,23 @@ export function Services() {
   const handleAccept = async (request: RequestItem) => {
     let refund_amount: number | undefined;
     if (request.service_type === 'cancel-refund') {
-      const input = prompt('Nhập số tiền hoàn cho hội viên (VNĐ):');
-      if (input === null) return;
-      const value = Number(input.replace(/[^\d]/g, ''));
-      if (!value || value <= 0) {
-        toast.error('Số tiền hoàn không hợp lệ!');
-        return;
+      if ((request.data as any)?.noRefund) {
+        refund_amount = 0;
+      } else {
+        const input = prompt('Nhập số tiền hoàn cho hội viên (VNĐ):');
+        if (input === null) return;
+        const value = Number(input.replace(/[^\d]/g, ''));
+        if (!value || value <= 0) {
+          toast.error('Số tiền hoàn không hợp lệ!');
+          return;
+        }
+        refund_amount = value;
       }
-      refund_amount = value;
     }
     if (!confirm('Bạn có chắc chắn muốn chấp nhận yêu cầu này?')) return;
     try {
       const body: any = { action: 'accepted' };
-      if (refund_amount) body.refund_amount = refund_amount;
+      if (refund_amount !== undefined) body.refund_amount = refund_amount;
       const res = await fetch(`/api/service-requests/${request._id}`, {
         method: 'PATCH',
         headers: headers as any,
