@@ -69,6 +69,8 @@ const statusBadgeCls = (status: string) => {
       return 'bg-violet-100 text-violet-700';
     case 'accepted':
       return 'bg-green-100 text-green-700';
+    case 'success':
+      return 'bg-sky-100 text-sky-700';
     case 'rejected':
       return 'bg-red-100 text-red-700';
     default:
@@ -81,7 +83,7 @@ export function Services() {
   const headers = getAuthHeaders();
 
   const [tab, setTab] = useState<'requests' | 'visibility'>('requests');
-  const [filter, setFilter] = useState<'pending' | 'awaiting_payment' | 'accepted' | 'rejected' | 'all'>('pending');
+  const [filter, setFilter] = useState<'pending' | 'awaiting_payment' | 'accepted' | 'success' | 'rejected' | 'all'>('pending');
   const [requests, setRequests] = useState<RequestItem[]>([]);
   const [loadingRequests, setLoadingRequests] = useState(false);
 
@@ -303,6 +305,7 @@ export function Services() {
     { key: 'pending', label: 'Đang xử lý' },
     { key: 'awaiting_payment', label: 'Chờ thanh toán' },
     { key: 'accepted', label: 'Đã chấp nhận' },
+    { key: 'success', label: 'Thành công' },
     { key: 'rejected', label: 'Đã từ chối' },
     { key: 'all', label: 'Tất cả' }
   ];

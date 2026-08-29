@@ -44,7 +44,8 @@ export const SERVICE_STATUS_LABELS: Record<string, string> = {
   awaiting_payment: 'Chờ thanh toán',
   accepted: 'Đã chấp nhận',
   rejected: 'Đã từ chối',
-  cancelled: 'Đã hủy'
+  cancelled: 'Đã hủy',
+  success: 'Thành công'
 };
 
 // Dịch vụ không bao giờ thu phí trước (phòng tập hoàn tiền theo chiều ngược lại)

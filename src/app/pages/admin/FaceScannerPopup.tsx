@@ -177,24 +177,27 @@ export function FaceScannerPopup() {
             const customer = response.data.customer;
             const name = customer?.fullName || 'Hội viên';
             const isCheckout = response.data.status === 'checked-out';
-
-            speak(isCheckout ? `Kính chào ${name} ra về` : `Xin mời ${name} vào tập`);
-
-            // Gửi toàn bộ dữ liệu xác thực sang màn hình chính để mở Modal tủ đồ / Check-out
-            channelRef.current?.postMessage({
-                type: 'FACE_CHECKIN_TRIGGER',
-                payload: {
-                    status: response.data.status,
-                    customer,
-                    totalMinutes: response.data.totalMinutes
-                }
-            });
+            // Để tránh nói lặp 2 lần, popup không speak, để trang chính phát
 
             setFeedback({
                 success: true,
                 name,
                 msg: isCheckout ? 'Check-out FaceID thành công!' : 'Điểm danh FaceID thành công!'
             });
+
+            // Gửi sang màn hình chính (bọc riêng để lỗi postMessage không làm báo thất bại)
+            try {
+                channelRef.current?.postMessage({
+                    type: 'FACE_CHECKIN_TRIGGER',
+                    payload: {
+                        status: response.data.status,
+                        customer,
+                        totalMinutes: response.data.totalMinutes,
+                        checkCount: response.data.checkCount || response.data.totalSessionsToday || 1,
+                        frozenNotice: response.data.frozenNotice || null
+                    }
+                });
+            } catch {}
         } catch (err: any) {
             const msg = err.response?.data?.error || err.response?.data?.message || 'Điểm danh FaceID thất bại';
             setFeedback({

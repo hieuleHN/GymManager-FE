@@ -164,6 +164,8 @@ export function AttendanceScanner() {
         lockerName?: string;
         isCheckout?: boolean;
         totalMinutes?: number;
+        checkCount?: number;
+        frozenNotice?: string | null;
     } | null>(null);
 
     const backendUrl = getApiUrl() || 'http://localhost:5000';
@@ -177,14 +179,16 @@ export function AttendanceScanner() {
             }
 
             if (event.data?.type === 'FACE_CHECKIN_TRIGGER') {
-                const { status, customer, totalMinutes } = event.data.payload;
+                const { status, customer, totalMinutes, checkCount, frozenNotice } = event.data.payload;
                 const verifiedCode = customer.id || 'HV';
                 const verifiedName = customer.fullName || 'Hội viên';
                 const packages = customer.packages || [];
+                const count = checkCount || 1;
 
                 if (status === 'checked-out') {
                     releaseMemberLockers(verifiedName);
                     loadTodayHistory();
+                    speak(`Kính chào ${verifiedName} ra về`);
 
                     setSuccessAnimation({
                         active: true,
@@ -193,9 +197,11 @@ export function AttendanceScanner() {
                         phone: customer.phone || 'Chưa cập nhật',
                         packages,
                         isCheckout: true,
-                        totalMinutes
+                        totalMinutes,
+                        checkCount: count,
+                        frozenNotice: null
                     });
-                    setTimeout(() => setSuccessAnimation(null), 3000);
+                    setTimeout(() => setSuccessAnimation(null), 4000);
                 } else {
                     const matchedInfo: ScannedCustomer = {
                         memberCode: verifiedCode,
@@ -204,6 +210,9 @@ export function AttendanceScanner() {
                         packages,
                         token: 'FACE_ID_AUTH'
                     };
+                    (matchedInfo as any).checkCount = count;
+                    (matchedInfo as any).frozenNotice = frozenNotice || null;
+                    speak(`Xin mời ${verifiedName} vào tập`);
 
                     setScannedCustomer(matchedInfo);
                     lastScannedRef.current = { memberCode: verifiedCode, fullName: verifiedName };
@@ -330,6 +339,8 @@ export function AttendanceScanner() {
             const verifiedName = customerData.fullName || 'Hội viên';
             const packages = customerData.packages || [];
 
+            const checkCount = response.data.checkCount || response.data.totalSessionsToday || 1;
+            const frozenNotice = response.data.frozenNotice || null;
             if (response.data?.status === 'checked-out') {
                 releaseMemberLockers(verifiedName);
                 speak(`Kính chào ${verifiedName} ra về`);
@@ -340,7 +351,7 @@ export function AttendanceScanner() {
                     customerName: verifiedName,
                     time: new Date().toLocaleTimeString('vi-VN'),
                     status: 'success',
-                    message: `${verifiedName} check-out FaceID thành công`
+                    message: `${verifiedName} check-out FaceID thành công • Lần ${checkCount} hôm nay`
                 }, ...prev.slice(0, 6)]);
 
                 setSuccessAnimation({
@@ -350,9 +361,11 @@ export function AttendanceScanner() {
                     phone: customerData.phone || 'Chưa cập nhật',
                     packages,
                     isCheckout: true,
-                    totalMinutes: response.data.totalMinutes
+                    totalMinutes: response.data.totalMinutes,
+                    checkCount,
+                    frozenNotice: null
                 });
-                setTimeout(() => setSuccessAnimation(null), 3000);
+                setTimeout(() => setSuccessAnimation(null), 4000);
             } else {
                 const matchedInfo: ScannedCustomer = {
                     memberCode: verifiedCode,
@@ -361,10 +374,12 @@ export function AttendanceScanner() {
                     packages,
                     token: 'FACE_ID_AUTH'
                 };
+                (matchedInfo as any).checkCount = checkCount;
+                (matchedInfo as any).frozenNotice = frozenNotice;
 
                 setScannedCustomer(matchedInfo);
                 lastScannedRef.current = { memberCode: verifiedCode, fullName: verifiedName };
-                speak(`Xin mời ${verifiedName} vào tập`);
+                speak(`Xin mời ${verifiedName} vào tập - lần ${checkCount} hôm nay`);
 
                 setAssignedLockerName('');
                 setLockers([]);
@@ -460,7 +475,9 @@ export function AttendanceScanner() {
                 }
             }
 
-            const successMsg = 'Check-in thành công!';
+            const checkCount = (scannedCustomer as any).checkCount || 1;
+            const frozenNotice = (scannedCustomer as any).frozenNotice || null;
+            const successMsg = `Check-in thành công! • Lần ${checkCount} hôm nay`;
             lastScannedRef.current = {
                 memberCode: scannedCustomer.memberCode,
                 fullName: scannedCustomer.fullName
@@ -481,7 +498,9 @@ export function AttendanceScanner() {
                 name: scannedCustomer.fullName,
                 phone: scannedCustomer.phone,
                 packages: scannedCustomer.packages,
-                lockerName: lockerAssigned || undefined
+                lockerName: lockerAssigned || undefined,
+                checkCount,
+                frozenNotice
             });
 
             setScannedCustomer(null);
@@ -492,7 +511,7 @@ export function AttendanceScanner() {
             setSubmittingLocker(false);
             setTimeout(() => {
                 setSuccessAnimation(null);
-            }, 3000);
+            }, 4000);
         }
     };
 
@@ -866,6 +885,15 @@ export function AttendanceScanner() {
                                     {typeof p.remainingDays === 'number' ? ` (còn ${p.remainingDays} ngày)` : ''}
                                 </p>
                             ))}
+                            {!pendingStaff && (scannedCustomer as any)?.checkCount && (
+                                <p className="text-xs font-bold text-emerald-600 mt-2">Lần {(scannedCustomer as any).checkCount} hôm nay</p>
+                            )}
+                            {!pendingStaff && (scannedCustomer as any)?.frozenNotice && (
+                                <div className="mt-2 bg-amber-50 border border-amber-200 rounded-lg p-2.5 flex gap-2">
+                                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                                    <p className="text-xs text-amber-800">{(scannedCustomer as any).frozenNotice}</p>
+                                </div>
+                            )}
                         </div>
 
                         {!wantLocker && (
@@ -1013,6 +1041,11 @@ export function AttendanceScanner() {
                         </h2>
                         <p className="text-base font-extrabold text-purple-700 mt-1">{successAnimation.name}</p>
                         <p className="text-xs text-slate-950 font-mono font-bold">Mã số hội viên: {successAnimation.memberCode}</p>
+                        {successAnimation.checkCount && (
+                          <span className="mt-2 px-3 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 text-xs font-bold">
+                            Lần {successAnimation.checkCount} hôm nay
+                          </span>
+                        )}
 
                         <div className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3.5 mt-4 space-y-1 text-left text-xs text-slate-900 font-bold">
                             {successAnimation.isCheckout && typeof successAnimation.totalMinutes === 'number' && (
@@ -1042,6 +1075,12 @@ export function AttendanceScanner() {
                                 </div>
                             )}
                         </div>
+                        {successAnimation.frozenNotice && !successAnimation.isCheckout && (
+                            <div className="w-full mt-3 bg-amber-50 border border-amber-200 rounded-xl p-3 flex gap-2 text-left">
+                                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                                <p className="text-xs text-amber-800">{successAnimation.frozenNotice}</p>
+                            </div>
+                        )}
                     </div>
                 </div>
             )}
