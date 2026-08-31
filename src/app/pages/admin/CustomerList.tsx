@@ -1,7 +1,7 @@
 import { AdminLayout } from '../../components/AdminLayout';
 import { Pagination } from '../../components/Pagination';
 import { Button } from '@mui/material';
-import { Search, Edit, Eye, X, Check, X as XIcon, Clock, Package, Star, ScanFace, Loader2, Camera, ArrowRightLeft, Lock, KeyRound, UserCheck, LogIn, LogOut } from 'lucide-react';
+import { Search, Edit, Eye, X, Check, X as XIcon, Clock, Package, Star, ScanFace, Loader2, Camera, ArrowRightLeft, Lock, KeyRound, UserCheck, LogIn, LogOut, AlertTriangle, CreditCard, Wallet, Receipt, CalendarDays, Banknote } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router';
 import { getAuthHeaders, getApiUrl } from '../../context/AuthContext';
@@ -167,7 +167,9 @@ export function CustomerList() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
-  const [activeTab, setActiveTab] = useState<'all' | 'pending' | 'pending_approval' | 'approved' | 'rejected'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'expiring' | 'pending' | 'pending_approval' | 'approved' | 'rejected'>('all');
+  const [expiringIds, setExpiringIds] = useState<Set<string>>(new Set());
+  const [expiringCount, setExpiringCount] = useState(0);
   const [rejectReason, setRejectReason] = useState('');
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [rejectTarget, setRejectTarget] = useState<string | null>(null);
@@ -193,7 +195,7 @@ export function CustomerList() {
   const [kpi, setKpi] = useState<any>(null);
   const [detail360, setDetail360] = useState<any>(null);
   const [loading360, setLoading360] = useState(false);
-  const [detailTab, setDetailTab] = useState<'info' | 'packages' | 'checkins' | 'payment'>('info');
+  const [detailTab, setDetailTab] = useState<'info' | 'packages' | 'checkins' | 'payment' | 'timeline'>('info');
   const [freezeMonthsAll, setFreezeMonthsAll] = useState(2);
   const [freezingPkgId, setFreezingPkgId] = useState<string | null>(null);
   const [freezeMonthsSingle, setFreezeMonthsSingle] = useState(2);
@@ -223,6 +225,21 @@ export function CustomerList() {
   const [filterNoFace, setFilterNoFace] = useState(false);
   const [todayCheckMap, setTodayCheckMap] = useState<Map<string, { count: number; latest: any; sessions: any[] }>>(new Map());
   const [checkDetail, setCheckDetail] = useState<{ customer: Customer; sessions: any[] } | null>(null);
+  const [attendanceFilter, setAttendanceFilter] = useState<'all' | 'new' | 'present' | 'left'>('all');
+  const [paymentFilter, setPaymentFilter] = useState<'all' | 'package' | 'locker' | 'service' | 'wallet'>('all');
+  // Gia hạn đúng gói - chọn kỳ hạn từ bảng giá
+  const [renewTarget, setRenewTarget] = useState<any>(null);
+  const [renewPkgDetail, setRenewPkgDetail] = useState<any>(null);
+  const [renewDuration, setRenewDuration] = useState<{ months: number; discount: number } | null>(null);
+  const [renewSubmitting, setRenewSubmitting] = useState(false);
+  // Nâng cấp - chọn gói cao cấp hơn cùng bộ môn
+  const [upgradeTarget, setUpgradeTarget] = useState<any>(null);
+  const [upgradeList, setUpgradeList] = useState<any[]>([]);
+  const [upgradePkgDetail, setUpgradePkgDetail] = useState<any>(null);
+  const [selectedUpgradePkg, setSelectedUpgradePkg] = useState<any>(null);
+  const [upgradeCalc, setUpgradeCalc] = useState<any>(null);
+  const [upgradeCalculating, setUpgradeCalculating] = useState(false);
+  const [upgradeSubmitting, setUpgradeSubmitting] = useState(false);
 
   const backendUrl = getApiUrl() || 'http://localhost:5000';
 
@@ -254,9 +271,18 @@ export function CustomerList() {
 
   const fetchTodayChecks = async () => {
     try {
-      const res = await fetch(`${backendUrl}/api/checkin/history?limit=300`, { headers: getAuthHeaders() as any });
+      const params = new URLSearchParams(); params.set('limit','300');
+      if (selectedClub !== 'all') params.set('locationId', selectedClub);
+      const res = await fetch(`${backendUrl}/api/checkin/history?${params.toString()}`, { headers: getAuthHeaders() as any });
       const list = await res.json();
-      const arr: any[] = Array.isArray(list) ? list : (list.data || []);
+      let arr: any[] = Array.isArray(list) ? list : (list.data || []);
+      // Fallback lọc theo CLB nếu BE chưa hỗ trợ locationId (chỉ hiện đúng CLB)
+      if (selectedClub !== 'all') {
+        arr = arr.filter((it:any)=>{
+          const loc = String(it.locationId?._id || it.locationId || it.location_id || '');
+          return loc === String(selectedClub);
+        });
+      }
       const start = new Date(); start.setHours(0, 0, 0, 0);
       const map = new Map<string, { count: number; latest: any; sessions: any[] }>();
       arr.forEach((item: any) => {
@@ -275,6 +301,20 @@ export function CustomerList() {
         v.latest = v.sessions[v.sessions.length - 1] || null;
       });
       setTodayCheckMap(map);
+    } catch {}
+  };
+
+  const fetchExpiring = async () => {
+    try {
+      const base = selectedClub !== 'all' ? `?locationId=${selectedClub}` : '';
+      const res = await fetch(`${backendUrl}/api/customers/alerts${base}`, { headers: getAuthHeaders() as any });
+      const data = await res.json();
+      if (res.ok) {
+        const arr = data.expiring_soon || [];
+        const idSet = new Set<string>(arr.map((x:any)=> String(x.customer?._id || x.customer || '')).filter(Boolean));
+        setExpiringIds(idSet);
+        setExpiringCount(idSet.size);
+      }
     } catch {}
   };
 
@@ -356,7 +396,12 @@ export function CustomerList() {
         body: JSON.stringify({ packageId: cancelPackageId, reason: cancelReason, noRefund: cancelNoRefund })
       });
       const d = await res.json(); if (!res.ok) throw new Error(d.error);
-      toast.success(d.message || 'Đã hủy gói thành công (Thành công - do nhân viên tạo)'); setShowCancelModal(false); fetchDetail360(cancelCustomer._id); fetchCustomers(page);
+      toast.success(d.message || 'Đã hủy gói thành công (Thành công - do nhân viên tạo)');
+      // Cập nhật ngay lập tức không cần F5
+      setDetail360((prev:any)=> prev && prev.customer?._id===cancelCustomer._id ? { ...prev, packages: (prev.packages||[]).map((x:any)=> String(x._id)===String(cancelPackageId) ? { ...x, status: 'đã hủy', payment_status: 'đã hủy', daysLeft: undefined } : x) } : prev);
+      setShowCancelModal(false);
+      fetchDetail360(cancelCustomer._id);
+      fetchCustomers(page); fetchExpiring();
     } catch (e:any) { toast.error(e.message); } finally { setCancelSubmitting(false); }
   };
   const openLockerModal = async (customer: Customer) => {
@@ -393,6 +438,13 @@ export function CustomerList() {
         body: JSON.stringify({ lockerId: selectedLocker, lockerNumber: locker?.lockerNumber||'', durationDays: lockerDays, reason: lockerReason })
       }).catch(()=>{});
       toast.success(`Đã cho thuê tủ ${locker?.lockerNumber} cho ${lockerCustomer.fullName} ${lockerDays} ngày (Thành công - do nhân viên tạo)`); setShowLockerModal(false);
+      // Refresh chi tiết để tab Thanh toán hiển thị ngay lịch sử thuê tủ mới
+      fetchCustomers(page);
+      if (lockerCustomer) {
+        // nếu đang mở hồ sơ 360° của chính khách vừa thuê thì refresh ngay, nếu không vẫn preload để lần mở sau có dữ liệu mới
+        fetchDetail360(lockerCustomer._id);
+        if (selectedCustomer && selectedCustomer._id === lockerCustomer._id) setDetailTab('payment');
+      }
     } catch (e:any) { toast.error(e.message); } finally { setLockerSubmitting(false); }
   };
 
@@ -454,7 +506,103 @@ export function CustomerList() {
     } catch (e:any) { toast.error(e.message); }
   };
 
-  useEffect(() => { setPage(1); fetchCustomers(1); fetchKpi(); }, [selectedClub, filterNoActive, filterNoFace]);
+  // Gia hạn đúng gói - lấy bảng giá thực tế của gói
+  const openRenewModal = async (pkg: any) => {
+    setRenewTarget(pkg);
+    setRenewPkgDetail(null);
+    setRenewDuration(null);
+    try {
+      const pid = pkg.packageId || pkg.package_id;
+      if (!pid) { toast.error('Không tìm thấy mã gói'); return; }
+      const res = await fetch(`${getApiUrl()}/api/packages/${pid}`, { headers: getAuthHeaders() as any });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Không tải được gói');
+      setRenewPkgDetail(data);
+      if (data.durations?.length) setRenewDuration(data.durations[0]);
+      else setRenewDuration({ months: 1, discount: 0 });
+    } catch (e:any) { toast.error(e.message); }
+  };
+  const handleRenewConfirm = async () => {
+    if (!renewTarget || !renewDuration || !selectedCustomer) return;
+    setRenewSubmitting(true);
+    try {
+      const res = await fetch(`${backendUrl}/api/user-packages/admin-renew`, {
+        method: 'POST', headers: { ...getAuthHeaders() as any, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ customerId: selectedCustomer._id, registrationId: renewTarget._id, duration_months: renewDuration.months })
+      });
+      const d = await res.json(); if (!res.ok) throw new Error(d.error || 'Gia hạn thất bại');
+      toast.success(`Đã gia hạn ${renewDuration.months} tháng - ${d.pricing ? d.pricing.total_price.toLocaleString('vi-VN')+'đ' : ''}`);
+      setRenewTarget(null); setRenewPkgDetail(null);
+      fetchDetail360(selectedCustomer._id); fetchCustomers(page); fetchExpiring();
+    } catch (e:any) { toast.error(e.message); } finally { setRenewSubmitting(false); }
+  };
+
+  // Nâng cấp - chọn gói cao cấp hơn cùng bộ môn, tính toán chênh lệch
+  const openUpgradeModal = async (pkg: any) => {
+    const isExpired = pkg.status === 'hết hạn' || (pkg.daysLeft !== undefined && pkg.daysLeft < 0) || (pkg.end_date && new Date(pkg.end_date) < new Date());
+    if (isExpired) { toast.error('Gói đã hết hạn - vui lòng Gia hạn trước khi Nâng cấp'); return; }
+    setUpgradeTarget(pkg);
+    setSelectedUpgradePkg(null); setUpgradeCalc(null); setUpgradeList([]); setUpgradePkgDetail(null);
+    try {
+      const pid = pkg.packageId || pkg.package_id;
+      if (!pid) { toast.error('Không tìm thấy mã gói'); return; }
+      const detailRes = await fetch(`${getApiUrl()}/api/packages/${pid}`, { headers: getAuthHeaders() as any });
+      const detail = await detailRes.json();
+      if (detailRes.ok) setUpgradePkgDetail(detail);
+      // Lấy danh sách gói cùng bộ môn để nâng cấp
+      const listRes = await fetch(`${getApiUrl()}/api/packages?page=1&limit=50`, { headers: getAuthHeaders() as any });
+      const listData = await listRes.json();
+      const list = listData?.data || (Array.isArray(listData) ? listData : []);
+      const currentIds = new Set<string>();
+      if (detail?.disciplineId) currentIds.add(detail.disciplineId?._id || detail.disciplineId);
+      (detail?.disciplines || []).forEach((d:any)=> currentIds.add(d?._id || d));
+      let candidates = list.filter((p:any)=> p.is_active && String(p._id) !== String(pid));
+      if (currentIds.size) {
+        candidates = candidates.filter((p:any)=> {
+          if (p.combo) return (p.disciplines||[]).some((d:any)=> currentIds.has(d?._id || d));
+          return currentIds.has(p.disciplineId?._id || p.disciplineId);
+        });
+      }
+      // Chỉ gói có giá cao hơn (theo đơn giá) mới là nâng cấp
+      const currentUnit = detail?.unitPrice || (pkg.total_price ? Math.round(pkg.total_price / (pkg.duration_months ||1)) : 0);
+      candidates = candidates.filter((p:any)=> Number(p.unitPrice||0) > currentUnit);
+      if (!candidates.length) {
+        // fallback: gói giá cao hơn bất kỳ
+        const allHigher = (listData?.data||[]).filter((p:any)=> p.is_active && Number(p.unitPrice||0) > currentUnit && String(p._id)!==String(pid));
+        candidates = allHigher.slice(0,12);
+      }
+      setUpgradeList(candidates);
+    } catch (e:any) { toast.error(e.message); }
+  };
+  const handleSelectUpgradePkg = async (pkg:any) => {
+    setSelectedUpgradePkg(pkg); setUpgradeCalc(null); setUpgradeCalculating(true);
+    try {
+      const res = await fetch(`${backendUrl}/api/user-packages/calculate-upgrade`, {
+        method: 'POST', headers: { ...getAuthHeaders() as any, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currentRegistrationId: upgradeTarget._id, newPackageId: pkg._id })
+      });
+      const data = await res.json(); if (!res.ok) throw new Error(data.error || 'Tính toán thất bại');
+      setUpgradeCalc(data);
+    } catch (e:any) { toast.error((e as any).message); setUpgradeCalc({ error: (e as any).message }); } finally { setUpgradeCalculating(false); }
+  };
+  const handleUpgradeConfirm = async () => {
+    if (!upgradeTarget || !selectedUpgradePkg || !selectedCustomer) return;
+    setUpgradeSubmitting(true);
+    try {
+      const res = await fetch(`${backendUrl}/api/user-packages/admin-upgrade`, {
+        method: 'POST', headers: { ...getAuthHeaders() as any, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ customerId: selectedCustomer._id, currentRegistrationId: upgradeTarget._id, newPackageId: selectedUpgradePkg._id })
+      });
+      const d = await res.json(); if (!res.ok) throw new Error(d.error || 'Nâng cấp thất bại');
+      toast.success('Đã nâng cấp gói thành công');
+      setUpgradeTarget(null); setSelectedUpgradePkg(null); setUpgradeCalc(null);
+      fetchDetail360(selectedCustomer._id); fetchCustomers(page); fetchExpiring();
+    } catch (e:any) { toast.error(e.message); } finally { setUpgradeSubmitting(false); }
+  };
+
+  useEffect(() => { setPage(1); fetchCustomers(1); fetchKpi(); fetchExpiring(); }, [selectedClub, filterNoActive, filterNoFace]);
+
+  useEffect(() => { fetchExpiring(); const iv = setInterval(fetchExpiring, 30000); return () => clearInterval(iv); }, [selectedClub]);
 
   useEffect(() => {
     fetchTodayChecks();
@@ -490,12 +638,27 @@ export function CustomerList() {
     ));
   };
 
+  const attendanceStats = {
+    present: Array.from(todayCheckMap.values()).filter(i => i.latest && !i.latest.checkOutTime).length,
+    left: Array.from(todayCheckMap.values()).filter(i => i.latest && i.latest.checkOutTime).length,
+  };
+
   const filteredCustomers = customers
     .filter(c => {
       const matchSearch = c.fullName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         c.account?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         c.phone?.includes(searchTerm);
+      const info = todayCheckMap.get(c._id);
+      const isPresent = info && info.latest && !info.latest.checkOutTime;
+      const isLeft = info && info.latest && info.latest.checkOutTime;
+      if (attendanceFilter === 'new') {
+        const d = new Date((c as any).createdAt || c.registerDate);
+        const now = new Date();
+        if (d.getMonth() !== now.getMonth() || d.getFullYear() !== now.getFullYear()) return false;
+      } else if (attendanceFilter === 'present' && !isPresent) return false;
+      else if (attendanceFilter === 'left' && !isLeft) return false;
       if (activeTab === 'all') return matchSearch;
+      if (activeTab === 'expiring') return matchSearch && expiringIds.has(c._id);
       return matchSearch && c.status === activeTab;
     })
     .sort((a, b) => {
@@ -593,7 +756,11 @@ export function CustomerList() {
       toast.success('Đăng ký gói tập thành công!');
       setShowRegModal(false);
       fetchCustomers(page);
-      if (regCustomer) fetchDetail360(regCustomer._id);
+      if (regCustomer) {
+        fetchDetail360(regCustomer._id);
+        // nếu đang mở hồ sơ của khách vừa đăng ký, chuyển sang tab Thanh toán để thấy ngay giao dịch mới
+        if (selectedCustomer && selectedCustomer._id === regCustomer._id) setDetailTab('payment');
+      }
     } catch (err: any) {
       toast.error(err.message);
     } finally {
@@ -627,38 +794,49 @@ export function CustomerList() {
           <p className="text-slate-600">Quản lý thông tin khách hàng và FaceID - KPI giữ chân & ARPU</p>
         </div>
 
-        {/* KPI 4 cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 w-full min-w-0">
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+        {/* 4 box gộp - click để lọc */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 w-full min-w-0">
+          <button onClick={() => setAttendanceFilter('all')} className={`text-left bg-white rounded-2xl shadow-sm border p-5 hover:shadow-md transition ${attendanceFilter === 'all' ? 'border-slate-900 ring-2 ring-slate-200' : 'border-slate-100'}`}>
             <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Tổng hội viên</p>
             <p className="text-2xl font-bold text-slate-900 mt-1">{kpi ? kpi.totalMembers.toLocaleString('vi-VN') : '-'}</p>
             <p className="text-xs text-slate-400 mt-1">Đang hoạt động: {kpi ? kpi.activeMembers : '-'}</p>
-          </div>
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+          </button>
+          <button onClick={() => setAttendanceFilter('new')} className={`text-left bg-white rounded-2xl shadow-sm border p-5 hover:shadow-md transition ${attendanceFilter === 'new' ? 'border-indigo-600 ring-2 ring-indigo-100' : 'border-slate-100'}`}>
             <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Mới tháng này</p>
             <p className="text-2xl font-bold text-indigo-600 mt-1">{kpi ? kpi.newThisMonth : '-'}</p>
             <p className={`text-xs mt-1 ${kpi && kpi.change?.newMembers > 0 ? 'text-green-600' : kpi && kpi.change?.newMembers < 0 ? 'text-red-600' : 'text-slate-400'}`}>{kpi ? `${kpi.change.newMembers > 0 ? '+' : ''}${kpi.change.newMembers}% vs tháng trước` : ''}</p>
-          </div>
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
-            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Tỷ lệ mua lại gói tập</p>
-            <p className="text-2xl font-bold text-emerald-600 mt-1">{kpi ? `${kpi.retentionRate}%` : '-'}</p>
-            <p className="text-xs text-slate-400 mt-1">Không mua lại: {kpi ? `${100 - kpi.retentionRate}%` : '-'}</p>
-          </div>
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
-            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">ARPU tháng này</p>
-            <p className="text-2xl font-bold text-amber-600 mt-1">{kpi ? `${kpi.arpu.toLocaleString('vi-VN')}đ` : '-'}</p>
-            <p className="text-xs text-slate-400 mt-1">Doanh thu: {kpi ? `${kpi.cashThisMonth.toLocaleString('vi-VN')}đ` : '-'}</p>
-          </div>
+          </button>
+          <button onClick={() => setAttendanceFilter('present')} className={`text-left bg-white rounded-2xl border p-4 flex items-center gap-3 hover:shadow-md transition ${attendanceFilter === 'present' ? 'border-emerald-600 ring-2 ring-emerald-100' : 'border-slate-100'}`}>
+            <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0"><LogIn className="w-5 h-5" /></div>
+            <div className="text-left">
+              <p className="text-xs font-semibold text-slate-500 uppercase">Đang ở phòng</p>
+              <p className="text-xl font-bold text-emerald-600">{attendanceStats.present}</p>
+              <p className="text-xs text-slate-400">Chưa check-out</p>
+            </div>
+          </button>
+          <button onClick={() => setAttendanceFilter('left')} className={`text-left bg-white rounded-2xl border p-4 flex items-center gap-3 hover:shadow-md transition ${attendanceFilter === 'left' ? 'border-blue-600 ring-2 ring-blue-100' : 'border-slate-100'}`}>
+            <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0"><LogOut className="w-5 h-5" /></div>
+            <div className="text-left">
+              <p className="text-xs font-semibold text-slate-500 uppercase">Đã về</p>
+              <p className="text-xl font-bold text-blue-600">{attendanceStats.left}</p>
+              <p className="text-xs text-slate-400">Đã check-out</p>
+            </div>
+          </button>
         </div>
 
         <div className="flex gap-2 bg-white rounded-2xl shadow-sm border border-slate-100 p-2 overflow-x-auto items-center w-full max-w-full min-w-0">
-          {(['all', 'pending', 'pending_approval', 'approved', 'rejected'] as const).map(tab => (
+          {(['all', 'expiring', 'pending', 'pending_approval', 'approved', 'rejected'] as const).map(tab => (
             <button key={tab} onClick={() => setActiveTab(tab)}
-              className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all whitespace-nowrap ${activeTab === tab ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-100'
+              className={`relative px-4 py-2 rounded-xl text-sm font-semibold transition-all whitespace-nowrap ${activeTab === tab ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-100'
                 }`}>
-              {tab === 'all' ? 'Tất cả' : tab === 'pending' ? 'Chưa điền TT' : tab === 'pending_approval' ? 'Chờ xác nhận' : tab === 'approved' ? 'Đã duyệt' : 'Từ chối'}
+              {tab === 'all' ? 'Tất cả' : tab === 'expiring' ? 'Sắp hết hạn' : tab === 'pending' ? 'Chưa điền TT' : tab === 'pending_approval' ? 'Chờ xác nhận' : tab === 'approved' ? 'Đã duyệt' : 'Từ chối'}
               {tab === 'pending_approval' && customers.filter(c => c.status === 'pending_approval').length > 0 && (
                 <span className="ml-2 bg-red-500 text-white px-2 py-0.5 rounded-full text-xs">{customers.filter(c => c.status === 'pending_approval').length}</span>
+              )}
+              {tab === 'expiring' && expiringCount > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 min-w-[20px] h-5 px-1.5 rounded-full bg-red-500 text-white text-xs font-bold flex items-center justify-center ring-2 ring-white" title={`${expiringCount} khách sắp hết hạn trong 7 ngày`}>
+                  {expiringCount > 99 ? '99+' : expiringCount}
+                </span>
               )}
             </button>
           ))}
@@ -750,7 +928,7 @@ export function CustomerList() {
                           <ScanFace className="w-4 h-4" />
                         </button>
 
-                        <button onClick={() => { setSelectedCustomer(customer); setDetailTab('info'); fetchReviews(customer._id); fetchDetail360(customer._id); }} className="p-2 text-green-600 hover:bg-green-50 rounded-lg" title="Chi tiết 360°">
+                        <button onClick={() => { setSelectedCustomer(customer); setDetailTab('info'); setPaymentFilter('all'); fetchReviews(customer._id); fetchDetail360(customer._id); }} className="p-2 text-green-600 hover:bg-green-50 rounded-lg" title="Chi tiết 360°">
                           <Eye className="w-4 h-4" />
                         </button>
                         <button onClick={() => navigate(`/admin/customers/${customer._id}/edit`)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg" title="Sửa">
@@ -844,8 +1022,8 @@ export function CustomerList() {
               {/* Tabs */}
               <div className="px-6 pt-4 flex gap-2 border-b border-slate-100">
                 {(['info','packages','checkins','payment'] as const).map(tab => (
-                  <button key={tab} onClick={() => setDetailTab(tab)} className={`px-4 py-2 rounded-t-xl text-sm font-semibold border-b-2 ${detailTab===tab?'border-indigo-600 text-indigo-600 bg-indigo-50':'border-transparent text-slate-500 hover:text-slate-700'}`}>
-                    {tab==='info'?'Thông tin':tab==='packages'?`Gói tập (${detail360?.packages?.length||0})`:tab==='checkins'?`Check-in (${detail360?.checkins?.length||0})`:'Thanh toán'}
+                  <button key={tab} onClick={() => setDetailTab(tab)} className={`px-4 py-2 rounded-t-xl text-sm font-semibold border-b-2 whitespace-nowrap ${detailTab===tab?'border-indigo-600 text-indigo-600 bg-indigo-50':'border-transparent text-slate-500 hover:text-slate-700'}`}>
+                    {tab==='info'?'Thông tin':tab==='packages'?`Gói tập (${detail360?.packages?.length||0})`:tab==='checkins'?`Check-in (${detail360?.checkins?.length||0})`:tab==='payment'?'Thanh toán':'Vòng đời'}
                   </button>
                 ))}
               </div>
@@ -907,7 +1085,37 @@ export function CustomerList() {
                     {loading360 ? <p className="text-sm text-slate-500 flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin"/> Đang tải...</p> :
                       !detail360?.packages?.length ? <p className="text-sm text-slate-400">Chưa có gói tập nào</p> :
                       <div className="space-y-3">
-                        <p className="text-xs text-slate-500">Lịch sử: {detail360.packages.length} gói (đang tập + đã tập + gia hạn) • Mỗi gói hiển thị trạng thái / còn lại / ngày kết thúc</p>
+                        
+                        {/* Cảnh báo sắp hết hạn */}
+                        {(() => {
+                          const expiring = (detail360.packages || []).filter((p:any) => p.daysLeft !== undefined && p.daysLeft >= 0 && p.daysLeft <= 7 && p.status !== 'đã hủy' && p.status !== 'hết hạn');
+                          if (!expiring.length) return null;
+                          return (
+                            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-3">
+                              <div className="flex items-center gap-2 mb-2">
+                                <AlertTriangle className="w-4 h-4 text-amber-600" />
+                                <p className="text-sm font-bold text-amber-800">Sắp hết hạn ({expiring.length} gói)</p>
+                              </div>
+                              {expiring.map((p:any) => (
+                                <div key={p._id} className="flex items-center justify-between bg-white border border-amber-100 rounded-lg p-2.5 mt-2">
+                                  <div>
+                                    <p className="text-sm font-semibold text-slate-900">{p.packageName}</p>
+                                    <p className="text-xs text-slate-500">Hết hạn {new Date(p.end_date).toLocaleDateString('vi-VN')} • Còn {p.daysLeft} ngày</p>
+                                  </div>
+                                  <button onClick={async () => {
+                                    if(!confirm(`Gửi thông báo sắp hết hạn cho ${p.packageName}?`)) return;
+                                    try {
+                                      const res = await fetch(`${backendUrl}/api/user-packages/renewal-reminders/send`, { method: 'POST', headers: { ...getAuthHeaders() as any, 'Content-Type': 'application/json' }, body: JSON.stringify({ packageIds: [p._id] }) });
+                                      const d = await res.json(); if(!res.ok) throw new Error(d.error || 'Gửi thất bại');
+                                      toast.success('Đã gửi thông báo sắp hết hạn');
+                                    } catch(e:any){ toast.error(e.message); }
+                                  }} className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-bold">Gửi TB</button>
+                                </div>
+                              ))}
+                            </div>
+                          );
+                        })()}
+<p className="text-xs text-slate-500">Lịch sử: {detail360.packages.length} gói (đang tập + đã tập + gia hạn) • Mỗi gói hiển thị trạng thái / còn lại / ngày kết thúc</p>
                         {detail360.packages.map((p:any)=>{
                           const statusColor = p.status==='đang hoạt động'?'bg-emerald-100 text-emerald-700': p.status==='còn 10 ngày'?'bg-amber-100 text-amber-700': p.status==='đang tạm ngưng'?'bg-slate-200 text-slate-700': p.status==='hết hạn'?'bg-red-100 text-red-700':'bg-slate-100 text-slate-500';
                           return (
@@ -918,7 +1126,6 @@ export function CustomerList() {
                                 <p className="text-xs text-slate-500 mt-1">Từ {new Date(p.start_date).toLocaleDateString('vi-VN')} đến <b className="text-slate-700">{new Date(p.end_date).toLocaleDateString('vi-VN')}</b> {p.location?`• ${p.location}`:''}</p>
                                 <div className="flex flex-wrap items-center gap-2 mt-2">
                                   <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${statusColor}`}>{p.status}</span>
-                                  <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${p.payment_status==='đã thanh toán'?'bg-green-100 text-green-700':'bg-amber-100 text-amber-700'}`}>{p.payment_status}</span>
                                   {p.daysLeft !== undefined && (
                                     <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${p.daysLeft>10?'bg-emerald-50 text-emerald-700 border border-emerald-200': p.daysLeft>0?'bg-amber-50 text-amber-700 border border-amber-200':'bg-red-50 text-red-700 border border-red-200'}`}>
                                       {p.daysLeft>0?`Còn ${p.daysLeft} ngày`:`Quá hạn ${Math.abs(p.daysLeft)} ngày`}
@@ -939,6 +1146,10 @@ export function CustomerList() {
                                       <button disabled className="px-3 py-1.5 bg-slate-100 text-slate-400 border border-slate-200 rounded-lg text-xs font-bold cursor-not-allowed">Đóng băng</button>
                                       <span className="px-2 py-1.5 text-xs text-slate-400">•</span>
                                     </div>
+                              <div className="flex gap-1.5 mt-2 flex-wrap">
+                                <button onClick={()=>openRenewModal(p)} className="px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold">Gia hạn</button>
+                                <span className="px-2.5 py-1.5 bg-slate-100 text-slate-400 border border-slate-200 rounded-lg text-xs font-bold cursor-not-allowed" title="Gói đã hết hạn - gia hạn trước khi nâng cấp">Nâng cấp</span>
+                              </div>
                                     <div className="flex gap-1">
                                       <button disabled className="px-2 py-1 rounded-lg text-xs font-bold border bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed">Chuyển</button>
                                       <button onClick={async ()=>{
@@ -946,7 +1157,10 @@ export function CustomerList() {
                                         try {
                                           const res = await fetch(`${backendUrl}/api/customers/${selectedCustomer!._id}/cancel-refund-request`, { method: 'POST', headers: { ...getAuthHeaders() as any, 'Content-Type': 'application/json' }, body: JSON.stringify({ packageId: p._id, reason: '', noRefund: true }) });
                                           const d = await res.json(); if (!res.ok) throw new Error(d.error);
-                                          toast.success('Đã tạo yêu cầu hủy (hết hạn) -> admin/services');
+                                          toast.success(d.message || 'Đã hủy gói thành công');
+                                          // Cập nhật ngay không cần load lại trang
+                                          setDetail360((prev:any)=> prev ? { ...prev, packages: (prev.packages||[]).map((x:any)=> x._id===p._id ? { ...x, status: 'đã hủy', daysLeft: undefined } : x) } : prev);
+                                          fetchDetail360(selectedCustomer!._id); fetchCustomers(page); fetchExpiring();
                                         } catch(e:any){ toast.error(e.message); }
                                       }} disabled={detail360.customer.status === 'locked'} className={`px-2 py-1 rounded-lg text-xs font-bold border ${detail360.customer.status === 'locked' ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed' : 'bg-white text-red-600 border-red-200 hover:bg-red-50'}`}>Hủy</button>
                                     </div>
@@ -965,7 +1179,10 @@ export function CustomerList() {
                                   </div>
                                   );
                                   return (
-                                  <button onClick={()=>{ setFreezingPkgId(p._id); setFreezeMonthsSingle(2); }} disabled={detail360.customer.status === 'locked'} className={`mt-2 px-3 py-1.5 text-white rounded-lg text-xs font-bold ${detail360.customer.status === 'locked' ? 'bg-slate-300 cursor-not-allowed' : 'bg-amber-500 hover:bg-amber-600'}`}>Đóng băng</button>
+                                  <div className="flex gap-1.5 mt-2 flex-wrap">
+                                    <button onClick={()=>{ setFreezingPkgId(p._id); setFreezeMonthsSingle(2); }} disabled={detail360.customer.status === 'locked'} className={`px-2.5 py-1.5 text-white rounded-lg text-xs font-bold ${detail360.customer.status === 'locked' ? 'bg-slate-300 cursor-not-allowed' : 'bg-amber-500 hover:bg-amber-600'}`}>Đóng băng</button>
+                                    <button onClick={()=>openUpgradeModal(p)} disabled={detail360.customer.status === 'locked'} className={`px-2.5 py-1.5 bg-white text-violet-700 border border-violet-200 rounded-lg text-xs font-bold hover:bg-violet-50 ${detail360.customer.status === 'locked' ? 'opacity-50 cursor-not-allowed' : ''}`}>Nâng cấp</button>
+                                  </div>
                                   );
                                 })()}
                                 {(() => {
@@ -1007,19 +1224,102 @@ export function CustomerList() {
                 )}
 
                 {detailTab==='payment' && (
-                  <div className="space-y-4">
-                    <div className="bg-indigo-50 border border-indigo-100 p-4 rounded-xl">
-                      <p className="text-sm font-semibold text-indigo-800">Tổng chi tiêu (LTV)</p>
-                      <p className="text-2xl font-bold text-indigo-600 mt-1">{detail360?.ltv?.toLocaleString('vi-VN')||0}đ</p>
-                      <p className="text-xs text-slate-500 mt-1">{detail360?.packageCount||0} gói đã thanh toán • Trung bình {detail360?.packageCount?Math.round(detail360.ltv/detail360.packageCount).toLocaleString('vi-VN'):0}đ/gói</p>
+                  <div className="space-y-3">
+                    {/* Tổng quan gọn - 1 dòng */}
+                    <div className="flex flex-wrap items-center gap-3 px-4 py-3 bg-white border border-slate-200 rounded-xl text-xs">
+                      <span className="inline-flex items-center gap-1.5"><span className="text-slate-500">Tổng chi:</span> <b className="text-slate-900">{(detail360?.ltvWithService ?? detail360?.ltv ?? 0).toLocaleString('vi-VN')}đ</b></span>
+                      <span className="hidden sm:block w-px h-4 bg-slate-200" />
+                      <span><span className="text-slate-500">Gói tập:</span> <b className="text-slate-900">{(detail360?.ltv ?? 0).toLocaleString('vi-VN')}đ</b> <span className="text-slate-400">({detail360?.packageCount||0} gói)</span></span>
+                      <span><span className="text-slate-500">Dịch vụ:</span> <b className="text-slate-900">{(detail360?.servicePaidTotal ?? 0).toLocaleString('vi-VN')}đ</b> <span className="text-slate-400">({(detail360?.serviceRequests || []).filter((r:any)=> (r.service_type==='locker' || (r.amount||0)>0)).length} khoản)</span></span>
+                      <span className="ml-auto text-slate-500">{detail360?.activePackage ? `Đang hoạt động: ${detail360.activePackage.packageName} • hết hạn ${new Date(detail360.activePackage.end_date).toLocaleDateString('vi-VN')}` : 'Không có gói đang hoạt động'}</span>
                     </div>
-                    {detail360?.activePackage && (
-                      <div className="p-4 bg-emerald-50 border border-emerald-100 rounded-xl">
-                        <p className="text-sm font-semibold text-emerald-700">Gói đang hoạt động</p>
-                        <p className="text-sm text-slate-700 mt-1">{detail360.activePackage.packageName} - hết hạn {new Date(detail360.activePackage.end_date).toLocaleDateString('vi-VN')}</p>
+
+                    {/* Header + filter loại */}
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <h3 className="text-sm font-bold text-slate-900">Lịch sử giao dịch <span className="ml-1 px-1.5 py-0.5 bg-slate-100 border border-slate-200 rounded-full text-xs font-bold text-slate-600">{detail360?.payments?.length ?? 0}</span></h3>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs text-slate-500 hidden sm:inline">Lọc:</span>
+                        {(['all','package','locker','service','wallet'] as const).map(t => {
+                          const label = t==='all'?'Tất cả': t==='package'?'Gói tập': t==='locker'?'Thuê tủ': t==='wallet'?'Ví': 'Dịch vụ khác';
+                          return (
+                            <button key={t} onClick={()=>setPaymentFilter(t)} className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${paymentFilter===t ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>{label}</button>
+                          );
+                        })}
                       </div>
-                    )}
-                    {!detail360?.activePackage && <p className="text-sm text-slate-400">Không có gói đang hoạt động</p>}
+                    </div>
+
+                    {loading360 ? (
+                      <p className="text-sm text-slate-500 flex items-center gap-2 py-6 justify-center"><Loader2 className="w-4 h-4 animate-spin"/> Đang tải...</p>
+                    ) : !detail360?.payments?.length ? (
+                      <div className="text-center py-8 bg-white border border-dashed border-slate-200 rounded-xl">
+                        <p className="text-sm text-slate-500">Chưa có giao dịch nào</p>
+                        <p className="text-xs text-slate-400 mt-1">Đăng ký gói/thuê tủ/thuê HLV sẽ hiển thị ở đây</p>
+                      </div>
+                    ) : (() => {
+                      const typeMap: Record<string,string> = { freeze:'Đóng băng', activate:'Kích hoạt', 'reactivate-expired':'Gia hạn', transfer:'Chuyển nhượng', 'change-club':'Đổi CLB', contract:'Hợp đồng', support:'Hỗ trợ', 'cancel-refund':'Hủy/Hoàn phí', locker:'Thuê tủ', complaint:'Khiếu nại', package:'Gói tập', wallet:'Ví' };
+                      const filtered = (detail360.payments as any[]).filter((p:any)=> {
+                        if (paymentFilter==='all') return true;
+                        if (paymentFilter==='service') return p.type==='service' && p.raw?.service_type !== 'locker';
+                        return p.type===paymentFilter;
+                      });
+                      if (!filtered.length) return <div className="text-center py-6 text-xs text-slate-400 bg-white border border-slate-200 rounded-xl">Không có giao dịch loại này</div>;
+                      return (
+                        <div className="border border-slate-200 rounded-xl overflow-hidden bg-white">
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-xs">
+                              <thead className="bg-slate-50 border-b border-slate-200">
+                                <tr className="text-slate-600">
+                                  <th className="px-3 py-2.5 text-left font-semibold whitespace-nowrap">#</th>
+                                  <th className="px-3 py-2.5 text-left font-semibold whitespace-nowrap">Loại</th>
+                                  <th className="px-3 py-2.5 text-left font-semibold">Tên gói / Dịch vụ</th>
+                                  <th className="px-3 py-2.5 text-center font-semibold whitespace-nowrap">Kỳ hạn</th>
+                                  <th className="px-3 py-2.5 text-right font-semibold whitespace-nowrap">Số tiền</th>
+                                  <th className="px-3 py-2.5 text-left font-semibold whitespace-nowrap">Ngày mua</th>
+                                  <th className="px-3 py-2.5 text-center font-semibold whitespace-nowrap">TT thanh toán</th>
+                                  <th className="px-3 py-2.5 text-left font-semibold">Hiệu lực / Ghi chú</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100">
+                                {filtered.map((pay:any, idx:number)=>{
+                                  const payStatus = pay.payment_status || pay.raw?.payment_status || '';
+                                  const isPaid = payStatus==='đã thanh toán' || payStatus==='paid' || payStatus==='success';
+                                  const isPending = payStatus==='chờ thanh toán' || payStatus==='awaiting_payment' || payStatus==='unpaid';
+                                  const isCancelled = payStatus==='đã hủy';
+                                  const statusText = isPaid ? 'Đã thanh toán' : isPending ? 'Chờ TT' : isCancelled ? 'Đã hủy' : payStatus || '—';
+                                  const statusCls = isPaid ? 'text-emerald-700' : isPending ? 'text-amber-700' : isCancelled ? 'text-red-700' : 'text-slate-500';
+                                  const typeLabel = pay.type==='package' ? 'Gói tập' : pay.type==='locker' ? 'Thuê tủ' : pay.type==='wallet' ? 'Ví' : (typeMap[pay.raw?.service_type] || pay.raw?.service_type || 'Dịch vụ');
+                                  const dateStr = pay.date ? new Date(pay.date).toLocaleDateString('vi-VN') : '-';
+                                  const timeStr = pay.date ? new Date(pay.date).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'}) : '';
+                                  const amountStr = Number(pay.amount)>0 ? `${Number(pay.amount).toLocaleString('vi-VN')}đ` : '—';
+                                  const duration = pay.durationLabel || (pay.raw?.duration_months ? `${pay.raw.duration_months} tháng` : pay.raw?.data?.durationDays ? `${pay.raw.data.durationDays} ngày` : '—');
+                                  const note = pay.type==='package' && pay.raw
+                                    ? `${pay.raw.start_date ? new Date(pay.raw.start_date).toLocaleDateString('vi-VN') : ''} → ${pay.raw.end_date ? new Date(pay.raw.end_date).toLocaleDateString('vi-VN') : ''}${pay.raw.location ? ` • ${pay.raw.location}` : ''}${pay.raw.price_snapshot?.discount_percent ? ` • -${pay.raw.price_snapshot.discount_percent}%` : ''}`
+                                    : pay.type==='locker' && pay.raw
+                                    ? `${pay.raw.data?.lockerNumber ? `Tủ #${pay.raw.data.lockerNumber}` : ''}${pay.raw.data?.durationDays ? ` • ${pay.raw.data.durationDays} ngày` : ''}`
+                                    : pay.description ? pay.description.slice(0,60) : pay.raw?.description ? String(pay.raw.description).slice(0,60) : '—';
+                                  return (
+                                    <tr key={`${pay.type}-${pay._id}`} className="hover:bg-slate-50">
+                                      <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{idx+1}</td>
+                                      <td className="px-3 py-2.5 whitespace-nowrap"><span className="inline-flex px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-50 border border-slate-200 text-slate-700">{typeLabel}</span></td>
+                                      <td className="px-3 py-2.5 max-w-[220px]"><span className="font-semibold text-slate-900 truncate block" title={pay.title}>{pay.title}</span>{pay.payment_method && <span className="text-slate-400">{pay.payment_method}</span>}</td>
+                                      <td className="px-3 py-2.5 text-center text-slate-700 whitespace-nowrap">{duration}</td>
+                                      <td className="px-3 py-2.5 text-right font-bold text-slate-900 whitespace-nowrap">{amountStr}</td>
+                                      <td className="px-3 py-2.5 whitespace-nowrap"><span className="text-slate-900">{dateStr}</span> <span className="text-slate-400">{timeStr}</span></td>
+                                      <td className="px-3 py-2.5 text-center whitespace-nowrap"><span className={`inline-flex items-center gap-1 text-xs font-semibold ${statusCls}`}><span className={`w-1.5 h-1.5 rounded-full ${isPaid ? 'bg-emerald-500' : isPending ? 'bg-amber-500' : isCancelled ? 'bg-red-500' : 'bg-slate-300'}`} />{statusText}</span></td>
+                                      <td className="px-3 py-2.5 text-slate-500 max-w-[220px] truncate" title={note}>{note}</td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                          <div className="px-3 py-2 bg-slate-50 border-t border-slate-200 text-xs text-slate-500 flex items-center justify-between">
+                            <span>Hiển thị {filtered.length}/{detail360.payments.length} giao dịch • Mới nhất lên đầu</span>
+                            <span className="hidden sm:inline">Gồm gói tập, thuê tủ, thuê HLV, dịch vụ và mọi khoản tiền</span>
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
                 )}
               </div>
@@ -1153,6 +1453,126 @@ export function CustomerList() {
               <div className="flex gap-3 mt-6">
                 <Button variant="outlined" onClick={()=>setShowLockerModal(false)} sx={{flex:1, borderColor:'#cbd5e1', color:'#475569', textTransform:'none', borderRadius:2}}>Hủy</Button>
                 <Button variant="contained" onClick={handleLockerSubmit} disabled={lockerSubmitting || !selectedLocker} sx={{flex:1, bgcolor:'#06b6d4', '&:hover':{bgcolor:'#0891b2'}, textTransform:'none', borderRadius:2}}>{lockerSubmitting?'Đang thuê...':'Cho thuê'}</Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Gia hạn đúng gói - chọn kỳ hạn từ bảng giá */}
+        {renewTarget && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={()=>{ setRenewTarget(null); setRenewPkgDetail(null); }}>
+            <div className="bg-white rounded-2xl max-w-lg w-full max-h-[90vh] overflow-hidden flex flex-col" onClick={(e)=>e.stopPropagation()}>
+              <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900">Gia hạn gói tập</h2>
+                  <p className="text-xs text-slate-500 mt-0.5">Gia hạn đúng gói <b className="text-slate-800">{renewTarget.packageName}</b> • Hết hạn {renewTarget.end_date ? new Date(renewTarget.end_date).toLocaleDateString('vi-VN') : ''}</p>
+                </div>
+                <button onClick={()=>{ setRenewTarget(null); setRenewPkgDetail(null); }} className="p-2 hover:bg-slate-100 rounded-xl"><X className="w-5 h-5 text-slate-600" /></button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                {!renewPkgDetail ? (
+                  <p className="text-sm text-slate-500 flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin"/> Đang tải bảng giá...</p>
+                ) : (renewPkgDetail.durations?.length ? (
+                  <>
+                    <h3 className="text-sm font-bold text-slate-900">Chọn kỳ hạn</h3>
+                    <div className="grid grid-cols-2 gap-3">
+                      {renewPkgDetail.durations.map((d:any, idx:number)=>{
+                        const isSel = renewDuration?.months===d.months && renewDuration?.discount===d.discount;
+                        const unit = renewPkgDetail.unitPrice || 0;
+                        const total = unit * d.months * (1 - (d.discount||0)/100);
+                        const origin = unit * d.months;
+                        return (
+                          <button key={idx} onClick={()=>setRenewDuration(d)} className={`p-4 rounded-xl border-2 text-left transition ${isSel ? 'border-indigo-600 bg-indigo-50' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
+                            <p className="font-bold text-slate-900">{d.months} tháng</p>
+                            <p className="text-lg font-extrabold text-indigo-600 mt-1">{total.toLocaleString('vi-VN')}đ</p>
+                            {d.discount>0 ? (
+                              <>
+                                <span className="inline-block mt-1 px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs font-bold rounded-full">-{d.discount}%</span>
+                                <p className="text-xs text-slate-400 line-through">{origin.toLocaleString('vi-VN')}đ</p>
+                              </>
+                            ) : <p className="text-xs text-slate-400">Không giảm giá</p>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {renewDuration && (
+                      <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                        <div className="flex justify-between text-sm text-slate-600"><span>Tạm tính ({renewDuration.months} tháng x {(renewPkgDetail.unitPrice||0).toLocaleString('vi-VN')}đ)</span><span>{(renewPkgDetail.unitPrice*renewDuration.months).toLocaleString('vi-VN')}đ</span></div>
+                        {renewDuration.discount>0 && <div className="flex justify-between text-sm text-emerald-600 mt-1"><span>Giảm {renewDuration.discount}%</span><span>-{Math.round(renewPkgDetail.unitPrice*renewDuration.months*renewDuration.discount/100).toLocaleString('vi-VN')}đ</span></div>}
+                        <div className="border-t border-slate-200 mt-3 pt-3 flex justify-between items-center"><span className="font-bold text-slate-900">Tổng tiền</span><span className="text-xl font-extrabold text-indigo-600">{(renewPkgDetail.unitPrice*renewDuration.months*(1-(renewDuration.discount||0)/100)).toLocaleString('vi-VN')}đ</span></div>
+                        <p className="text-xs text-slate-500 mt-2">Gia hạn nối tiếp sau ngày hết hạn hiện tại • Áp dụng bảng giá hiện hành của gói</p>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="p-4 border border-slate-200 rounded-xl text-center">
+                    <p className="font-bold text-slate-900">{renewPkgDetail.name}</p>
+                    <p className="text-lg font-extrabold text-indigo-600 mt-1">{(renewPkgDetail.unitPrice||0).toLocaleString('vi-VN')}đ / tháng</p>
+                    <p className="text-xs text-slate-500 mt-1">Gói chỉ có kỳ hạn 1 tháng mặc định</p>
+                    <button onClick={()=>setRenewDuration({ months: 1, discount: 0 })} className={`mt-3 px-4 py-2 rounded-xl text-sm font-bold border-2 ${renewDuration ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-slate-200'}`}>Chọn 1 tháng</button>
+                  </div>
+                ))}
+              </div>
+              <div className="p-4 border-t border-slate-200 flex gap-3 bg-white">
+                <Button variant="outlined" onClick={()=>{ setRenewTarget(null); setRenewPkgDetail(null); }} sx={{flex:1, textTransform:'none', borderRadius:2, borderColor:'#cbd5e1', color:'#475569'}}>Hủy</Button>
+                <Button variant="contained" disabled={!renewDuration || renewSubmitting} onClick={handleRenewConfirm} sx={{flex:1, bgcolor:'#4f46e5', '&:hover':{bgcolor:'#4338ca'}, textTransform:'none', borderRadius:2}}>{renewSubmitting ? 'Đang xử lý...' : `Gia hạn ${renewDuration?`${renewDuration.months} tháng`:''}`}</Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Nâng cấp gói - chọn gói cao cấp hơn cùng bộ môn */}
+        {upgradeTarget && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={()=>{ setUpgradeTarget(null); setSelectedUpgradePkg(null); setUpgradeCalc(null); }}>
+            <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col" onClick={(e)=>e.stopPropagation()}>
+              <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900">Nâng cấp gói tập</h2>
+                  <p className="text-xs text-slate-500 mt-0.5">Từ <b className="text-slate-800">{upgradeTarget.packageName}</b> • {upgradePkgDetail?.disciplineId?.name || ''} {upgradeTarget.end_date ? `• Hết hạn ${new Date(upgradeTarget.end_date).toLocaleDateString('vi-VN')}` : ''}</p>
+                </div>
+                <button onClick={()=>{ setUpgradeTarget(null); setSelectedUpgradePkg(null); setUpgradeCalc(null); }} className="p-2 hover:bg-slate-100 rounded-xl"><X className="w-5 h-5 text-slate-600" /></button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                {!upgradeList.length ? (
+                  <p className="text-sm text-slate-500">Không có gói nâng cấp phù hợp trong cùng bộ môn</p>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {upgradeList.map((pkg:any)=>{
+                      const isSel = selectedUpgradePkg?._id===pkg._id;
+                      return (
+                        <button key={pkg._id} onClick={()=>handleSelectUpgradePkg(pkg)} className={`text-left p-4 rounded-xl border-2 transition ${isSel ? 'border-indigo-600 bg-indigo-50' : 'border-slate-200 bg-white hover:border-indigo-300'}`}>
+                          <p className="font-bold text-slate-900 text-sm">{pkg.name} {pkg.combo && <span className="ml-1 px-1.5 py-0.5 bg-fuchsia-100 text-fuchsia-700 text-xs rounded-full">COMBO</span>}</p>
+                          {pkg.disciplineId?.name && <span className="inline-block mt-1 px-2 py-0.5 bg-violet-100 text-violet-700 text-xs font-semibold rounded-full">{pkg.disciplineId.name}</span>}
+                          <p className="text-lg font-extrabold text-indigo-600 mt-2">{Number(pkg.unitPrice||0).toLocaleString('vi-VN')}đ <span className="text-xs font-normal text-slate-500">/tháng</span></p>
+                          {(pkg.ptSessionsPerMonth>0 || pkg.isFullMonth) && <span className="inline-block mt-2 px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs font-semibold rounded-full">{pkg.isFullMonth ? 'Không giới hạn HLV' : `${pkg.ptSessionsPerMonth} buổi HLV/tháng`}</span>}
+                          {isSel && upgradeCalculating && <span className="block mt-2 text-xs text-indigo-600 flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin"/> Đang tính...</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+                {selectedUpgradePkg && upgradeCalc && !upgradeCalc.error && !upgradeCalculating && (
+                  <div className="border-t border-slate-200 pt-4 space-y-3">
+                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2 text-sm">
+                      <div className="flex justify-between"><span className="text-slate-500">Ngày còn lại</span><b>{upgradeCalc.remainingDays} ngày</b></div>
+                      <div className="flex justify-between"><span className="text-slate-500">Giá trị còn lại gói cũ</span><b className="text-emerald-600">-{upgradeCalc.remainingValue?.toLocaleString('vi-VN')}đ</b></div>
+                      <div className="flex justify-between"><span className="text-slate-500">Chi phí gói mới (cùng kỳ hạn)</span><b>+{upgradeCalc.newPackageCost?.toLocaleString('vi-VN')}đ</b></div>
+                      <div className="border-t border-slate-200 pt-2 flex justify-between items-center">
+                        {upgradeCalc.refundAmount>0 ? (
+                          <><span className="font-bold text-emerald-700">Được hoàn lại</span><span className="text-lg font-extrabold text-emerald-600">{upgradeCalc.refundAmount.toLocaleString('vi-VN')}đ</span></>
+                        ) : (
+                          <><span className="font-bold text-amber-700">Cần thanh toán thêm</span><span className="text-lg font-extrabold text-amber-600">{upgradeCalc.amountToPay?.toLocaleString('vi-VN')}đ</span></>
+                        )}
+                      </div>
+                    </div>
+                    <p className="text-xs text-slate-500">Nâng cấp giữ nguyên ngày hết hạn còn lại ({upgradeCalc.remainingDays} ngày), gói cũ sẽ được hủy và gói mới có hiệu lực ngay.</p>
+                  </div>
+                )}
+                {upgradeCalc?.error && <div className="flex items-center gap-2 text-sm bg-red-50 border border-red-200 px-3 py-2 rounded-lg text-red-700"><AlertTriangle className="w-4 h-4"/> {upgradeCalc.error}</div>}
+              </div>
+              <div className="p-4 border-t border-slate-200 flex gap-3 bg-white">
+                <Button variant="outlined" onClick={()=>{ setUpgradeTarget(null); setSelectedUpgradePkg(null); setUpgradeCalc(null); }} sx={{flex:1, textTransform:'none', borderRadius:2, borderColor:'#cbd5e1', color:'#475569'}}>Hủy</Button>
+                <Button variant="contained" disabled={!selectedUpgradePkg || !upgradeCalc || upgradeCalc.error || upgradeSubmitting} onClick={handleUpgradeConfirm} sx={{flex:1, bgcolor:'#7c3aed', '&:hover':{bgcolor:'#6d28d9'}, textTransform:'none', borderRadius:2}}>{upgradeSubmitting ? 'Đang xử lý...' : 'Xác nhận nâng cấp'}</Button>
               </div>
             </div>
           </div>

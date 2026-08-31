@@ -40,7 +40,8 @@ import {
   XCircle,
   ArrowRightLeft,
   Wallet,
-  AlertCircle
+  AlertCircle,
+  UserCheck
 } from 'lucide-react';
 import { useAuth, getApiUrl, getAuthHeaders } from '../context/AuthContext';
 import { useClub } from '../context/ClubContext';
@@ -80,20 +81,63 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   const [showNotifications, setShowNotifications] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
   const [serviceReqCount, setServiceReqCount] = useState(0);
+  const [activeAttendanceCount, setActiveAttendanceCount] = useState(0);
 
   const isAdminUser = user?.isAdmin === true;
+
+  const fetchActiveAttendanceCount = async () => {
+    if (!user?.isStaff) return;
+    try {
+      const params = new URLSearchParams(); params.set('limit','300');
+      if (selectedClub !== 'all') params.set('locationId', selectedClub);
+      const res = await fetch(`${getApiUrl()}/api/checkin/history?${params.toString()}`, { headers: getAuthHeaders() as any });
+      if (!res.ok) return;
+      const list = await res.json();
+      let arr: any[] = Array.isArray(list) ? list : (list.data || []);
+      if (selectedClub !== 'all') {
+        arr = arr.filter((it:any)=>{
+          const loc = String(it.locationId?._id || it.locationId || it.location_id || '');
+          return loc === String(selectedClub);
+        });
+      }
+      const start = new Date(); start.setHours(0, 0, 0, 0);
+      const map = new Map<string, any>();
+      arr.forEach((item: any) => {
+        if (!item.checkInTime) return;
+        const t = new Date(item.checkInTime);
+        if (t < start) return;
+        const cid = String(item.customerId?._id || item.customerId || item.customer_id || '');
+        if (!cid) return;
+        const existing = map.get(cid);
+        if (!existing || new Date(item.checkInTime) > new Date(existing.checkInTime)) map.set(cid, item);
+      });
+      let present = 0;
+      map.forEach((v) => { if (!v.checkOutTime) present++; });
+      setActiveAttendanceCount(present);
+    } catch {}
+  };
 
   useEffect(() => {
     if (!user?.id) return;
     fetchApiNotifications();
     fetchNotifUnreadCount();
     fetchServiceReqCount();
+    fetchActiveAttendanceCount();
     const interval = setInterval(() => {
       fetchNotifUnreadCount();
       fetchServiceReqCount();
+      fetchActiveAttendanceCount();
     }, 30000);
-    return () => clearInterval(interval);
-  }, [user]);
+    // lắng nghe check-in realtime để cập nhật badge ngay
+    let ch: any = null;
+    try {
+      ch = new BroadcastChannel('GYM_ATTENDANCE_CHANNEL');
+      ch.onmessage = (e: any) => {
+        if (e.data?.type === 'CHECKIN_EVENT' || e.data?.type === 'FACE_CHECKIN_TRIGGER') fetchActiveAttendanceCount();
+      };
+    } catch {}
+    return () => { clearInterval(interval); try { ch?.close(); } catch {} };
+  }, [user, selectedClub]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -698,6 +742,18 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                     </div>
                   )}
                 </div>
+              )}
+              {activeAttendanceCount > 0 && (
+                <Link
+                  to="/admin/customers"
+                  className="relative p-2.5 bg-amber-50 hover:bg-amber-100 text-amber-700 rounded-xl border border-amber-200 transition"
+                  title={`${activeAttendanceCount} người đang ở phòng chưa check-out - Click để xem danh sách`}
+                >
+                  <UserCheck className="w-5 h-5" />
+                  <span className="absolute -top-1.5 -right-1.5 min-w-[20px] h-[20px] rounded-full bg-amber-500 text-white text-[11px] font-bold flex items-center justify-center px-1 ring-2 ring-white">
+                    {activeAttendanceCount > 99 ? '99+' : activeAttendanceCount}
+                  </span>
+                </Link>
               )}
               <div className="relative" ref={notifRef}>
                 <button
