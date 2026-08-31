@@ -16,7 +16,6 @@ interface CustomerFormData {
   email: string;
   address: string;
   idNumber: string;
-  registerDate: string;
 }
 
 export function CustomerRegister() {
@@ -34,33 +33,39 @@ export function CustomerRegister() {
       phone: '',
       email: '',
       address: '',
-      idNumber: '',
-      registerDate: new Date().toISOString().split('T')[0]
+      idNumber: ''
     }
   });
 
   const onSubmit = async (data: CustomerFormData) => {
     setError('');
     if (!selectedClub || selectedClub === 'all') {
-      setError('Bạn chưa chọn câu lạc bộ');
+      const msg = 'Bạn chưa chọn câu lạc bộ - vui lòng chọn CLB ở góc trên trước khi đăng ký';
+      setError(msg);
       return;
     }
     setLoading(true);
     try {
-      const form = new FormData();
-      Object.entries(data).forEach(([k, v]) => form.append(k, v));
-      if (selectedClub && selectedClub !== 'all') form.append('locationId', selectedClub);
-
+      const payload: any = { ...data, registerDate: new Date().toISOString().split('T')[0], locationId: selectedClub };
       const res = await fetch(`${getApiUrl()}/api/customers/register`, {
         method: 'POST',
-        body: form
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
       });
+      const ct = res.headers.get('content-type') || '';
+      if (!ct.includes('application/json')) {
+        const txt = await res.text();
+        throw new Error(txt.includes('<!DOCTYPE') ? 'Không thể kết nối máy chủ BE (localhost:5000) - kiểm tra BE có đang chạy không?' : `Lỗi máy chủ: ${res.status}`);
+      }
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || 'Đăng ký thất bại!');
       alert('Đăng ký khách hàng thành công!');
       navigate('/admin/customers');
     } catch (err: any) {
-      setError(err.message);
+      const msg = err.message?.includes('<!DOCTYPE') || err.message?.includes('Unexpected token')
+        ? 'Không thể kết nối máy chủ - kiểm tra BE đang chạy tại http://localhost:5000 và đã chọn CLB'
+        : err.message;
+      setError(msg);
     } finally {
       setLoading(false);
     }
@@ -120,11 +125,6 @@ export function CustomerRegister() {
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">Số căn cước</label>
                 <input type="text" {...register('idNumber')}
-                  className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Ngày đăng ký</label>
-                <input type="date" {...register('registerDate')}
                   className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" />
               </div>
               <div className="md:col-span-2">
