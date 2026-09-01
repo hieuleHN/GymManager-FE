@@ -6,7 +6,6 @@ import { getAuthHeaders, getApiUrl } from '../../context/AuthContext';
 interface Job {
   _id: string;
   name: string;
-  salary: number;
 }
 
 interface Feature {
@@ -107,7 +106,6 @@ export function StaffPermissions() {
                         : 'bg-slate-50 border-2 border-transparent hover:bg-slate-100'
                     }`}>
                     <p className="font-bold text-sm">{job.name}</p>
-                    <p className="text-xs text-slate-600 mt-1">Lương: {(job.salary ?? 0).toLocaleString('vi-VN')}đ</p>
                   </button>
                 ))}
               </div>

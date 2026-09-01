@@ -250,22 +250,29 @@ export function AttendanceScanner() {
             setIsModelLoaded(true);
             setFaceStatusText('Đang đồng bộ dữ liệu khuôn mặt...');
 
-            const res = await axios.get(`${backendUrl}/api/checkin/face/descriptors`, {
-                headers: getAuthHeaders() as any
-            });
-
-            if (res.data.success && Array.isArray(res.data.data) && res.data.data.length > 0) {
-                const labeled = res.data.data.map((c: any) => {
-                    return new faceapi.LabeledFaceDescriptors(
-                        c._id,
-                        [new Float32Array(c.faceDescriptor)]
-                    );
+            const [custRes, staffRes] = await Promise.all([
+                axios.get(`${backendUrl}/api/checkin/face/descriptors`, { headers: getAuthHeaders() as any }).catch(() => ({ data: { data: [] } } as any)),
+                axios.get(`${backendUrl}/api/staff/face/descriptors`, { headers: getAuthHeaders() as any }).catch(() => ({ data: { data: [] } } as any))
+            ]);
+            const custList = (custRes as any).data?.data || ((custRes as any).data?.success ? (custRes as any).data.data : []);
+            const staffList2 = (staffRes as any).data?.data || ((staffRes as any).data?.success ? (staffRes as any).data.data : []);
+            const labeled: faceapi.LabeledFaceDescriptors[] = [];
+            if (Array.isArray(custList)) {
+                custList.forEach((c: any) => {
+                    if (c.faceDescriptor?.length) labeled.push(new faceapi.LabeledFaceDescriptors(`customer:${c._id}`, [new Float32Array(c.faceDescriptor)]));
                 });
+            }
+            if (Array.isArray(staffList2)) {
+                staffList2.forEach((s: any) => {
+                    if (s.faceDescriptor?.length) labeled.push(new faceapi.LabeledFaceDescriptors(`staff:${s._id}`, [new Float32Array(s.faceDescriptor)]));
+                });
+            }
+            if (labeled.length > 0) {
                 setFaceMatcher(new faceapi.FaceMatcher(labeled, 0.62));
-                setFaceStatusText(`Sẵn sàng quét · Đã nạp ${labeled.length} hội viên`);
+                setFaceStatusText(`Sẵn sàng quét · Đã nạp ${custList.length} hội viên, ${staffList2.length} nhân viên`);
             } else {
                 setFaceMatcher(null);
-                setFaceStatusText('Chưa có hội viên nào đăng ký FaceID');
+                setFaceStatusText('Chưa có ai đăng ký FaceID');
             }
         } catch (err: any) {
             console.error("Face API Load Error:", err);
@@ -308,7 +315,13 @@ export function AttendanceScanner() {
                     const match = faceMatcher.findBestMatch(detection.descriptor);
                     if (match.label !== 'unknown') {
                         setFaceStatusText('Khớp khuôn mặt! Đang xử lý điểm danh...');
-                        await handleFaceCheckIn(match.label);
+                        if (match.label.startsWith('staff:')) {
+                            await handleStaffFaceCheckIn(match.label.replace('staff:', ''));
+                        } else if (match.label.startsWith('customer:')) {
+                            await handleFaceCheckIn(match.label.replace('customer:', ''));
+                        } else {
+                            await handleFaceCheckIn(match.label);
+                        }
                     } else {
                         setFaceStatusText('Khuôn mặt chưa được đăng ký trong hệ thống');
                     }
@@ -387,6 +400,57 @@ export function AttendanceScanner() {
             }
         } catch (err: any) {
             const msg = err.response?.data?.error || err.response?.data?.message || 'Điểm danh FaceID thất bại';
+            setScanResult({ success: false, message: msg });
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleStaffFaceCheckIn = async (staffId: string) => {
+        if (loading) return;
+        setLoading(true);
+        setScanResult(null);
+        try {
+            const response = await axios.post(`${backendUrl}/api/staff/face/verify`, { staffId }, { headers: getAuthHeaders() });
+            const staffName = response.data.staff?.fullName || 'Nhân viên';
+            const isCheckout = response.data.status === 'checked-out';
+            if (isCheckout) {
+                speak(`Kính chào ${staffName} ra về`);
+                setHistory(prev => [{
+                    id: Math.random().toString(),
+                    memberCode: 'NV',
+                    customerName: staffName,
+                    time: new Date().toLocaleTimeString('vi-VN'),
+                    status: 'success',
+                    message: `${staffName} check-out FaceID thành công${response.data.totalMinutes ? ` • ${Math.floor(response.data.totalMinutes/60)}h${response.data.totalMinutes%60}p` : ''}`
+                }, ...prev.slice(0,6)]);
+                setSuccessAnimation({
+                    active: true,
+                    memberCode: 'NV',
+                    name: staffName,
+                    phone: response.data.staff?.phone || '',
+                    isCheckout: true,
+                    totalMinutes: response.data.totalMinutes,
+                    checkCount: 1,
+                    frozenNotice: null
+                });
+                setTimeout(() => setSuccessAnimation(null), 4000);
+            } else {
+                const isLate = response.data.status === 'late';
+                speak(`${isLate ? 'Bạn đi muộn' : `Xin mời ${staffName} vào làm`}`);
+                setHistory(prev => [{
+                    id: Math.random().toString(),
+                    memberCode: 'NV',
+                    customerName: staffName,
+                    time: new Date().toLocaleTimeString('vi-VN'),
+                    status: 'success',
+                    message: `${staffName} check-in FaceID thành công${isLate ? ' • Đi muộn' : ''}`
+                }, ...prev.slice(0,6)]);
+                try { const ch = new BroadcastChannel('GYM_ATTENDANCE_CHANNEL'); ch.postMessage({ type: 'FACE_CHECKIN_TRIGGER', payload: { status: response.data.status, customer: { fullName: staffName } } }); ch.close(); } catch {}
+            }
+            try { const ch2 = new BroadcastChannel('GYM_ATTENDANCE_CHANNEL'); ch2.postMessage({ type: 'CHECKIN_EVENT' }); ch2.close(); } catch {}
+        } catch (err: any) {
+            const msg = err.response?.data?.error || err.message || 'Chấm công FaceID nhân viên thất bại';
             setScanResult({ success: false, message: msg });
         } finally {
             setLoading(false);

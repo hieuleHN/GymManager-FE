@@ -373,7 +373,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
         { name: "Lịch sử chấm công", href: "/admin/staff-attendance/history" },
       ],
     },
-    { name: 'Chấm công nhân viên', href: '/admin/staff-attendance', icon: Clock, feature: 'attendance' },
+
     {
       name: "Quản lý sản phẩm",
       icon: ShoppingBag,
@@ -396,8 +396,6 @@ export function AdminLayout({ children }: AdminLayoutProps) {
       feature: "staff",
       submenu: [
         { name: 'Danh sách nhân viên', href: '/admin/staff' },
-        { name: 'Chi tiết lương nhân viên', href: '/admin/staff/salary' },
-        { name: 'Lịch sử trả lương', href: '/admin/staff/salary-history' },
         { name: 'Thêm nhân viên', href: '/admin/staff/add' },
         { name: 'Phân quyền', href: '/admin/staff/permissions' },
         { name: 'Phân công ca làm việc', href: '/admin/staff/shifts' },
