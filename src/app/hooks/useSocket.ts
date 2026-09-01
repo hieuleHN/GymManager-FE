@@ -5,6 +5,8 @@ import { useAuth, getToken } from '../context/AuthContext';
 let sharedSocket: Socket | null = null;
 let sharedSocketUserKey: string | null = null;
 
+const SOCKET_URL = (import.meta as any).env?.VITE_SOCKET_URL || 'http://localhost:5000';
+
 export const useSocket = () => {
   const { user } = useAuth();
   const socketRef = useRef<Socket | null>(sharedSocket);
@@ -25,12 +27,11 @@ export const useSocket = () => {
       sharedSocket = null;
     }
 
-    const socketUrl = 'http://localhost:5000';
-    sharedSocket = io(socketUrl, {
+    socketRef.current = io(SOCKET_URL, {
       auth: { token: getToken() }
     });
+    sharedSocket = socketRef.current;
     sharedSocketUserKey = key;
-    socketRef.current = sharedSocket;
 
     sharedSocket.on('connect', () => {
       setIsConnected(true);
@@ -44,7 +45,12 @@ export const useSocket = () => {
       setIsConnected(false);
     });
 
-    return () => {};
+    return () => {
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+        socketRef.current = null;
+      }
+    };
   }, [user]);
 
   return { socket: socketRef.current, isConnected };

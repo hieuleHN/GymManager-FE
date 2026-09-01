@@ -1,7 +1,6 @@
 import MemberQR from './pages/MemberQR';
 import { StaffQR } from './pages/StaffQR';
 import { AttendanceScanner } from './pages/admin/AttendanceScanner';
-import { FaceScannerPopup } from './pages/admin/FaceScannerPopup';
 import { createBrowserRouter, Navigate, useLocation } from 'react-router';
 import { Layout } from './components/Layout';
 import { Home } from './pages/Home';
@@ -46,16 +45,17 @@ import { StaffSalary } from './pages/admin/StaffSalary';
 import { StaffSalaryHistory } from './pages/admin/StaffSalaryHistory';
 import { AddStaff } from './pages/admin/AddStaff';
 import { StaffPermissions } from './pages/admin/StaffPermissions';
-import { StaffShift } from './pages/admin/StaffShift';
+import { StaffWallet } from './pages/admin/StaffWallet';
 import { StaffCheckIn } from './pages/admin/StaffCheckIn';
-import { StaffAttendanceHistory } from './pages/admin/StaffAttendanceHistory';
 import { JobList } from './pages/admin/JobList';
 import { AddJob } from './pages/admin/AddJob';
 import { EditJob } from './pages/admin/EditJob';
 import { Statistics } from './pages/admin/Statistics';
+import { PackageAnalytics } from './pages/admin/PackageAnalytics';
 import { PackageList } from './pages/admin/PackageList';
 import { AddPackage } from './pages/admin/AddPackage';
 import { EditPackage } from './pages/admin/EditPackage';
+import { PackagePriceHistory } from './pages/admin/PackagePriceHistory';
 import { ContractList } from './pages/admin/ContractList';
 import { EditContract } from './pages/admin/EditContract';
 import { EditProduct } from './pages/admin/EditProduct';
@@ -71,8 +71,9 @@ import { RecruitmentManagement } from './pages/admin/RecruitmentManagement';
 import { ExpenseManagement } from './pages/admin/ExpenseManagement';
 import { TrainerProfile } from './pages/admin/TrainerProfile';
 import { TrainingSchedule } from './pages/admin/TrainingSchedule';
-import { LockerManagementDiagram } from './pages/admin/LockerManagementDiagram';
+import { LockerManagement } from './pages/admin/LockerManagement';
 import { ScheduleConfirmations } from './pages/admin/ScheduleConfirmations';
+import { Community } from './pages/dashboard/Community';
 import { Messages } from './pages/dashboard/Messages';
 import { Tasks } from './pages/admin/Tasks';
 import { Invoices } from './pages/admin/Invoices';
@@ -84,11 +85,10 @@ import { Articles } from './pages/Articles';
 import { ArticleDetail } from './pages/ArticleDetail';
 import { AdminCommunity } from './pages/admin/AdminCommunity';
 import { AdminMessages } from './pages/admin/AdminMessages';
-import { MessagesMonitor } from './pages/admin/MessagesMonitor';
-import { SensitiveKeywords } from './pages/admin/SensitiveKeywords';
 
 // IMPORT TRANG THỐNG KÊ BIỂU ĐỒ ADMIN
 import { AdminStats } from './pages/dashboard/AdminStats';
+import { LockerIssues } from './pages/dashboard/LockerIssues';
 
 // Khai báo RouteErrorBoundary dự phòng
 const RouteErrorBoundary = () => {
@@ -121,14 +121,13 @@ const routeFeatures: Record<string, string> = {
   '/admin/packages': 'packages',
   '/admin/packages/add': 'packages',
   '/admin/packages/:id/edit': 'packages',
+  '/admin/packages/:id/price-history': 'packages',
   '/admin/contracts': 'packages',
   '/admin/contracts/:id/edit': 'packages',
   '/admin/services': 'services',
   '/admin/services/history': 'services',
   '/admin/attendance': 'attendance',
-  '/admin/attendance/face-popup': 'attendance',
   '/admin/attendance/history': 'attendance',
-  '/admin/staff-attendance/history': 'attendance',
   '/admin/products': 'products',
   '/admin/products/add': 'products',
   '/admin/products/returns': 'products',
@@ -137,13 +136,12 @@ const routeFeatures: Record<string, string> = {
   '/admin/staff/salary': 'salary',
   '/admin/staff/salary-history': 'salary',
   '/admin/staff/add': 'staff',
-  '/admin/staff/:id/edit': 'staff',
   '/admin/staff/permissions': 'permissions',
-  '/admin/staff/shifts': 'staff',
   '/admin/jobs': 'tasks',
   '/admin/jobs/add': 'tasks',
   '/admin/jobs/:id/edit': 'tasks',
   '/admin/statistics': 'statistics',
+  '/admin/package-analytics': 'statistics',
   '/admin/clubs': 'clubs',
   '/admin/disciplines': 'clubs',
   '/admin/policies': 'services',
@@ -160,7 +158,8 @@ const routeFeatures: Record<string, string> = {
   '/admin/invoices': 'payment',
   '/admin/posts': 'services',
   '/admin/articles': 'services',
-  '/admin/community': 'services'
+  '/admin/community': 'services',
+  '/admin/messages': 'services'
 };
 
 function ProtectedRoute({ children, role }: { children: React.ReactNode, role?: 'member' | 'staff' }) {
@@ -268,6 +267,10 @@ export const router = createBrowserRouter([
     element: <ProtectedRoute role="member"><Progress /></ProtectedRoute>
   },
   {
+    path: '/dashboard/community',
+    element: <ProtectedRoute role="member"><Community /></ProtectedRoute>
+  },
+  {
     path: '/dashboard/bookings/:bookingId/status',
     element: <ProtectedRoute role="member"><BookingStatus /></ProtectedRoute>
   },
@@ -284,12 +287,12 @@ export const router = createBrowserRouter([
     element: <ProtectedRoute role="staff"><AttendanceScanner /></ProtectedRoute>
   },
   {
-    path: '/admin/attendance/face-popup',
-    element: <ProtectedRoute role="staff"><FaceScannerPopup /></ProtectedRoute>
-  },
-  {
     path: '/dashboard/settings',
     element: <ProtectedRoute role="member"><Settings /></ProtectedRoute>
+  },
+  {
+    path: '/dashboard/locker-issues',
+    element: <ProtectedRoute role="staff"><LockerIssues /></ProtectedRoute>
   },
   {
     path: '/admin/dashboard',
@@ -340,6 +343,10 @@ export const router = createBrowserRouter([
     element: <ProtectedRoute role="staff"><EditPackage /></ProtectedRoute>
   },
   {
+    path: '/admin/packages/:id/price-history',
+    element: <ProtectedRoute role="staff"><PackagePriceHistory /></ProtectedRoute>
+  },
+  {
     path: '/admin/contracts',
     element: <ProtectedRoute role="staff"><ContractList /></ProtectedRoute>
   },
@@ -362,10 +369,6 @@ export const router = createBrowserRouter([
   {
     path: '/admin/staff-attendance',
     element: <ProtectedRoute role="staff"><StaffCheckIn /></ProtectedRoute>
-  },
-  {
-    path: '/admin/staff-attendance/history',
-    element: <ProtectedRoute role="staff"><StaffAttendanceHistory /></ProtectedRoute>
   },
   {
     path: '/admin/products',
@@ -400,16 +403,12 @@ export const router = createBrowserRouter([
     element: <ProtectedRoute role="staff"><AddStaff /></ProtectedRoute>
   },
   {
-    path: '/admin/staff/:id/edit',
-    element: <ProtectedRoute role="staff"><AddStaff /></ProtectedRoute>
-  },
-  {
     path: '/admin/staff/permissions',
     element: <ProtectedRoute role="staff"><StaffPermissions /></ProtectedRoute>
   },
   {
-    path: '/admin/staff/shifts',
-    element: <ProtectedRoute role="staff"><StaffShift /></ProtectedRoute>
+    path: '/admin/wallet',
+    element: <ProtectedRoute role="staff"><StaffWallet /></ProtectedRoute>
   },
   {
     path: '/admin/jobs',
@@ -418,8 +417,7 @@ export const router = createBrowserRouter([
   {
     path: '/admin/jobs/add',
     element: <ProtectedRoute role="staff"><AddJob /></ProtectedRoute>
-  },
-  {
+  }, {
     path: '/admin/jobs/:id/edit',
     element: <ProtectedRoute role="staff"><EditJob /></ProtectedRoute>
   },
@@ -427,6 +425,11 @@ export const router = createBrowserRouter([
     path: '/admin/statistics',
     element: <ProtectedRoute role="staff"><Statistics /></ProtectedRoute>
   },
+  {
+    path: '/admin/package-analytics',
+    element: <ProtectedRoute role="staff"><PackageAnalytics /></ProtectedRoute>
+  },
+  
   {
     path: '/admin/clubs',
     element: <ProtectedRoute role="staff"><ClubManagement /></ProtectedRoute>
@@ -465,7 +468,7 @@ export const router = createBrowserRouter([
   },
   {
     path: '/admin/lockers',
-    element: <ProtectedRoute role="staff"><LockerManagementDiagram /></ProtectedRoute>
+    element: <ProtectedRoute role="staff"><LockerManagement /></ProtectedRoute>
   },
   {
     path: '/admin/schedule-confirmations',
@@ -498,13 +501,5 @@ export const router = createBrowserRouter([
   {
     path: '/admin/messages',
     element: <ProtectedRoute role="staff"><AdminMessages /></ProtectedRoute>
-  },
-  {
-    path: '/admin/messages-monitor',
-    element: <ProtectedRoute role="staff"><MessagesMonitor /></ProtectedRoute>
-  },
-  {
-    path: '/admin/sensitive-keywords',
-    element: <ProtectedRoute role="staff"><SensitiveKeywords /></ProtectedRoute>
   },
 ]);
