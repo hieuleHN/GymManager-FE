@@ -1,6 +1,7 @@
 # Loại bỏ thư mục build
 /build/
 /dist/
+/dist-test/
 
 # Loại bỏ thư mục node_modules
 /node_modules/
