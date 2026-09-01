@@ -556,9 +556,12 @@ export function Layout() {
                   </a>
                 </li>
                 <li>
-                  <a href="#" className="hover:text-indigo-400">
+                  <Link
+                    to="/policies"
+                    className="hover:text-indigo-400 transition-colors"
+                  >
                     Chính sách bảo mật
-                  </a>
+                  </Link>
                 </li>
                 <li>
                   <Link
