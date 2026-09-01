@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useLocation, useNavigate, Navigate } from 'react-router';
 import { Button } from '@mui/material';
-import { CreditCard, Building2, Smartphone, Check, Loader2, ExternalLink, QrCode, X, Wallet, AlertTriangle, FileDown } from 'lucide-react';
+import { CreditCard, Building2, Smartphone, Check, Loader2, ExternalLink, QrCode, X, Wallet, AlertTriangle } from 'lucide-react';
 import { useAuth, getApiUrl, getAuthHeaders } from '../context/AuthContext';
 
 
@@ -65,6 +65,7 @@ export function Payment() {
   const paymentData = location.state;
 
   const isBookingPayment = paymentData?.type === 'trainer_booking';
+  const isServicePayment = paymentData?.type === 'service_request';
 
   const params = new URLSearchParams(location.search);
   const vnpaySuccess = params.get('vnpay_success') === 'true';
@@ -132,7 +133,7 @@ export function Payment() {
           <h2 className="text-2xl font-bold text-slate-900 mb-4">Thanh toán thất bại</h2>
           <p className="text-slate-600 mb-8">Giao dịch VNPAY không thành công. Vui lòng thử lại.</p>
           <Button fullWidth variant="contained" size="large"
-            onClick={() => navigate(isBookingPayment ? '/dashboard/trainers' : '/packages')}
+            onClick={() => navigate(isBookingPayment ? '/dashboard/trainers' : isServicePayment ? '/dashboard/services' : '/packages')}
             sx={{ height: 56, borderRadius: 3, textTransform: 'none', fontSize: '1rem', fontWeight: 700, bgcolor: '#4f46e5', '&:hover': { bgcolor: '#4338ca' } }}>
             Thử lại
           </Button>
@@ -141,8 +142,8 @@ export function Payment() {
     );
   }
 
-  if (!isVnpayReturn && (!paymentData || !paymentData.package)) {
-    return <Navigate to={isBookingPayment ? '/dashboard/trainers' : '/packages'} />;
+  if (!isVnpayReturn && (!paymentData || (!paymentData.package && !isServicePayment))) {
+    return <Navigate to={isBookingPayment ? '/dashboard/trainers' : isServicePayment ? '/dashboard/services' : '/packages'} />;
   }
 
   const {
@@ -154,8 +155,12 @@ export function Payment() {
     booking,
     bookings,
     batchId,
-    trainer
+    trainer,
+    requestId,
+    serviceTitle
   } = paymentData;
+
+  const serviceAmount = isServicePayment ? Math.floor(Number(paymentData?.amount) || Number(totalPrice) || 0) : 0;
 
   // Lấy tất cả booking IDs, hỗ trợ cả mảng bookings (mới) và booking đơn (cũ)
   const allBookings = bookings || (booking ? [booking] : []);
@@ -282,6 +287,44 @@ export function Payment() {
           }
           setPaymentSuccess(true);
         }
+      } else if (isServicePayment) {
+        if (!requestId) {
+          alert('Không tìm thấy thông tin dịch vụ!');
+          return;
+        }
+
+        if (selectedMethod === "wallet") {
+          setProcessing(false);
+          setWalletError('');
+          try {
+            const res = await fetch(`${getApiUrl()}/api/wallet/balance`, {
+              headers: getAuthHeaders() as any
+            });
+            if (res.ok) {
+              const data = await res.json();
+              setWalletBalance(data.balance || 0);
+            }
+          } catch {}
+          setShowWalletConfirm(true);
+          return;
+        }
+
+        if (selectedMethod === "vnpay") {
+          const res = await fetch(`${getApiUrl()}/api/service-requests/${requestId}/pay`, {
+            method: 'POST',
+            headers: getAuthHeaders() as any,
+          });
+          if (!res.ok) {
+            let errMsg = "Lỗi kết nối VNPAY";
+            try { const err = await res.json(); errMsg = err.error || errMsg; } catch { errMsg = `HTTP ${res.status}`; }
+            throw new Error(errMsg);
+          }
+          const data = await res.json();
+          if (!data.paymentUrl) throw new Error('Không nhận được URL thanh toán VNPAY');
+          window.location.href = data.paymentUrl;
+        } else {
+          throw new Error('Phương thức thanh toán không hợp lệ cho dịch vụ này');
+        }
       } else {
         if (!regId) {
           alert('Không tìm thấy thông tin đăng ký!');
@@ -339,14 +382,6 @@ export function Payment() {
     }
   };
 
-  const pdfToken = encodeURIComponent(JSON.parse(localStorage.getItem('auth_user') || '{}').token || '');
-  const pdfUrl = `${getApiUrl()}/api/user-packages/${regId}/contract-pdf?token=${pdfToken}`;
-
-  const handleDownloadContract = () => {
-    if (!regId) return;
-    window.open(pdfUrl, '_blank');
-  };
-
   if (paymentSuccess) {
     if (isBookingPayment) {
       const firstId = bookingId;
@@ -355,54 +390,7 @@ export function Payment() {
         : '/dashboard/history';
       navigate(url, { replace: true });
     } else {
-      return (
-        <div className="min-h-screen bg-slate-50 flex items-center justify-center py-12 px-4">
-          <div className="max-w-md w-full bg-white p-8 rounded-2xl shadow-lg text-center">
-            <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-              <Check className="w-10 h-10 text-green-600" />
-            </div>
-            <h2 className="text-2xl font-bold text-slate-900 mb-4">Thanh toán thành công!</h2>
-            <p className="text-slate-600 mb-6">Đơn hàng của bạn đã được xác nhận. Hợp đồng đã được tạo.</p>
-            <div className="space-y-3">
-              {regId && (
-                <Button
-                  fullWidth
-                  variant="contained"
-                  size="large"
-                  startIcon={<FileDown className="w-5 h-5" />}
-                  onClick={handleDownloadContract}
-                  sx={{
-                    height: 56,
-                    borderRadius: 3,
-                    textTransform: 'none',
-                    fontSize: '1rem',
-                    fontWeight: 700,
-                    bgcolor: '#059669',
-                    '&:hover': { bgcolor: '#047857' }
-                  }}
-                >
-                  Tải hợp đồng (PDF)
-                </Button>
-              )}
-              <Button
-                fullWidth
-                variant="outlined"
-                size="large"
-                onClick={() => navigate('/dashboard/my-packages', { replace: true })}
-                sx={{
-                  height: 56,
-                  borderRadius: 3,
-                  textTransform: 'none',
-                  fontSize: '1rem',
-                  fontWeight: 700
-                }}
-              >
-                Về trang gói tập
-              </Button>
-            </div>
-          </div>
-        </div>
-      );
+      navigate('/dashboard/history', { replace: true });
     }
     return null;
   }
@@ -473,6 +461,21 @@ export function Payment() {
     setProcessing(true);
     setShowWalletConfirm(false);
     try {
+      if (isServicePayment) {
+        if (!requestId) throw new Error('Không tìm thấy thông tin dịch vụ!');
+        const res = await fetch(`${getApiUrl()}/api/service-requests/${requestId}/wallet-pay`, {
+          method: 'POST',
+          headers: getAuthHeaders() as any,
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || 'Thanh toán thất bại');
+        }
+        sessionStorage.removeItem('vnpay_batch_id');
+        setWalletSuccess(true);
+        navigate('/dashboard/history', { replace: true });
+        return;
+      }
       const idsToPay = isBookingPayment
         ? (allBookingIds.length > 0 ? allBookingIds : [bookingId])
         : [regId].filter(Boolean);
@@ -564,8 +567,8 @@ export function Payment() {
     );
   }
 
-  const qrDynamicUrl = (bankInfo.bankName && bankInfo.accountNumber) 
-    ? `https://img.vietqr.io/image/${bankInfo.bankName}-${bankInfo.accountNumber}-compact2.png?amount=${totalPrice}&addInfo=${encodeURIComponent(customer?.fullName || customer?.phone || 'Thanh toan')} goi ${encodeURIComponent(pkg.name)}&accountName=${encodeURIComponent(bankInfo.accountName)}`
+  const qrDynamicUrl = (bankInfo.bankName && bankInfo.accountNumber)
+    ? `https://img.vietqr.io/image/${bankInfo.bankName}-${bankInfo.accountNumber}-compact2.png?amount=${totalPrice}&addInfo=${encodeURIComponent(customer?.fullName || customer?.phone || 'Thanh toan')} ${isServicePayment ? 'dich vu' : `goi ${encodeURIComponent(pkg.name)}`}&accountName=${encodeURIComponent(bankInfo.accountName)}`
     : '';
 
   return (
@@ -582,7 +585,7 @@ export function Payment() {
                 Chọn phương thức thanh toán
               </h2>
               <div className="space-y-3">
-                {paymentMethods.map((method) => {
+                {paymentMethods.filter(m => !isServicePayment || m.id === 'vnpay' || m.id === 'wallet').map((method) => {
                   const Icon = method.icon;
                   return (
                     <button
@@ -768,7 +771,14 @@ export function Payment() {
               </h2>
 
               <div className="space-y-4 mb-6 pb-6 border-b border-slate-200">
-                {isBookingPayment ? (
+                {isServicePayment ? (
+                  <>
+                    <div>
+                      <p className="text-sm text-slate-500">Dịch vụ</p>
+                      <p className="font-bold text-slate-900">{serviceTitle || 'Dịch vụ'}</p>
+                    </div>
+                  </>
+                ) : isBookingPayment ? (
                   <>
                     <div>
                       <p className="text-sm text-slate-500">Dịch vụ</p>
@@ -817,7 +827,7 @@ export function Payment() {
 
               <div className="space-y-3 mb-6 pb-6 border-b border-slate-200">
                 <div className="flex justify-between text-slate-600">
-                  <span>Giá gói:</span>
+                  <span>{isServicePayment ? 'Phí dịch vụ:' : 'Giá gói:'}</span>
                   <span>{formatPrice(totalPrice)}</span>
                 </div>
               </div>
@@ -859,7 +869,7 @@ export function Payment() {
                 variant="text"
                 size="small"
                 onClick={() => {
-                  navigate(isBookingPayment ? '/dashboard/history' : '/dashboard/my-packages', { replace: true });
+                  navigate(isBookingPayment ? '/dashboard/history' : isServicePayment ? '/dashboard/services' : '/dashboard/my-packages', { replace: true });
                 }}
                 sx={{ mt: 1, textTransform: "none", color: "#94a3b8" }}
               >

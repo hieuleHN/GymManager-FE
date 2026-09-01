@@ -24,6 +24,7 @@ interface AuthContextType {
   loading: boolean;
   hasPermission: (feature: string) => boolean;
   refreshUser: () => Promise<void>;
+  updateAvatar: (avatar: string) => void;
 }
 
 const API_URL = '';
@@ -36,11 +37,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const stored = localStorage.getItem('auth_user');
-    if (stored) {
-      try {
-        setUser(JSON.parse(stored));
-      } catch {}
+    if (!stored) {
+      setLoading(false);
+      return;
     }
+    try {
+      const parsed = JSON.parse(stored);
+      setUser(parsed);
+      if (!parsed.isStaff) {
+        fetch(`${API_URL}/api/customers/my-info`, {
+          headers: { 'Authorization': `Bearer ${parsed.token}` }
+        })
+          .then(res => res.json())
+          .then(data => {
+            if (!data || !data._id) return;
+            const refreshed = {
+              ...parsed,
+              fullName: data.fullName || parsed.fullName,
+              name: data.fullName || parsed.fullName || parsed.name,
+              status: data.status,
+              avatar: data.avatar || parsed.avatar,
+              locationId: data.locationId || parsed.locationId || null
+            };
+            localStorage.setItem('auth_user', JSON.stringify(refreshed));
+            setUser(refreshed);
+          })
+          .catch(() => {})
+          .finally(() => setLoading(false));
+        return;
+      }
+    } catch {}
     setLoading(false);
   }, []);
 
@@ -93,7 +119,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           ...current,
           fullName: data.fullName || current.fullName,
           name: data.fullName || current.fullName || current.name,
-          status: data.status
+          status: data.status,
+          avatar: data.avatar || current.avatar,
+          locationId: data.locationId || current.locationId || null
         };
         localStorage.setItem('auth_user', JSON.stringify(updated));
         setUser(updated);
@@ -106,6 +134,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   };
 
+  const updateAvatar = (avatar: string) => {
+    const stored = localStorage.getItem('auth_user');
+    if (!stored) return;
+    const updated = { ...JSON.parse(stored), avatar };
+    localStorage.setItem('auth_user', JSON.stringify(updated));
+    setUser(updated);
+  };
+
   const hasPermission = (feature: string): boolean => {
     if (!user) return false;
     if (!user.isStaff) return true;
@@ -115,7 +151,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, loading, hasPermission, refreshUser }}>
+    <AuthContext.Provider value={{ user, login, logout, loading, hasPermission, refreshUser, updateAvatar }}>
       {children}
     </AuthContext.Provider>
   );
@@ -133,14 +169,30 @@ export function getApiUrl() {
   return API_URL;
 }
 
+export function customerAvatarSrc(avatar?: string) {
+  if (!avatar) return '';
+  if (avatar.startsWith('http') || avatar.startsWith('data:') || avatar.startsWith('/uploads/')) return avatar;
+  return `${API_URL}/uploads/customers/${avatar}`;
+}
+
 export function getAuthHeaders() {
   const stored = localStorage.getItem('auth_user');
   if (!stored) return {};
   const user = JSON.parse(stored);
-  return {
+  const headers: Record<string, string> = {
     'Authorization': `Bearer ${user.token}`,
     'Content-Type': 'application/json'
   };
+  // Admin chọn phòng tập ở dropdown -> gắn header để backend lọc theo phòng tập đã chọn
+  if (user.isAdmin) {
+    try {
+      const selectedClub = localStorage.getItem('selected_club');
+      if (selectedClub && selectedClub !== 'all') {
+        headers['X-Location-Id'] = selectedClub;
+      }
+    } catch { /* ignore */ }
+  }
+  return headers;
 }
 
 export function getToken(): string | null {

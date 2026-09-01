@@ -1,8 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { TrendingUp, Award, BarChart3, RefreshCw, Activity, AlertCircle, Calendar, X, Users, DollarSign, Clock, Loader2, CalendarCheck } from 'lucide-react';
+import { TrendingUp, Award, BarChart3, RefreshCw, Activity, AlertCircle, Calendar, X, Users, DollarSign, Clock, Loader2, CalendarCheck, Download } from 'lucide-react';
 import { getApiUrl } from '../../context/AuthContext';
+import { useClub } from '../../context/ClubContext';
 import { Pagination } from '../../components/Pagination';
+import { exportActivityExcel } from '../../../lib/exportExcelWithChart';
+import { generateActivityChartImages } from '../../../lib/ChartCapture';
+import { AttendanceStats } from './AttendanceStats';
 
 interface BookingStats {
     today: number;
@@ -129,7 +133,10 @@ interface MonthlyDetail {
     }[];
 }
 
+
 export function ActivityStats() {
+    const { selectedClub } = useClub();
+    const locParam = selectedClub && selectedClub !== 'all' ? `&locationId=${selectedClub}` : '';
     const [loading, setLoading] = useState<boolean>(true);
     const [error, setError] = useState<string | null>(null);
 
@@ -182,7 +189,7 @@ export function ActivityStats() {
             let userToken = '';
             if (authUserData) userToken = JSON.parse(authUserData).token || '';
             if (!userToken) return;
-            const res = await axios.get(`${getApiUrl()}/api/dashboard/admin-stats/monthly-detail?month=${monthIndex}`, {
+            const res = await axios.get(`${getApiUrl()}/api/dashboard/admin-stats/monthly-detail?month=${monthIndex}${locParam}`, {
                 headers: { Authorization: `Bearer ${userToken}` }
             });
             setSelectedMonth(res.data);
@@ -203,7 +210,7 @@ export function ActivityStats() {
             let userToken = '';
             if (authUserData) userToken = JSON.parse(authUserData).token || '';
             if (!userToken) return;
-            let url = `${getApiUrl()}/api/dashboard/admin-stats/checkin-detail?period=${period}`;
+            let url = `${getApiUrl()}/api/dashboard/admin-stats/checkin-detail?period=${period}${locParam}`;
             if (dayName) url += `&day=${dayName}`;
             if (weekOffset !== undefined) url += `&weekOffset=${weekOffset}`;
             if (clickedMonth !== undefined) url += `&clickedMonth=${clickedMonth}`;
@@ -232,7 +239,8 @@ export function ActivityStats() {
             let userToken = '';
             if (authUserData) userToken = JSON.parse(authUserData).token || '';
             if (!userToken) return;
-            const url = `${getApiUrl()}/api/dashboard/admin-stats/sport-detail?name=${encodeURIComponent(sportName)}`;
+            let url = `${getApiUrl()}/api/dashboard/admin-stats/sport-detail?name=${encodeURIComponent(sportName)}&period=${period}${locParam}`;
+            if (customFrom && customTo) url += `&startDate=${customFrom}&endDate=${customTo}`;
             const res = await axios.get(url, {
                 headers: { Authorization: `Bearer ${userToken}` }
             });
@@ -254,7 +262,7 @@ export function ActivityStats() {
             let userToken = '';
             if (authUserData) userToken = JSON.parse(authUserData).token || '';
             if (!userToken) return;
-            let url = `${getApiUrl()}/api/dashboard/admin-stats/trainer-detail?name=${encodeURIComponent(trainerName)}&period=${period}`;
+            let url = `${getApiUrl()}/api/dashboard/admin-stats/trainer-detail?name=${encodeURIComponent(trainerName)}&period=${period}${locParam}`;
             if (customFrom && customTo) url += `&startDate=${customFrom}&endDate=${customTo}`;
             const res = await axios.get(url, {
                 headers: { Authorization: `Bearer ${userToken}` }
@@ -285,7 +293,8 @@ export function ActivityStats() {
                 return;
             }
 
-            let url = `${getApiUrl()}/api/dashboard/admin-stats?period=${period}`;
+
+            let url = `${getApiUrl()}/api/dashboard/admin-stats?period=${period}${locParam}`;
             if (customFrom && customTo) url += `&startDate=${customFrom}&endDate=${customTo}`;
             const response = await axios.get(url, {
                 headers: { Authorization: `Bearer ${userToken}` }
@@ -308,6 +317,99 @@ export function ActivityStats() {
         }
     };
 
+    const [exporting, setExporting] = useState(false);
+
+    const handleExport = async () => {
+        setExporting(true);
+        try {
+            const authUserData = localStorage.getItem('auth_user');
+            let userToken = '';
+            if (authUserData) userToken = JSON.parse(authUserData).token || '';
+            if (!userToken) { setError('Không tìm thấy Token đăng nhập. Vui lòng đăng nhập lại!'); setExporting(false); return; }
+            const headers = { Authorization: `Bearer ${userToken}` };
+
+            const [monthlyDetails, checkinDetails, sportDetails, trainerDetails, periodData] = await Promise.all([
+                Promise.all(customerGrowth.map(async (g: any) => {
+                    if (!g.month.startsWith('T')) return null;
+                    try {
+                        const res = await axios.get(`${getApiUrl()}/api/dashboard/admin-stats/monthly-detail?month=${parseInt(g.month.replace('T', ''))}${locParam}`, { headers });
+                        return res.data;
+                    } catch { return null; }
+                })),
+                Promise.all(checkInOfWeek.map(async (c: any, idx: number) => {
+                    try {
+                        let url = `${getApiUrl()}/api/dashboard/admin-stats/checkin-detail?period=${period}${locParam}`;
+                        if (customFrom && customTo) url += `&startDate=${customFrom}&endDate=${customTo}`;
+                        const isYearView = period === 'year' || showCustomDate;
+                        const dayNames = ['CN','T2','T3','T4','T5','T6','T7'];
+                        if (isYearView && c.day.startsWith('T')) url += `&clickedMonth=${parseInt(c.day.replace('T', ''))}`;
+                        else if (c.day.startsWith('Tuần')) url += `&weekOffset=${idx}`;
+                        else if (dayNames.includes(c.day)) url += `&day=${c.day}`;
+                        else url += `&day=${c.day}`;
+                        const res = await axios.get(url, { headers });
+                        return res.data;
+                    } catch { return null; }
+                })),
+                Promise.all(sportDistribution.map(async (sp: any) => {
+                    try {
+                        let url = `${getApiUrl()}/api/dashboard/admin-stats/sport-detail?name=${encodeURIComponent(sp.name)}&period=${period}${locParam}`;
+                        if (customFrom && customTo) url += `&startDate=${customFrom}&endDate=${customTo}`;
+                        const res = await axios.get(url, { headers });
+                        return res.data;
+                    } catch { return null; }
+                })),
+                Promise.all(trainerPerformance.map(async (t: any) => {
+                    try {
+                        let url = `${getApiUrl()}/api/dashboard/admin-stats/trainer-detail?name=${encodeURIComponent(t.name)}&period=${period}${locParam}`;
+                        if (customFrom && customTo) url += `&startDate=${customFrom}&endDate=${customTo}`;
+                        const res = await axios.get(url, { headers });
+                        return res.data;
+                    } catch { return null; }
+                })),
+                (async () => {
+                    const results: Record<string, any> = {};
+                    await Promise.all(['week', 'month', 'quarter', 'year'].map(async (p) => {
+                        try {
+                            const res = await axios.get(`${getApiUrl()}/api/dashboard/admin-stats?period=${p}${locParam}`, { headers });
+                            results[p] = res.data?.summary || null;
+                        } catch { results[p] = null; }
+                    }));
+                    return results;
+                })(),
+            ]);
+
+            const data = {
+                summary,
+                bookingStats,
+                customerGrowth,
+                sportDistribution,
+                checkInOfWeek,
+                trainerPerformance,
+            };
+
+            const periodLabel = customFrom && customTo ? `${customFrom} → ${customTo}` : (PERIOD_LABELS[period] || period);
+            const chartImages = generateActivityChartImages(data);
+            await exportActivityExcel(
+                data,
+                periodLabel,
+                `BaoCaoHoatDong_${periodLabel.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}`,
+                {
+                    monthly: monthlyDetails.filter(Boolean),
+                    checkin: checkinDetails.filter(Boolean),
+                    sports: sportDetails.filter(Boolean),
+                    trainers: trainerDetails.filter(Boolean),
+                    periodData,
+                },
+                chartImages.length > 0 ? chartImages : undefined
+            );
+        } catch (err: any) {
+            console.error("Lỗi xuất Excel:", err);
+            setError("Không thể xuất Excel: " + (err.message || "Lỗi không xác định"));
+        } finally {
+            setExporting(false);
+        }
+    };
+
     const handleStatClick = async (metric: string) => {
         setSelectedMetric(metric);
         setLoadingPeriodData(true);
@@ -320,7 +422,7 @@ export function ActivityStats() {
             const periods = ['week', 'month', 'quarter', 'year'];
             await Promise.all(periods.map(async (p) => {
                 try {
-                    const url = `${getApiUrl()}/api/dashboard/admin-stats?period=${p}`;
+                    const url = `${getApiUrl()}/api/dashboard/admin-stats?period=${p}${locParam}`;
                     const res = await axios.get(url, { headers: { Authorization: `Bearer ${userToken}` } });
                     results[p] = res.data?.summary || null;
                 } catch { results[p] = null; }
@@ -333,7 +435,7 @@ export function ActivityStats() {
     useEffect(() => {
         if (showCustomDate && (!customFrom || !customTo || !!dateError)) return;
         fetchStatsFromDB();
-    }, [period, showCustomDate, customFrom, customTo, dateError]);
+    }, [period, showCustomDate, customFrom, customTo, dateError, selectedClub]);
 
     const maxGrowth = customerGrowth.length > 0 ? Math.max(...customerGrowth.map(d => d.count), 1) : 1;
     const maxCheckIn = checkInOfWeek.length > 0 ? Math.max(...checkInOfWeek.map(d => d.count), 1) : 1;
@@ -383,6 +485,14 @@ export function ActivityStats() {
                     )}
                 </div>
                 {loading && <RefreshCw className="w-5 h-5 animate-spin text-indigo-500" />}
+            </div>
+
+            <div className="flex justify-end">
+                <button onClick={handleExport} disabled={exporting}
+                    className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed">
+                    {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                    {exporting ? 'Đang xuất...' : 'Xuất Excel'}
+                </button>
             </div>
 
             {error && (
@@ -609,6 +719,9 @@ export function ActivityStats() {
                     )}
                 </div>
             </div>
+
+            {/* Chấm công nhân viên */}
+            <AttendanceStats selectedClub={selectedClub} period={period} customFrom={customFrom} customTo={customTo} />
         </div>
 
             {/* ── MODAL CHI TIẾT HỘI VIÊN THEO THÁNG ── */}
@@ -710,10 +823,10 @@ export function ActivityStats() {
                                                     <table className="w-full text-sm">
                                                         <thead>
                                                             <tr className="border-b border-slate-100">
-                                                                <th className="text-left py-3 px-2 text-slate-500 font-semibold">Họ tên</th>
+                                                                 <th className="text-left py-3 px-2 text-slate-500 font-semibold">Họ tên</th>
                                                                 <th className="text-left py-3 px-2 text-slate-500 font-semibold">Giới tính</th>
                                                                 <th className="text-left py-3 px-2 text-slate-500 font-semibold">SĐT</th>
-                                                                <th className="text-left py-3 px-2 text-slate-500 font-semibold">Gói tập</th>
+                                                                <th className="text-left py-3 px-2 text-slate-500 font-semibold">Số lượng gói tập</th>
                                                                 <th className="text-right py-3 px-2 text-slate-500 font-semibold">Số tiền</th>
                                                             </tr>
                                                         </thead>
@@ -723,7 +836,7 @@ export function ActivityStats() {
                                                                     <td className="py-3 px-2 font-medium text-slate-900">{c.fullName}</td>
                                                                     <td className="py-3 px-2 text-slate-600">{c.gender}</td>
                                                                     <td className="py-3 px-2 text-slate-600">{c.phone || '-'}</td>
-                                                                    <td className="py-3 px-2 text-slate-600">{c.package}</td>
+                                                                    <td className="py-3 px-2 text-slate-600">{c.packageCount ?? 0}</td>
                                                                     <td className="py-3 px-2 text-right font-semibold text-slate-900">
                                                                         {c.totalPrice > 0 ? `${c.totalPrice.toLocaleString('vi-VN')}đ` : '-'}
                                                                     </td>

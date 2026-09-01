@@ -1,18 +1,86 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Html5QrcodeScanner } from 'html5-qrcode';
+import Webcam from 'react-webcam';
+import * as faceapi from 'face-api.js';
 import axios from 'axios';
 import {
     Check,
     X,
     Camera,
-    RefreshCw,
     Calendar,
-    User,
-    ArrowRight,
-    UserCheck
+    UserCheck,
+    Lock,
+    Unlock,
+    AlertTriangle,
+    Loader2,
+    KeyRound,
+    ScanFace,
+    ExternalLink,
+    Trash2,
+    Download
 } from 'lucide-react';
 import { AdminLayout } from '../../components/AdminLayout';
-import { getApiUrl } from '../../context/AuthContext';
+import { getApiUrl, getAuthHeaders, useAuth } from '../../context/AuthContext';
+import { useClub } from '../../context/ClubContext';
+
+let announceTimer: ReturnType<typeof setTimeout> | null = null;
+
+const playChime = () => {
+    try {
+        const Ctx = (window.AudioContext || (window as any).webkitAudioContext);
+        if (!Ctx) return;
+        const ctx = new Ctx();
+        if (ctx.state === 'suspended') ctx.resume();
+        const bell = (freq: number, delay: number) => {
+            const t0 = ctx.currentTime + delay;
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.value = freq;
+            gain.gain.setValueAtTime(0, t0);
+            gain.gain.linearRampToValueAtTime(0.28, t0 + 0.015);
+            gain.gain.exponentialRampToValueAtTime(0.001, t0 + 0.9);
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start(t0);
+            osc.stop(t0 + 1);
+            const osc2 = ctx.createOscillator();
+            const gain2 = ctx.createGain();
+            osc2.type = 'sine';
+            osc2.frequency.value = freq * 2;
+            gain2.gain.setValueAtTime(0, t0);
+            gain2.gain.linearRampToValueAtTime(0.06, t0 + 0.015);
+            gain2.gain.exponentialRampToValueAtTime(0.001, t0 + 0.35);
+            osc2.connect(gain2);
+            gain2.connect(ctx.destination);
+            osc2.start(t0);
+            osc2.stop(t0 + 0.4);
+        };
+        bell(880, 0);
+        bell(659.25, 0.28);
+        setTimeout(() => ctx.close(), 2200);
+    } catch { }
+};
+
+const speak = (text: string) => {
+    playChime();
+    const backendUrl = getApiUrl() || 'http://localhost:5000';
+    if (announceTimer) clearTimeout(announceTimer);
+    announceTimer = setTimeout(() => {
+        try {
+            if (!text) return;
+            const audio = new Audio(`${backendUrl}/api/tts?text=${encodeURIComponent(text)}`);
+            audio.onerror = () => {
+                if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+                    window.speechSynthesis.cancel();
+                    const u = new SpeechSynthesisUtterance(text);
+                    u.lang = 'vi-VN';
+                    window.speechSynthesis.speak(u);
+                }
+            };
+            audio.play().catch(() => { });
+        } catch { }
+    }, 1000);
+};
 
 interface CheckInRecord {
     id: string;
@@ -23,35 +91,68 @@ interface CheckInRecord {
     message: string;
 }
 
+interface PackageInfo {
+    packageName: string;
+    endDate: string;
+    remainingDays?: number;
+}
+
 interface ScannedCustomer {
     memberCode: string;
     fullName: string;
     phone: string;
-    packageName: string;
-    endDate: string;
+    packages: PackageInfo[];
     token: string;
 }
 
+interface LockerApiItem {
+    _id: string;
+    lockerNumber: string;
+    prefix: string;
+    locationId?: string;
+    status: 'AVAILABLE' | 'OCCUPIED' | 'MAINTENANCE';
+    assignedType?: 'MEMBER' | 'STAFF' | null;
+    assignedName?: string;
+    assignedPhone?: string;
+}
+
+type PendingStaffResult = {
+    active: boolean; name: string; job?: string; phone?: string;
+    shift?: { type: string; start: string; end: string } | null;
+    status: string; checkInTime?: string; checkOutTime?: string;
+    minutesLate?: number; minutesEarly?: number; overtime?: number; totalMinutes?: number;
+    todayBonus?: number; todayPenalty?: number;
+    message: string;
+};
+
 export function AttendanceScanner() {
-    const [manualToken, setManualToken] = useState<string>('');
+    const { user } = useAuth();
+    const { selectedClub } = useClub();
     const [loading, setLoading] = useState<boolean>(false);
+    const [currentClubName, setCurrentClubName] = useState<string>('');
     const [scanResult, setScanResult] = useState<{ success: boolean; message: string } | null>(null);
     const [history, setHistory] = useState<CheckInRecord[]>([]);
     const [isCameraActive, setIsCameraActive] = useState<boolean>(false);
-    const [staffResult, setStaffResult] = useState<{
-        active: boolean; name: string; job?: string; phone?: string;
-        shift?: { type: string; start: string; end: string } | null;
-        status: string; checkInTime?: string; checkOutTime?: string;
-        minutesLate?: number; minutesEarly?: number; overtime?: number; totalMinutes?: number;
-        todayBonus?: number; todayPenalty?: number;
-        message: string;
-    } | null>(null);
+    const [staffResult, setStaffResult] = useState<PendingStaffResult | null>(null);
 
-    // Khối lưu trữ thông tin hội viên hiện tại đang chờ xác nhận
+    const [isModelLoaded, setIsModelLoaded] = useState<boolean>(false);
+    const [faceMatcher, setFaceMatcher] = useState<faceapi.FaceMatcher | null>(null);
+    const [faceStatusText, setFaceStatusText] = useState<string>('Đang khởi tạo AI nhận diện...');
+    const webcamRef = useRef<Webcam>(null);
+    const faceDetectingRef = useRef<boolean>(false);
+
     const [scannedCustomer, setScannedCustomer] = useState<ScannedCustomer | null>(null);
 
-    // BỘ NHỚ ĐỆM NGHIÊM TÚC: Lưu lại vết của hội viên được quét hợp lệ gần nhất 
-    // để cứu dữ liệu khi kịch bản quét lặp/quét trùng xảy ra và Backend chặn đứng trả lỗi trống.
+    const [lockerModal, setLockerModal] = useState(false);
+    const [wantLocker, setWantLocker] = useState<boolean | null>(null);
+    const [lockers, setLockers] = useState<LockerApiItem[]>([]);
+    const [lockerLoading, setLockerLoading] = useState(false);
+    const [lockerError, setLockerError] = useState('');
+    const [lockerFilter, setLockerFilter] = useState('ALL');
+    const [submittingLocker, setSubmittingLocker] = useState(false);
+    const [assignedLockerName, setAssignedLockerName] = useState('');
+    const [pendingStaff, setPendingStaff] = useState<PendingStaffResult | null>(null);
+
     const lastScannedRef = useRef<{ memberCode: string; fullName: string } | null>(null);
 
     const [successAnimation, setSuccessAnimation] = useState<{
@@ -59,218 +160,563 @@ export function AttendanceScanner() {
         memberCode: string;
         name: string;
         phone: string;
-        packageName: string;
-        endDate: string;
+        packages?: PackageInfo[];
+        lockerName?: string;
+        isCheckout?: boolean;
+        totalMinutes?: number;
+        checkCount?: number;
+        frozenNotice?: string | null;
     } | null>(null);
 
-    const scannerRef = useRef<Html5QrcodeScanner | null>(null);
+    const backendUrl = getApiUrl() || 'http://localhost:5000';
+
+    // Lắng nghe dữ liệu điểm danh từ Cửa Sổ Pop-up độc lập
+    useEffect(() => {
+        const channel = new BroadcastChannel('GYM_ATTENDANCE_CHANNEL');
+        channel.onmessage = (event) => {
+            if (event.data?.type === 'CHECKIN_EVENT') {
+                loadTodayHistory();
+            }
+
+            if (event.data?.type === 'FACE_CHECKIN_TRIGGER') {
+                const { status, customer, totalMinutes, checkCount, frozenNotice } = event.data.payload;
+                const verifiedCode = customer.id || 'HV';
+                const verifiedName = customer.fullName || 'Hội viên';
+                const packages = customer.packages || [];
+                const count = checkCount || 1;
+
+                if (status === 'checked-out') {
+                    releaseMemberLockers(verifiedName);
+                    loadTodayHistory();
+                    speak(`Kính chào ${verifiedName} ra về`);
+
+                    setSuccessAnimation({
+                        active: true,
+                        memberCode: verifiedCode,
+                        name: verifiedName,
+                        phone: customer.phone || 'Chưa cập nhật',
+                        packages,
+                        isCheckout: true,
+                        totalMinutes,
+                        checkCount: count,
+                        frozenNotice: null
+                    });
+                    setTimeout(() => setSuccessAnimation(null), 4000);
+                } else {
+                    const matchedInfo: ScannedCustomer = {
+                        memberCode: verifiedCode,
+                        fullName: verifiedName,
+                        phone: customer.phone || 'Chưa cập nhật',
+                        packages,
+                        token: 'FACE_ID_AUTH'
+                    };
+                    (matchedInfo as any).checkCount = count;
+                    (matchedInfo as any).frozenNotice = frozenNotice || null;
+                    speak(`Xin mời ${verifiedName} vào tập`);
+
+                    setScannedCustomer(matchedInfo);
+                    lastScannedRef.current = { memberCode: verifiedCode, fullName: verifiedName };
+
+                    setAssignedLockerName('');
+                    setLockers([]);
+                    openLockerModal();
+                }
+            }
+        };
+        return () => channel.close();
+    }, [selectedClub]);
+
+    const openPopupFaceScanner = () => {
+        const width = 900;
+        const height = 650;
+        const left = (window.screen.width - width) / 2;
+        const top = (window.screen.height - height) / 2;
+        window.open(
+            '/admin/attendance/face-popup',
+            'FaceIDScannerWindow',
+            `width=${width},height=${height},top=${top},left=${left},status=no,menubar=no,toolbar=no,resizable=yes`
+        );
+    };
+
+    const initFaceApiAndDescriptors = async () => {
+        try {
+            setFaceStatusText('Đang tải Model AI...');
+            const MODEL_URL = '/models';
+            await Promise.all([
+                faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+                faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+                faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
+            ]);
+            setIsModelLoaded(true);
+            setFaceStatusText('Đang đồng bộ dữ liệu khuôn mặt...');
+
+            const res = await axios.get(`${backendUrl}/api/checkin/face/descriptors`, {
+                headers: getAuthHeaders() as any
+            });
+
+            if (res.data.success && Array.isArray(res.data.data) && res.data.data.length > 0) {
+                const labeled = res.data.data.map((c: any) => {
+                    return new faceapi.LabeledFaceDescriptors(
+                        c._id,
+                        [new Float32Array(c.faceDescriptor)]
+                    );
+                });
+                setFaceMatcher(new faceapi.FaceMatcher(labeled, 0.62));
+                setFaceStatusText(`Sẵn sàng quét · Đã nạp ${labeled.length} hội viên`);
+            } else {
+                setFaceMatcher(null);
+                setFaceStatusText('Chưa có hội viên nào đăng ký FaceID');
+            }
+        } catch (err: any) {
+            console.error("Face API Load Error:", err);
+            setFaceStatusText('Lỗi kết nối bộ nhận diện khuôn mặt');
+        }
+    };
+
+    useEffect(() => {
+        initFaceApiAndDescriptors();
+    }, [selectedClub]);
+
+    useEffect(() => {
+        if (!isCameraActive || !isModelLoaded) return;
+
+        const interval = setInterval(async () => {
+            if (
+                faceDetectingRef.current ||
+                loading ||
+                lockerModal ||
+                successAnimation?.active ||
+                !webcamRef.current ||
+                !webcamRef.current.video ||
+                webcamRef.current.video.readyState !== 4
+            ) {
+                return;
+            }
+
+            try {
+                faceDetectingRef.current = true;
+                const video = webcamRef.current.video;
+                const detection = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.3 }))
+                    .withFaceLandmarks()
+                    .withFaceDescriptor();
+
+                if (detection) {
+                    if (!faceMatcher) {
+                        setFaceStatusText('Phát hiện khuôn mặt (Chưa có dữ liệu FaceID mẫu)');
+                        return;
+                    }
+                    const match = faceMatcher.findBestMatch(detection.descriptor);
+                    if (match.label !== 'unknown') {
+                        setFaceStatusText('Khớp khuôn mặt! Đang xử lý điểm danh...');
+                        await handleFaceCheckIn(match.label);
+                    } else {
+                        setFaceStatusText('Khuôn mặt chưa được đăng ký trong hệ thống');
+                    }
+                } else {
+                    setFaceStatusText('Vui lòng nhìn thẳng vào khung camera');
+                }
+            } catch (e) {
+            } finally {
+                faceDetectingRef.current = false;
+            }
+        }, 600);
+
+        return () => clearInterval(interval);
+    }, [isCameraActive, isModelLoaded, faceMatcher, loading, lockerModal, successAnimation]);
+
+    const handleFaceCheckIn = async (customerId: string) => {
+        if (loading) return;
+        setLoading(true);
+        setScanResult(null);
+
+        try {
+            const response = await axios.post(`${backendUrl}/api/checkin/face/verify`, {
+                customerId
+            }, { headers: getAuthHeaders() });
+
+            const customerData = response.data.customer;
+            const verifiedCode = customerData.id || 'HV';
+            const verifiedName = customerData.fullName || 'Hội viên';
+            const packages = customerData.packages || [];
+
+            const checkCount = response.data.checkCount || response.data.totalSessionsToday || 1;
+            const frozenNotice = response.data.frozenNotice || null;
+            if (response.data?.status === 'checked-out') {
+                releaseMemberLockers(verifiedName);
+                speak(`Kính chào ${verifiedName} ra về`);
+
+                setHistory(prev => [{
+                    id: Math.random().toString(),
+                    memberCode: verifiedCode,
+                    customerName: verifiedName,
+                    time: new Date().toLocaleTimeString('vi-VN'),
+                    status: 'success',
+                    message: `${verifiedName} check-out FaceID thành công • Lần ${checkCount} hôm nay`
+                }, ...prev.slice(0, 6)]);
+
+                setSuccessAnimation({
+                    active: true,
+                    memberCode: verifiedCode,
+                    name: verifiedName,
+                    phone: customerData.phone || 'Chưa cập nhật',
+                    packages,
+                    isCheckout: true,
+                    totalMinutes: response.data.totalMinutes,
+                    checkCount,
+                    frozenNotice: null
+                });
+                setTimeout(() => setSuccessAnimation(null), 4000);
+            } else {
+                const matchedInfo: ScannedCustomer = {
+                    memberCode: verifiedCode,
+                    fullName: verifiedName,
+                    phone: customerData.phone || 'Chưa cập nhật',
+                    packages,
+                    token: 'FACE_ID_AUTH'
+                };
+                (matchedInfo as any).checkCount = checkCount;
+                (matchedInfo as any).frozenNotice = frozenNotice;
+
+                setScannedCustomer(matchedInfo);
+                lastScannedRef.current = { memberCode: verifiedCode, fullName: verifiedName };
+                speak(`Xin mời ${verifiedName} vào tập - lần ${checkCount} hôm nay`);
+
+                setAssignedLockerName('');
+                setLockers([]);
+                openLockerModal();
+            }
+        } catch (err: any) {
+            const msg = err.response?.data?.error || err.response?.data?.message || 'Điểm danh FaceID thất bại';
+            setScanResult({ success: false, message: msg });
+        } finally {
+            setLoading(false);
+        }
+    };
 
     const startScanner = () => {
         if (successAnimation?.active) return;
         setIsCameraActive(true);
         setScanResult(null);
         setScannedCustomer(null);
-        setTimeout(() => {
-            scannerRef.current = new Html5QrcodeScanner(
-                "qr-reader",
-                { fps: 10, qrbox: { width: 280, height: 280 }, rememberLastUsedCamera: true },
-                false
-            );
-            scannerRef.current.render((text) => handleCheckToken(text), (err) => { });
-        }, 100);
+        initFaceApiAndDescriptors();
     };
 
-    // BƯỚC 1: Kiểm tra thông tin mã QR (Khi đưa camera quét hoặc bấm nút kiểm tra thủ công)
-    const handleCheckToken = async (tokenString: string) => {
-        if (!tokenString.trim() || loading) return;
-        setLoading(true);
-        setScanResult(null);
+    const stopScanner = () => {
+        setIsCameraActive(false);
+    };
 
-        // Thử check-in hội viên trước
-        let memberSuccess = false;
+    const loadLockers = async () => {
+        setLockerLoading(true);
+        setLockerError('');
         try {
-            const response = await axios.post(`${getApiUrl()}/api/checkin/verify`, {
-                token: tokenString
-            });
-
-            const customerData = response.data.customer || response.data.member || response.data.data || response.data;
-            const verifiedCode = customerData.memberCode || customerData.code || customerData.id || 'HV-' + Math.floor(1000 + Math.random() * 9000);
-            const verifiedName = customerData.fullName || customerData.customerName || customerData.name || 'Hội viên';
-
-            const matchedInfo = {
-                memberCode: verifiedCode,
-                fullName: verifiedName,
-                phone: customerData.phone || 'Chưa cập nhật',
-                packageName: customerData.packageName || 'Gói tập',
-                endDate: customerData.endDate || 'Chưa rõ',
-                token: tokenString
-            };
-
-            setScannedCustomer(matchedInfo);
-            lastScannedRef.current = { memberCode: verifiedCode, fullName: verifiedName };
-
-            if (scannerRef.current) {
-                scannerRef.current.clear().catch(() => { });
-                setIsCameraActive(false);
-            }
-            memberSuccess = true;
+            const res = await fetch(`${backendUrl}/api/v2/lockers`, { headers: getAuthHeaders() as HeadersInit });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.message || 'Lỗi tải sơ đồ tủ');
+            setLockers(data.data || []);
         } catch (err: any) {
-            memberSuccess = false;
-        }
-
-        if (!memberSuccess) {
-            // Thử check-in/out nhân viên
-            try {
-                const staffRes = await axios.post(`${getApiUrl()}/api/staff-attendance/verify`, {
-                    token: tokenString
-                });
-
-                const staffData = staffRes.data;
-                const staffName = staffData.staff?.fullName || 'Nhân viên';
-                const staffMsg = staffData.message || 'Thành công';
-                const staffJob = staffData.staff?.job || '';
-                const staffPhone = staffData.staff?.phone || '';
-
-                let fullMsg = staffMsg;
-                if (staffData.minutesLate) fullMsg += ` (muộn ${staffData.minutesLate}p)`;
-                if (staffData.minutesEarly) fullMsg += ` (về sớm ${staffData.minutesEarly}p)`;
-                if (staffData.overtime) fullMsg += ` (tăng ca ${staffData.overtime}p)`;
-                if (staffData.totalMinutes) fullMsg += ` - Tổng: ${Math.floor(staffData.totalMinutes / 60)}h${staffData.totalMinutes % 60}p`;
-
-                setHistory(prev => [{
-                    id: Math.random().toString(),
-                    memberCode: 'NV',
-                    customerName: `${staffName}${staffJob ? ` (${staffJob})` : ''}`,
-                    time: new Date().toLocaleTimeString('vi-VN'),
-                    status: 'success',
-                    message: fullMsg
-                }, ...prev]);
-
-                setStaffResult({ active: true, name: staffName, job: staffJob, phone: staffPhone, shift: staffData.shift, status: staffData.status, checkInTime: staffData.checkInTime, checkOutTime: staffData.checkOutTime, minutesLate: staffData.minutesLate, minutesEarly: staffData.minutesEarly, overtime: staffData.overtime, totalMinutes: staffData.totalMinutes, todayBonus: staffData.todayBonus, todayPenalty: staffData.todayPenalty, message: fullMsg });
-                setTimeout(() => setStaffResult(null), 5000);
-
-                if (scannerRef.current) {
-                    scannerRef.current.clear().catch(() => { });
-                    setIsCameraActive(false);
-                }
-            } catch (staffErr: any) {
-                const resData = (staffErr as any).response?.data;
-                const staffErrMsg = resData?.error || resData?.message || 'Mã QR không hợp lệ hoặc đã hết hạn';
-                const staffErrName = resData?.staff?.fullName || 'Nhân viên';
-
-                setScanResult({
-                    success: false,
-                    message: staffErrName ? `${staffErrName}: ${staffErrMsg}` : staffErrMsg
-                });
-
-                setHistory(prev => [{
-                    id: Math.random().toString(),
-                    memberCode: 'NV',
-                    customerName: `${staffErrName}${resData?.staff?.job ? ` (${resData.staff.job})` : ''}`,
-                    time: new Date().toLocaleTimeString('vi-VN'),
-                    status: 'failed',
-                    message: staffErrName ? `${staffErrName}: ${staffErrMsg}` : staffErrMsg
-                }, ...prev]);
-            }
-        } subSequence: {
-            setLoading(false);
+            setLockerError(err.message || 'Không thể tải sơ đồ tủ');
+        } finally {
+            setLockerLoading(false);
         }
     };
 
-    // BƯỚC 2: Xác nhận Check-in chính thức (Bấm nút Xác nhận màu tím)
-    const handleFinalConfirm = async () => {
-        if (!scannedCustomer || loading) return;
-        setLoading(true);
+    const openLockerModal = () => {
+        setLockerModal(true);
+        setWantLocker(null);
+        setLockerError('');
+    };
 
+    const closeLockerModal = () => {
+        setLockerModal(false);
+        setWantLocker(null);
+        setLockers([]);
+        setLockerError('');
+        setPendingStaff(null);
+    };
+
+    const assignLocker = async (lockerId: string, personType: 'MEMBER' | 'STAFF', name: string, phone: string) => {
+        const res = await fetch(`${backendUrl}/api/v2/lockers/${lockerId}/assign`, {
+            method: 'POST',
+            headers: getAuthHeaders() as HeadersInit,
+            body: JSON.stringify({ personType, name, phone })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || 'Không gán được tủ');
+        return data.locker as LockerApiItem | undefined;
+    };
+
+    const releaseMemberLockers = async (name: string) => {
         try {
-            let successMsg = 'Check-in thành công!';
+            const res = await fetch(`${backendUrl}/api/v2/lockers`, { headers: getAuthHeaders() as HeadersInit });
+            const data = await res.json();
+            const mine = (data.data || []).filter((l: LockerApiItem) =>
+                l.assignedType === 'MEMBER' && l.assignedName === name
+            );
+            await Promise.all(mine.map((l: LockerApiItem) =>
+                fetch(`${backendUrl}/api/v2/lockers/${l._id}/release`, {
+                    method: 'POST',
+                    headers: getAuthHeaders() as HeadersInit
+                })
+            ));
+        } catch (e) { }
+    };
 
-            try {
-                const response = await axios.post(`${getApiUrl()}/api/checkin/confirm`, {
-                    token: scannedCustomer.token
-                });
-                if (response.data?.message) successMsg = response.data.message;
-            } catch (e) {
-                console.log("Xử lý ngoại lệ confirm.");
+    const completeMemberCheckIn = async (lockerId: string) => {
+        if (!scannedCustomer || submittingLocker) return;
+        setSubmittingLocker(true);
+        setLockerError('');
+        try {
+            let lockerAssigned = '';
+            if (lockerId) {
+                const assigned = await assignLocker(lockerId, 'MEMBER', scannedCustomer.fullName, scannedCustomer.phone);
+                if (assigned) {
+                    lockerAssigned = assigned.lockerNumber;
+                    setAssignedLockerName(assigned.lockerNumber);
+                }
             }
 
-            // Ghi đè bộ nhớ đệm bằng dữ liệu xác nhận thành công mới nhất
+            const checkCount = (scannedCustomer as any).checkCount || 1;
+            const frozenNotice = (scannedCustomer as any).frozenNotice || null;
+            const successMsg = `Check-in thành công! • Lần ${checkCount} hôm nay`;
             lastScannedRef.current = {
                 memberCode: scannedCustomer.memberCode,
                 fullName: scannedCustomer.fullName
             };
 
-            // Đẩy bản ghi thành công vào danh sách lịch sử
             setHistory(prev => [{
                 id: Math.random().toString(),
                 memberCode: scannedCustomer.memberCode,
                 customerName: scannedCustomer.fullName,
                 time: new Date().toLocaleTimeString('vi-VN'),
                 status: 'success',
-                message: `${scannedCustomer.fullName} (${scannedCustomer.memberCode}) ${successMsg.toLowerCase()}`
-            }, ...prev]);
-
-            setManualToken('');
+                message: `${scannedCustomer.fullName} (${scannedCustomer.memberCode}) ${successMsg.toLowerCase()}${lockerAssigned ? ` · Tủ ${lockerAssigned}` : ''}`
+            }, ...prev.slice(0, 6)]);
 
             setSuccessAnimation({
                 active: true,
                 memberCode: scannedCustomer.memberCode,
                 name: scannedCustomer.fullName,
                 phone: scannedCustomer.phone,
-                packageName: scannedCustomer.packageName,
-                endDate: scannedCustomer.endDate
+                packages: scannedCustomer.packages,
+                lockerName: lockerAssigned || undefined,
+                checkCount,
+                frozenNotice
             });
 
             setScannedCustomer(null);
-
+            closeLockerModal();
         } catch (err: any) {
-            const resData = err.response?.data;
-            const errMsg = resData?.error || resData?.message || 'Xác nhận vào cửa thất bại';
-
-            setScanResult({
-                success: false,
-                message: `${scannedCustomer.fullName} (${scannedCustomer.memberCode}): ${errMsg}`
-            });
-
-            // Nếu bấm nút xác nhận bị báo trùng, vẫn ghi nhận lượt lỗi có tên và mã rõ ràng vào lịch sử
-            setHistory(prev => [{
-                id: Math.random().toString(),
-                memberCode: scannedCustomer.memberCode,
-                customerName: scannedCustomer.fullName,
-                time: new Date().toLocaleTimeString('vi-VN'),
-                status: 'failed',
-                message: `${scannedCustomer.fullName} (${scannedCustomer.memberCode}) ${errMsg.toLowerCase()}`
-            }, ...prev]);
+            setLockerError(err.response?.data?.message || err.message || 'Gán tủ / xác nhận thất bại');
         } finally {
-            setLoading(false);
+            setSubmittingLocker(false);
             setTimeout(() => {
                 setSuccessAnimation(null);
-            }, 3000);
+            }, 4000);
         }
     };
 
-    useEffect(() => {
-        return () => {
-            if (scannerRef.current) {
-                scannerRef.current.clear().catch(err => console.error(err));
+    const showPendingStaff = (lockerName?: string) => {
+        if (!pendingStaff) return;
+        const result = lockerName
+            ? { ...pendingStaff, message: `${pendingStaff.message} · Tủ ${lockerName}` }
+            : pendingStaff;
+        setStaffResult(result);
+        setTimeout(() => setStaffResult(null), 5000);
+        setPendingStaff(null);
+        closeLockerModal();
+    };
+
+    const handleChooseNoLocker = () => {
+        if (pendingStaff) {
+            showPendingStaff();
+        } else {
+            completeMemberCheckIn('');
+        }
+    };
+
+    const handleChooseYesLocker = () => {
+        setWantLocker(true);
+        loadLockers();
+    };
+
+    const handlePickLocker = async (lockerId: string) => {
+        if (submittingLocker) return;
+        setSubmittingLocker(true);
+        setLockerError('');
+        try {
+            if (pendingStaff) {
+                const assigned = await assignLocker(lockerId, 'STAFF', pendingStaff.name, pendingStaff.phone || '');
+                showPendingStaff(assigned?.lockerNumber);
+            } else if (scannedCustomer) {
+                await completeMemberCheckIn(lockerId);
             }
-        };
-    }, []);
+        } catch (err: any) {
+            setLockerError(err.response?.data?.message || err.message || 'Gán tủ thất bại');
+        } finally {
+            setSubmittingLocker(false);
+        }
+    };
+
+    const clearTemporaryList = () => {
+        setHistory([]);
+    };
+
+    const clubLockers = selectedClub && selectedClub !== 'all'
+        ? lockers.filter(l => String(l.locationId) === String(selectedClub))
+        : lockers;
+    const lockerPrefixes = Array.from(new Set(clubLockers.map(l => l.prefix)));
+    const filteredLockers = clubLockers.filter(l =>
+        (lockerFilter === 'ALL' || l.prefix === lockerFilter) &&
+        (l.status === 'AVAILABLE' || l.status === 'MAINTENANCE')
+    );
+
+    const loadTodayHistory = async () => {
+        setHistory([]);
+        const startOfDay = new Date();
+        startOfDay.setHours(0, 0, 0, 0);
+        const items: CheckInRecord[] = [];
+        const isClubMatch = (locId: any) =>
+            !selectedClub || selectedClub === 'all' || String(locId) === String(selectedClub);
+
+        try {
+            const res = await axios.get(`${backendUrl}/api/checkin/history?limit=15`, {
+                headers: getAuthHeaders() as any
+            });
+            const list = Array.isArray(res.data) ? res.data : (res.data?.data || []);
+            list.forEach((item: any) => {
+                if (!item?.checkInTime) return;
+                if (!isClubMatch(item.locationId)) return;
+                const t = new Date(item.checkInTime);
+                if (t < startOfDay) return;
+                const cust = item.customerId || {};
+                const name = cust.fullName || 'Hội viên';
+                const code = String(cust.memberCode || cust.code || cust._id || item.customerId?._id || item.customerId || 'HV');
+
+                const isCheckedOut = Boolean(item.checkOutTime);
+                items.push({
+                    id: item._id || Math.random().toString(),
+                    memberCode: code,
+                    customerName: name,
+                    time: isCheckedOut && item.checkOutTime ? new Date(item.checkOutTime).toLocaleTimeString('vi-VN') : t.toLocaleTimeString('vi-VN'),
+                    status: 'success',
+                    message: isCheckedOut ? `${name} check-out FaceID thành công` : `${name} (${code}) check-in thành công`
+                });
+            });
+        } catch (e) { }
+
+        try {
+            const staffRes = await axios.get(`${backendUrl}/api/staff-attendance/today`, {
+                headers: getAuthHeaders() as any
+            });
+            const staffList = Array.isArray(staffRes.data) ? staffRes.data : [];
+            staffList.forEach((item: any) => {
+                if (!isClubMatch(item.locationId)) return;
+                const name = item.staffId?.fullName || 'Nhân viên';
+                const checkedOut = item.status === 'checked-out';
+                const t = checkedOut && item.checkOutTime ? new Date(item.checkOutTime) : new Date(item.checkInTime);
+                let message = checkedOut ? 'Check-out thành công' : 'Check-in thành công';
+                if (checkedOut && item.totalMinutes) message += ` - Tổng thời gian: ${Math.floor(item.totalMinutes / 60)}h${item.totalMinutes % 60}p`;
+                items.push({
+                    id: item._id || Math.random().toString(),
+                    memberCode: 'NV',
+                    customerName: name,
+                    time: t.toLocaleTimeString('vi-VN'),
+                    status: 'success',
+                    message
+                });
+            });
+        } catch (e) { }
+
+        items.sort((a, b) => b.time.localeCompare(a.time));
+        // Giới hạn hiển thị 7 lượt gần nhất trên giao diện
+        setHistory(items.slice(0, 7));
+    };
+
+    useEffect(() => {
+        loadTodayHistory();
+    }, [selectedClub]);
+
+    useEffect(() => {
+        const locId = selectedClub && selectedClub !== 'all' ? selectedClub : (user?.locationId || null);
+        if (!locId) {
+            setCurrentClubName('');
+            return;
+        }
+        axios.get(`${backendUrl}/api/locations`)
+            .then(res => {
+                const list = Array.isArray(res.data) ? res.data : [];
+                const loc = list.find((l: any) => String(l._id) === String(locId));
+                if (loc) setCurrentClubName(loc.title || loc.address || '');
+            })
+            .catch(() => { });
+    }, [selectedClub, user?.locationId]);
 
     return (
         <AdminLayout>
             <div className="max-w-7xl mx-auto space-y-6 font-sans antialiased text-slate-900 py-4 px-2 bg-slate-50">
 
-                {/* Tiêu đề trang con */}
-                <div>
-                    <h1 className="text-3xl font-bold text-slate-900 mb-2 flex items-center gap-2.5">
-                        <UserCheck className="w-8 h-8 text-indigo-600" />
-                        Điểm danh QR
-                    </h1>
-                    <p className="text-sm text-slate-600 font-medium">Quét QR hội viên (check-in) / QR nhân viên (chấm công)</p>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div>
+                        <h1 className="text-3xl font-bold text-slate-900 mb-1 flex items-center gap-2.5">
+                            <ScanFace className="w-8 h-8 text-indigo-600" />
+                            Hệ Thống Điểm Danh FaceID
+                        </h1>
+                        <p className="text-sm text-slate-600 font-medium">Tự động nhận diện khuôn mặt hội viên và check-in vào phòng tập</p>
+                    </div>
+
+                    {/* Nút mở Cửa sổ Quét Độc Lập */}
+                    <button
+                        onClick={openPopupFaceScanner}
+                        className="flex items-center gap-2 px-5 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-md transition-all w-fit"
+                    >
+                        <ExternalLink className="w-4 h-4" />
+                        <span>Mở Cửa Sổ Camera Độc Lập</span>
+                    </button>
                 </div>
 
-                {/* Khối thanh thông báo lỗi sắc nét đầu trang */}
+                {currentClubName && user?.isAdmin === true && (
+                    <div className="flex items-center gap-2.5 bg-indigo-600 text-white px-4 py-3 rounded-2xl shadow-sm">
+                        <AlertTriangle className="w-5 h-5 text-indigo-200" />
+                        <span className="text-sm font-bold">
+                            Máy quét đang hoạt động tại: {currentClubName}
+                        </span>
+                    </div>
+                )}
+
+                {/* Export Excel */}
+                <div className="bg-white border border-slate-200 rounded-2xl p-4 flex flex-col sm:flex-row gap-3">
+                    <button
+                        onClick={async () => {
+                            const date = new Date().toISOString().slice(0,10);
+                            try {
+                                const res = await fetch(`${backendUrl}/api/checkin/export/excel?date=${date}`, { headers: getAuthHeaders() as any });
+                                if (!res.ok) { const d=await res.json(); throw new Error(d.message||'Không có dữ liệu'); }
+                                const blob = await res.blob();
+                                const url = window.URL.createObjectURL(blob);
+                                const a = document.createElement('a'); a.href=url; a.download=`DiemDanh_HoiVien_${date}.xlsx`; document.body.appendChild(a); a.click(); a.remove();
+                            } catch (e:any) { alert(e.message); }
+                        }}
+                        className="flex items-center justify-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-sm"
+                    >
+                        <Download className="w-4 h-4" /> Xuất Excel điểm danh hội viên hôm nay
+                    </button>
+                    <button
+                        onClick={async () => {
+                            const date = new Date().toISOString().slice(0,10);
+                            try {
+                                const res = await fetch(`${backendUrl}/api/staff-attendance/export/excel?date=${date}`, { headers: getAuthHeaders() as any });
+                                if (!res.ok) { const d=await res.json(); throw new Error(d.message||'Không có dữ liệu'); }
+                                const blob = await res.blob();
+                                const url = window.URL.createObjectURL(blob);
+                                const a = document.createElement('a'); a.href=url; a.download=`ChamCong_NhanVien_${date}.xlsx`; document.body.appendChild(a); a.click(); a.remove();
+                            } catch (e:any) { alert(e.message); }
+                        }}
+                        className="flex items-center justify-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-sm"
+                    >
+                        <Download className="w-4 h-4" /> Xuất Excel chấm công nhân viên hôm nay
+                    </button>
+                </div>
+
                 {scanResult && !scanResult.success && (
                     <div className="p-4 rounded-xl border bg-red-50 border-red-200 text-red-900 text-sm font-bold animate-pulse shadow-sm flex items-center gap-2">
                         <X className="w-5 h-5 text-red-600 shrink-0" />
@@ -280,150 +726,295 @@ export function AttendanceScanner() {
 
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
 
-                    {/* CAMERA CONTAINER */}
-                    <div className="lg:col-span-6 bg-white border border-slate-200 rounded-2xl p-8 flex flex-col justify-center items-center min-h-[550px] shadow-sm relative">
+                    {/* Khung Camera FaceID trực tiếp trên trang chính */}
+                    <div className="lg:col-span-6 bg-white border border-slate-200 rounded-2xl p-6 flex flex-col justify-center items-center min-h-[550px] shadow-sm relative">
                         {!isCameraActive ? (
                             <div className="text-center space-y-5 w-full max-w-sm">
-                                <div className="w-20 h-20 bg-slate-50 border border-slate-200 rounded-full flex items-center justify-center mx-auto shadow-sm">
-                                    <Camera className="w-9 h-9 text-slate-600" />
+                                <div className="w-20 h-20 bg-indigo-50 border border-indigo-100 rounded-full flex items-center justify-center mx-auto shadow-sm text-indigo-600">
+                                    <ScanFace className="w-10 h-10" />
                                 </div>
                                 <div className="space-y-1.5">
-                                    <p className="text-xl font-bold text-slate-950">Ống kính camera đang tắt</p>
-                                    <p className="text-sm text-slate-500 leading-relaxed">Vui lòng bấm nút kích hoạt phía dưới để quét mã vạch hội viên qua camera.</p>
+                                    <p className="text-xl font-bold text-slate-950">
+                                        Máy quét FaceID đang tắt
+                                    </p>
+                                    <p className="text-sm text-slate-500 leading-relaxed">
+                                        Bật camera để nhận diện hội viên trực tiếp hoặc bấm nút "Mở Cửa Sổ Camera Độc Lập" ở trên.
+                                    </p>
                                 </div>
                                 <button
                                     onClick={startScanner}
                                     disabled={loading || !!successAnimation}
-                                    className="px-8 py-3 bg-indigo-600 hover:bg-indigo-700 font-bold text-white rounded-xl text-xs shadow-md transition-all"
+                                    className="px-8 py-3 bg-indigo-600 hover:bg-indigo-700 font-bold text-white rounded-xl text-xs shadow-md transition-all flex items-center gap-2 mx-auto"
                                 >
-                                    Bật camera quét mã
+                                    <Camera className="w-4 h-4" /> Bật camera FaceID trực tiếp
                                 </button>
                             </div>
                         ) : (
-                            <div className="w-full h-full min-h-[440px] rounded-xl overflow-hidden bg-slate-100 border border-slate-200 shadow-md relative flex items-center justify-center">
-                                <div id="qr-reader" className="w-full border-none" />
+                            <div className="w-full h-full min-h-[440px] rounded-xl overflow-hidden bg-slate-950 border border-slate-200 shadow-md relative flex items-center justify-center">
+                                <Webcam
+                                    ref={webcamRef}
+                                    audio={false}
+                                    className="w-full h-full object-cover"
+                                    screenshotFormat="image/jpeg"
+                                />
+                                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                                    <div className="w-64 h-64 border-2 border-dashed border-emerald-400 rounded-full animate-pulse flex items-center justify-center">
+                                        <div className="w-56 h-56 border border-emerald-400/30 rounded-full" />
+                                    </div>
+                                </div>
+                                <div className="absolute top-4 left-4 right-4 bg-slate-900/80 backdrop-blur-sm text-white px-3 py-2 rounded-xl text-xs text-center font-medium border border-slate-700">
+                                    {faceStatusText}
+                                </div>
+
                                 <button
-                                    onClick={() => { if (scannerRef.current) scannerRef.current.clear().then(() => setIsCameraActive(false)); }}
-                                    className="absolute bottom-6 right-6 px-4 py-2 bg-red-600 text-white rounded-xl text-xs font-bold shadow-lg z-10"
+                                    onClick={stopScanner}
+                                    className="absolute bottom-6 right-6 px-4 py-2 bg-red-600 text-white rounded-xl text-xs font-bold shadow-lg z-10 hover:bg-red-700 transition"
                                 >
-                                    Tắt camera quét
+                                    Tắt camera
                                 </button>
                             </div>
                         )}
                     </div>
 
-                    {/* KHỐI THAO TÁC NGHIỆP VỤ RIGHT PANEL */}
-                    <div className="lg:col-span-6 flex flex-col gap-6 w-full">
-
-                        {/* Nhập mã thủ công */}
-                        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm w-full">
-                            <h3 className="text-xs font-extrabold text-slate-950 mb-3.5 uppercase tracking-wider">Nhập mã QR thủ công</h3>
-                            <div className="flex gap-2">
-                                <input
-                                    type="text"
-                                    value={manualToken}
-                                    onChange={(e) => setManualToken(e.target.value)}
-                                    placeholder="Dán chuỗi token mã QR hội viên..."
-                                    className="flex-1 bg-slate-50 border border-slate-300 focus:border-indigo-500 focus:outline-none rounded-xl px-4 py-3 text-sm text-slate-950 placeholder-slate-400 font-medium"
-                                />
-                                <button
-                                    onClick={() => handleCheckToken(manualToken)}
-                                    disabled={loading || !manualToken.trim() || !!successAnimation}
-                                    className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 text-xs font-bold text-white rounded-xl px-6 transition-colors shadow-sm"
-                                >
-                                    {loading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : 'Kiểm tra'}
-                                </button>
+                    {/* Bảng Lịch Sử Check-in Hôm Nay */}
+                    <div className="lg:col-span-6 bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex flex-col min-h-[550px] w-full">
+                        <div className="flex items-center justify-between mb-4 border-b border-slate-100 pb-3">
+                            <div className="flex items-center gap-2">
+                                <h3 className="text-xs font-extrabold text-slate-950 uppercase tracking-wider">Lịch sử vừa quét</h3>
+                                <span className="text-[11px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md">
+                                    {history.length} lượt gần nhất
+                                </span>
                             </div>
-                        </div>
 
-                        {/* Khung đối chiếu thông tin khi quét được */}
-                        {scannedCustomer && (
-                            <div className="bg-purple-50/40 border-2 border-purple-50 rounded-2xl p-6 shadow-sm animate-[fadeIn_0.2s_ease-out] w-full">
-                                <h3 className="text-xs font-extrabold text-purple-700 mb-3.5 uppercase tracking-wider flex items-center gap-1.5">
-                                    <User className="w-3.5 h-3.5" /> Thông tin đối chiếu dữ liệu gốc
-                                </h3>
-
-                                <div className="space-y-3 mb-4 bg-white p-5 rounded-xl border border-purple-100 text-xs text-slate-950 font-bold">
-                                    <div className="flex justify-between border-b border-slate-100 pb-2">
-                                        <span className="text-slate-600 font-normal">Mã hội viên:</span>
-                                        <span className="font-mono text-purple-700 bg-purple-50 px-2 py-0.5 rounded font-black">{scannedCustomer.memberCode}</span>
-                                    </div>
-                                    <div className="flex justify-between border-b border-slate-100 pb-2">
-                                        <span className="text-slate-600 font-normal">Họ và tên:</span>
-                                        <span className="text-slate-950 text-sm font-black">{scannedCustomer.fullName}</span>
-                                    </div>
-                                    <div className="flex justify-between border-b border-slate-100 pb-2">
-                                        <span className="text-slate-600 font-normal">Số điện thoại:</span>
-                                        <span className="font-mono text-slate-950 font-black">{scannedCustomer.phone}</span>
-                                    </div>
-                                    <div className="flex justify-between border-b border-slate-100 pb-2">
-                                        <span className="text-slate-600 font-normal">Gói đăng ký sử dụng:</span>
-                                        <span className="text-slate-950 font-black">{scannedCustomer.packageName}</span>
-                                    </div>
-                                    <div className="flex justify-between pt-0.5">
-                                        <span className="text-slate-600 font-normal">Ngày hết hạn gói:</span>
-                                        <span className="text-amber-600 font-black">{scannedCustomer.endDate}</span>
-                                    </div>
-                                </div>
-
-                                <button
-                                    onClick={handleFinalConfirm}
-                                    disabled={loading}
-                                    className="w-full bg-[#6d28d9] hover:bg-[#5b21b6] py-3.5 rounded-xl font-bold text-xs tracking-wide text-white flex items-center justify-center gap-2 shadow transition-all"
-                                >
-                                    {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : (
-                                        <>
-                                            <span>Xác nhận Check-in Hội viên</span>
-                                            <ArrowRight className="w-3.5 h-3.5" />
-                                        </>
-                                    )}
-                                </button>
-                            </div>
-                        )}
-
-                        {/* BẢNG LỊCH SỬ ĐIỂM DANH TRONG NGÀY (CẢ THÀNH CÔNG VÀ THẤT BẠI ĐỀU GIỮ TÊN THẬT + MÃ SỐ) */}
-                        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex flex-col flex-1 min-h-[280px] w-full">
-                            <h3 className="text-xs font-extrabold text-slate-950 mb-3.5 uppercase tracking-wider">Lịch sử check-in hôm nay</h3>
-                            <div className="overflow-y-auto pr-1 space-y-2.5 max-h-[350px] flex-1 w-full">
-                                {history.length === 0 ? (
-                                    <div className="h-full flex items-center justify-center text-slate-500 font-medium text-xs py-16 italic">Chưa ghi nhận lượt check-in nào trong hôm nay.</div>
-                                ) : (
-                                    history.map((item) => (
-                                        <div key={item.id} className="bg-slate-50 border border-slate-200 p-3.5 rounded-xl flex items-center justify-between text-xs shadow-sm w-full animate-[fadeIn_0.2s_ease-out]">
-                                            <div className="space-y-1">
-                                                {/* Tiêu đề dòng hiển thị Họ tên thật + Thẻ mã số đồng bộ */}
-                                        <div className="font-bold text-slate-900 text-sm flex items-center gap-2">
-                                            <span>{item.customerName}</span>
-                                            {item.memberCode === 'NV' ? (
-                                                <span className="text-[10px] font-mono text-blue-700 bg-blue-100 px-2 py-0.5 rounded font-black">NV</span>
-                                            ) : (
-                                                <span className="text-[10px] font-mono text-purple-700 bg-purple-100 px-2 py-0.5 rounded font-black">
-                                                    Mã: {item.memberCode}
-                                                </span>
-                                            )}
-                                        </div>
-                                        <div className={`text-[11px] font-semibold leading-relaxed ${item.status === 'success' ? 'text-emerald-600' : 'text-red-600'}`}>
-                                            {item.message}
-                                        </div>
-                                            </div>
-                                            <div className="text-right space-y-1 shrink-0 ml-4">
-                                                <div className="text-[11px] text-slate-700 font-mono font-bold">{item.time}</div>
-                                                <span className={`inline-block w-2.5 h-2.5 rounded-full ${item.status === 'success' ? 'bg-emerald-500' : 'bg-red-500'}`} />
-                                            </div>
-                                        </div>
-                                    ))
+                            <div className="flex items-center gap-2">
+                                {history.length > 0 && (
+                                    <button
+                                        onClick={clearTemporaryList}
+                                        className="text-[11px] font-semibold text-slate-400 hover:text-red-600 px-2 py-1 rounded-lg hover:bg-red-50 transition flex items-center gap-1"
+                                        title="Xóa danh sách tạm trên màn hình"
+                                    >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                        <span>Xóa lịch sử</span>
+                                    </button>
                                 )}
                             </div>
                         </div>
 
+                        <div className="overflow-y-auto pr-1 space-y-2.5 flex-1 max-h-[480px] w-full">
+                            {history.length === 0 ? (
+                                <div className="h-full flex flex-col items-center justify-center text-slate-400 text-xs py-28 italic space-y-2">
+                                    <span>Chưa có lượt quét mới nào.</span>
+                                    <span className="text-[11px] text-slate-300">Danh sách sẽ tự động xuất hiện khi có người quét FaceID</span>
+                                </div>
+                            ) : (
+                                history.map((item) => (
+                                    <div key={item.id} className="bg-slate-50/80 border border-slate-200/80 p-3.5 rounded-xl flex items-center justify-between text-xs shadow-sm w-full hover:bg-slate-50 transition">
+                                        <div className="space-y-1">
+                                            <div className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                                                <span>{item.customerName}</span>
+                                                {item.memberCode === 'NV' ? (
+                                                    <span className="text-[10px] font-mono text-blue-700 bg-blue-100 px-2 py-0.5 rounded font-black">NV</span>
+                                                ) : (
+                                                    <span className="text-[10px] font-mono text-purple-700 bg-purple-100 px-2 py-0.5 rounded font-black">
+                                                        Mã: {item.memberCode.slice(-6)}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <div className={`text-[11px] font-semibold leading-relaxed ${item.message.includes('check-out') ? 'text-blue-600' : 'text-emerald-600'}`}>
+                                                {item.message}
+                                            </div>
+                                        </div>
+                                        <div className="text-right space-y-1 shrink-0 ml-4">
+                                            <div className="text-[11px] text-slate-700 font-mono font-bold">{item.time}</div>
+                                            <span className={`inline-block w-2.5 h-2.5 rounded-full ${item.message.includes('check-out') ? 'bg-blue-500' : 'bg-emerald-500'}`} />
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
                     </div>
+
                 </div>
             </div>
 
-            {/* OVERLAY POPUP THÔNG BÁO STAFF CHECK-IN/OUT */}
+            {/* Modal Chọn Tủ Đồ */}
+            {lockerModal && (
+                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-2xl max-w-3xl w-full p-6 shadow-xl relative max-h-[90vh] overflow-y-auto">
+                        <button onClick={closeLockerModal} className="absolute right-4 top-4 text-slate-400 hover:text-slate-600">
+                            <X className="w-5 h-5" />
+                        </button>
+
+                        <div className="flex items-center gap-3 mb-5">
+                            <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-xl">
+                                <KeyRound className="w-6 h-6" />
+                            </div>
+                            <div>
+                                <h3 className="font-bold text-slate-900 text-lg">Xác nhận check-in / chấm công</h3>
+                                <p className="text-xs text-slate-500 mt-0.5">
+                                    {pendingStaff ? 'Chấm công nhân viên' : 'Điểm danh hội viên'}
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 mb-4">
+                            <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-11 h-11 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-black">
+                                        {pendingStaff ? 'NV' : 'HV'}
+                                    </div>
+                                    <div>
+                                        <p className="font-bold text-slate-900 text-lg">
+                                            {pendingStaff ? pendingStaff.name : scannedCustomer?.fullName}
+                                        </p>
+                                        <p className="text-xs text-slate-400">
+                                            {pendingStaff ? (pendingStaff.phone || '') : (scannedCustomer?.phone || '')}
+                                        </p>
+                                    </div>
+                                </div>
+                                <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${pendingStaff
+                                    ? 'bg-amber-100 text-amber-700'
+                                    : 'bg-indigo-100 text-indigo-700'
+                                    }`}>
+                                    {pendingStaff ? `Nhân viên${pendingStaff.job ? ` · ${pendingStaff.job}` : ''}` : 'Hội viên'}
+                                </span>
+                            </div>
+                            {!pendingStaff && scannedCustomer && scannedCustomer.packages.map((p, idx) => (
+                                <p key={idx} className="text-xs text-slate-500">
+                                    Gói {scannedCustomer.packages.length > 1 ? `${idx + 1} · ` : ''}{p.packageName} · hạn {p.endDate}
+                                    {typeof p.remainingDays === 'number' ? ` (còn ${p.remainingDays} ngày)` : ''}
+                                </p>
+                            ))}
+                            {!pendingStaff && (scannedCustomer as any)?.checkCount && (
+                                <p className="text-xs font-bold text-emerald-600 mt-2">Lần {(scannedCustomer as any).checkCount} hôm nay</p>
+                            )}
+                            {!pendingStaff && (scannedCustomer as any)?.frozenNotice && (
+                                <div className="mt-2 bg-amber-50 border border-amber-200 rounded-lg p-2.5 flex gap-2">
+                                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                                    <p className="text-xs text-amber-800">{(scannedCustomer as any).frozenNotice}</p>
+                                </div>
+                            )}
+                        </div>
+
+                        {!wantLocker && (
+                            <div>
+                                <p className="text-sm font-semibold text-slate-700 mb-3">Người này có sử dụng tủ đồ không?</p>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <button
+                                        onClick={handleChooseNoLocker}
+                                        disabled={submittingLocker}
+                                        className="flex flex-col items-center gap-2 px-6 py-5 bg-slate-50 border border-slate-200 rounded-2xl text-slate-600 hover:bg-slate-100 hover:border-slate-300 transition-all disabled:opacity-60"
+                                    >
+                                        <X className="w-6 h-6" />
+                                        <span className="font-bold text-sm">Không dùng tủ</span>
+                                        <span className="text-xs text-slate-400">Điểm danh bình thường</span>
+                                    </button>
+                                    <button
+                                        onClick={handleChooseYesLocker}
+                                        disabled={submittingLocker}
+                                        className="flex flex-col items-center gap-2 px-6 py-5 bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 hover:border-indigo-300 rounded-2xl transition-all disabled:opacity-60"
+                                    >
+                                        <Lock className="w-6 h-6" />
+                                        <span className="font-bold text-sm">Có dùng tủ</span>
+                                        <span className="text-xs text-indigo-400">Chọn tủ từ sơ đồ</span>
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {wantLocker && (
+                            <div className="space-y-4">
+                                <div className="flex items-center justify-between">
+                                    <p className="text-sm font-bold text-slate-700">Chọn tủ trống cho người này{currentClubName ? ` · ${currentClubName}` : ''}</p>
+                                    <button
+                                        onClick={() => setWantLocker(false)}
+                                        className="px-3 py-1.5 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold hover:bg-slate-200"
+                                    >
+                                        ← Quay lại
+                                    </button>
+                                </div>
+
+                                <div className="flex flex-wrap gap-2">
+                                    <button
+                                        onClick={() => setLockerFilter('ALL')}
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${lockerFilter === 'ALL'
+                                            ? 'bg-indigo-600 text-white'
+                                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                            }`}
+                                    >
+                                        Tất cả
+                                    </button>
+                                    {lockerPrefixes.map(p => (
+                                        <button
+                                            key={p}
+                                            onClick={() => setLockerFilter(p)}
+                                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${lockerFilter === p
+                                                ? 'bg-indigo-600 text-white'
+                                                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                                }`}
+                                        >
+                                            Dãy {p}
+                                        </button>
+                                    ))}
+                                </div>
+
+                                {lockerError && (
+                                    <div className="bg-red-50 border border-red-200 text-red-700 p-3 rounded-xl text-sm flex items-center gap-2">
+                                        <AlertTriangle className="w-4 h-4 text-red-600" /> {lockerError}
+                                    </div>
+                                )}
+
+                                {lockerLoading ? (
+                                    <div className="p-10 text-center text-slate-400">
+                                        <Loader2 className="w-6 h-6 animate-spin inline" /> <span className="ml-2">Đang tải sơ đồ tủ...</span>
+                                    </div>
+                                ) : (
+                                    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2.5 max-h-72 overflow-y-auto p-1">
+                                        {filteredLockers.length === 0 ? (
+                                            <div className="col-span-full text-center text-slate-400 py-8 text-sm">Không có tủ trống trong dãy này</div>
+                                        ) : filteredLockers.map(locker => (
+                                            <button
+                                                key={locker._id}
+                                                disabled={submittingLocker || locker.status !== 'AVAILABLE'}
+                                                onClick={() => handlePickLocker(locker._id)}
+                                                className={`p-3 rounded-xl border text-left transition-all ${locker.status === 'AVAILABLE'
+                                                    ? 'bg-emerald-50/70 border-emerald-200 text-emerald-900 hover:border-emerald-400 hover:shadow-md'
+                                                    : 'bg-amber-50/70 border-amber-200 text-amber-900 opacity-60'
+                                                    } disabled:cursor-not-allowed`}
+                                            >
+                                                <div className="flex justify-between items-start">
+                                                    <span className="font-black text-xs">{locker.lockerNumber}</span>
+                                                    {locker.status === 'AVAILABLE'
+                                                        ? <Unlock className="w-3.5 h-3.5 text-emerald-500" />
+                                                        : <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />}
+                                                </div>
+                                                <p className="text-[10px] font-bold mt-1.5">
+                                                    {locker.status === 'AVAILABLE' ? 'Trống' : 'Bảo trì'}
+                                                </p>
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+
+                                <div className="flex justify-end">
+                                    <button
+                                        onClick={handleChooseNoLocker}
+                                        disabled={submittingLocker}
+                                        className="px-4 py-2 bg-slate-100 text-slate-600 rounded-xl text-sm font-semibold hover:bg-slate-200 disabled:opacity-60"
+                                    >
+                                        Điểm danh không dùng tủ
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* Modal Thông Báo Check-in Nhân Viên */}
             {staffResult?.active && (
-                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in">
-                    <div className={`bg-white border max-w-sm w-full rounded-2xl p-6 shadow-2xl flex flex-col items-center text-center mx-4 border-t-4 animate-[slideDown_0.3s_cubic-bezier(0.16,1,0.3,1)] ${staffResult.status === 'checked-out' ? 'border-t-blue-500' : 'border-t-emerald-500'}`}>
+                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50">
+                    <div className={`bg-white border max-w-sm w-full rounded-2xl p-6 shadow-2xl flex flex-col items-center text-center mx-4 border-t-4 ${staffResult.status === 'checked-out' ? 'border-t-blue-500' : 'border-t-emerald-500'}`}>
                         <div className={`w-14 h-14 border-4 rounded-full flex items-center justify-center mb-4 ${staffResult.status === 'checked-out' ? 'bg-blue-50 border-blue-500' : 'bg-emerald-50 border-emerald-500'}`}>
                             <UserCheck className={`w-6 h-6 stroke-[3] ${staffResult.status === 'checked-out' ? 'text-blue-500' : 'text-emerald-500'}`} />
                         </div>
@@ -433,98 +1024,63 @@ export function AttendanceScanner() {
                         <p className="text-lg font-extrabold text-slate-900 mt-1">{staffResult.name}</p>
                         {staffResult.job && <p className="text-sm text-slate-500">{staffResult.job}</p>}
                         {staffResult.phone && <p className="text-xs text-slate-400 mt-0.5">{staffResult.phone}</p>}
-
-                        <div className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3.5 mt-4 space-y-1.5 text-left text-xs">
-                            {staffResult.shift && (
-                                <div className="flex justify-between">
-                                    <span className="text-slate-500">Ca:</span>
-                                    <span className="font-semibold text-slate-800">
-                                        {staffResult.shift.type === 'morning-noon' ? 'Sáng-Trưa' : 'Chiều-Tối'}
-                                        ({staffResult.shift.start}-{staffResult.shift.end})
-                                    </span>
-                                </div>
-                            )}
-                            {staffResult.checkInTime && (
-                                <div className="flex justify-between">
-                                    <span className="text-slate-500">Giờ vào:</span>
-                                    <span className="font-semibold text-slate-800">{new Date(staffResult.checkInTime).toLocaleTimeString('vi-VN')}</span>
-                                </div>
-                            )}
-                            {staffResult.checkOutTime && (
-                                <div className="flex justify-between">
-                                    <span className="text-slate-500">Giờ ra:</span>
-                                    <span className="font-semibold text-slate-800">{new Date(staffResult.checkOutTime).toLocaleTimeString('vi-VN')}</span>
-                                </div>
-                            )}
-                            {staffResult.minutesLate ? (
-                                <div className="flex justify-between text-red-600 font-semibold">
-                                    <span>Đi muộn:</span>
-                                    <span>{staffResult.minutesLate} phút</span>
-                                </div>
-                            ) : null}
-                            {staffResult.minutesEarly ? (
-                                <div className="flex justify-between text-amber-600 font-semibold">
-                                    <span>Về sớm:</span>
-                                    <span>{staffResult.minutesEarly} phút</span>
-                                </div>
-                            ) : null}
-                            {staffResult.overtime ? (
-                                <div className="flex justify-between text-green-600 font-semibold">
-                                    <span>Tăng ca:</span>
-                                    <span>{staffResult.overtime} phút</span>
-                                </div>
-                            ) : null}
-                            {staffResult.totalMinutes ? (
-                                <div className="flex justify-between border-t border-slate-200 pt-1.5 mt-1.5 font-bold text-slate-800">
-                                    <span>Tổng thời gian:</span>
-                                    <span>{Math.floor(staffResult.totalMinutes / 60)}h{staffResult.totalMinutes % 60}p</span>
-                                </div>
-                            ) : null}
-                            {staffResult.status === 'checked-out' && (
-                                <>
-                                    {staffResult.todayBonus ? (
-                                        <div className="flex justify-between text-emerald-600 font-semibold">
-                                            <span>Thưởng hôm nay:</span>
-                                            <span>+{staffResult.todayBonus.toLocaleString('vi-VN')}₫</span>
-                                        </div>
-                                    ) : null}
-                                    {staffResult.todayPenalty ? (
-                                        <div className="flex justify-between text-red-600 font-semibold">
-                                            <span>Phạt hôm nay:</span>
-                                            <span>-{staffResult.todayPenalty.toLocaleString('vi-VN')}₫</span>
-                                        </div>
-                                    ) : null}
-                                </>
-                            )}
-                        </div>
                     </div>
                 </div>
             )}
 
-            {/* OVERLAY POPUP THÔNG BÁO THÀNH CÔNG RỚT TỪ TRÊN XUỐNG */}
+            {/* Modal Thông Báo Check-in Thành Công Hội Viên */}
             {successAnimation?.active && (
-                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in">
-                    <div className="bg-white border border-slate-200 max-w-sm w-full rounded-2xl p-6 shadow-2xl flex flex-col items-center text-center mx-4 border-t-4 border-t-emerald-500 animate-[slideDown_0.3s_cubic-bezier(0.16,1,0.3,1)]">
+                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50">
+                    <div className="bg-white border border-slate-200 max-w-sm w-full rounded-2xl p-6 shadow-2xl flex flex-col items-center text-center mx-4 border-t-4 border-t-emerald-500">
                         <div className="w-14 h-14 bg-emerald-50 border-4 border-emerald-500 rounded-full flex items-center justify-center mb-4">
                             <Check className="w-6 h-6 text-emerald-500 stroke-[3]" />
                         </div>
 
-                        <h2 className="text-xl font-extrabold text-slate-900 tracking-tight">Check-in thành công!</h2>
+                        <h2 className="text-xl font-extrabold text-slate-900 tracking-tight">
+                            {successAnimation.isCheckout ? 'Check-out thành công!' : 'Check-in thành công!'}
+                        </h2>
                         <p className="text-base font-extrabold text-purple-700 mt-1">{successAnimation.name}</p>
                         <p className="text-xs text-slate-950 font-mono font-bold">Mã số hội viên: {successAnimation.memberCode}</p>
+                        {successAnimation.checkCount && (
+                          <span className="mt-2 px-3 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 text-xs font-bold">
+                            Lần {successAnimation.checkCount} hôm nay
+                          </span>
+                        )}
 
                         <div className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3.5 mt-4 space-y-1 text-left text-xs text-slate-900 font-bold">
-                            <div className="flex justify-between">
-                                <span className="text-slate-600 font-normal">Gói sử dụng:</span>
-                                <span>{successAnimation.packageName}</span>
-                            </div>
-                            <div className="flex justify-between">
-                                <span className="text-slate-600 font-normal">Hạn sử dụng:</span>
-                                <span className="text-amber-600 flex items-center gap-1">
-                                    <Calendar className="w-3 h-3" /> {successAnimation.endDate}
-                                </span>
-                            </div>
+                            {successAnimation.isCheckout && typeof successAnimation.totalMinutes === 'number' && (
+                                <div className="flex justify-between">
+                                    <span className="text-slate-600 font-normal">Thời gian tại phòng gym:</span>
+                                    <span className="text-indigo-600">
+                                        {Math.floor(successAnimation.totalMinutes / 60)}h{successAnimation.totalMinutes % 60}p
+                                    </span>
+                                </div>
+                            )}
+                            {!successAnimation.isCheckout && (successAnimation.packages || []).map((p, idx) => (
+                                <div key={idx} className="flex justify-between">
+                                    <span className="text-slate-600 font-normal">
+                                        {(successAnimation.packages || []).length > 1 ? `Gói ${idx + 1} · ` : ''}{p.packageName}:
+                                    </span>
+                                    <span className="text-amber-600 flex items-center gap-1">
+                                        <Calendar className="w-3 h-3" /> {p.endDate}
+                                    </span>
+                                </div>
+                            ))}
+                            {successAnimation.lockerName && (
+                                <div className="flex justify-between">
+                                    <span className="text-slate-600 font-normal">Tủ đồ:</span>
+                                    <span className="text-indigo-600 flex items-center gap-1">
+                                        <Lock className="w-3 h-3" /> {successAnimation.lockerName}
+                                    </span>
+                                </div>
+                            )}
                         </div>
+                        {successAnimation.frozenNotice && !successAnimation.isCheckout && (
+                            <div className="w-full mt-3 bg-amber-50 border border-amber-200 rounded-xl p-3 flex gap-2 text-left">
+                                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                                <p className="text-xs text-amber-800">{successAnimation.frozenNotice}</p>
+                            </div>
+                        )}
                     </div>
                 </div>
             )}

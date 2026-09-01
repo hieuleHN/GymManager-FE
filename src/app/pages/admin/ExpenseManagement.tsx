@@ -22,6 +22,7 @@ interface ExpenseFormData {
   amount: string;
   date: string;
   note: string;
+  locationId: string;
 }
 
 export function ExpenseManagement() {
@@ -38,19 +39,21 @@ export function ExpenseManagement() {
   const [total, setTotal] = useState(0);
   const [importCost, setImportCost] = useState(0);
   const [equipmentCost, setEquipmentCost] = useState(0);
+  const [summary, setSummary] = useState({ equipment: 0, utilities: 0, tax: 0, other: 0, all: 0, count: 0 });
 
   const { register, handleSubmit: onFormSubmit, formState: { errors }, reset } = useForm<ExpenseFormData>({
-    defaultValues: { category: 'equipment', description: '', amount: '', date: '', note: '' }
+    defaultValues: { category: 'equipment', description: '', amount: '', date: '', note: '', locationId: '' }
   });
 
   const fetchExpenses = async (p = page) => {
     setLoading(true);
     try {
-      const base = selectedClub && selectedClub !== 'all'
-        ? `/api/expenses?locationId=${selectedClub}`
-        : '/api/expenses';
-      const url = `${base}${base.includes('?') ? '&' : '?'}page=${p}&limit=15`;
-      const res = await fetch(url, { headers });
+      const params = new URLSearchParams();
+      params.set('page', String(p));
+      params.set('limit', '15');
+      if (selectedClub && selectedClub !== 'all') params.set('locationId', selectedClub);
+      if (selectedCategory !== 'all') params.set('category', selectedCategory);
+      const res = await fetch(`/api/expenses?${params.toString()}`, { headers });
       if (!res.ok) throw new Error('Failed');
       const data = await res.json();
       setExpenses(data.data || []);
@@ -63,7 +66,19 @@ export function ExpenseManagement() {
     }
   };
 
-  useEffect(() => { setPage(1); fetchExpenses(1); }, [selectedClub]);
+  const fetchSummary = async () => {
+    try {
+      const params = new URLSearchParams();
+      if (selectedClub && selectedClub !== 'all') params.set('locationId', selectedClub);
+      const res = await fetch(`/api/expenses/summary?${params.toString()}`, { headers });
+      if (!res.ok) return;
+      const data = await res.json();
+      setSummary(data);
+    } catch {}
+  };
+
+  useEffect(() => { setPage(1); fetchExpenses(1); fetchSummary(); }, [selectedClub]);
+  useEffect(() => { setPage(1); fetchExpenses(1); }, [selectedCategory]);
 
   useEffect(() => {
     const fetchImportCost = async () => {
@@ -125,22 +140,15 @@ export function ExpenseManagement() {
     }
   };
 
-  const filteredExpenses = selectedCategory === 'all'
-    ? expenses : expenses.filter(e => e.category === selectedCategory);
+  const filteredExpenses = expenses;
 
-  const totalByCategory = {
-    equipment: expenses.filter(e => e.category === 'equipment').reduce((sum, e) => sum + e.amount, 0),
-    utilities: expenses.filter(e => e.category === 'utilities').reduce((sum, e) => sum + e.amount, 0),
-    tax: expenses.filter(e => e.category === 'tax').reduce((sum, e) => sum + e.amount, 0),
-    other: expenses.filter(e => e.category === 'other').reduce((sum, e) => sum + e.amount, 0),
-  };
-  const totalExpenses = Object.values(totalByCategory).reduce((sum, v) => sum + v, 0) + importCost + equipmentCost;
+  const totalExpenses = summary.all + importCost + equipmentCost;
 
   const formatCurrency = (amount: number) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
 
   const openAdd = () => {
     setEditing(null);
-    reset();
+    reset({ category: 'equipment', description: '', amount: '', date: '', note: '', locationId: selectedClub === 'all' ? '' : selectedClub });
     setShowModal(true);
   };
 
@@ -152,6 +160,7 @@ export function ExpenseManagement() {
       amount: exp.amount.toString(),
       date: exp.date ? exp.date.split('T')[0] : '',
       note: exp.note || '',
+      locationId: (exp as any).locationId || '',
     });
     setShowModal(true);
   };
@@ -166,7 +175,8 @@ export function ExpenseManagement() {
         date: data.date,
         note: data.note,
       };
-      if (!editing && selectedClub && selectedClub !== 'all') body.locationId = selectedClub;
+      const clubId = data.locationId || selectedClub;
+      if (clubId && clubId !== 'all') body.locationId = clubId;
       const url = editing ? `/api/expenses/${editing._id}` : '/api/expenses';
       const method = editing ? 'PUT' : 'POST';
       const res = await fetch(url, { method, headers, body: JSON.stringify(body) });
@@ -174,7 +184,7 @@ export function ExpenseManagement() {
       toast.success(editing ? 'Cập nhật chi phí thành công!' : 'Thêm chi phí thành công!');
       setShowModal(false);
       reset();
-      setPage(1); fetchExpenses(1);
+      setPage(1); fetchExpenses(1); fetchSummary();
     } catch {
       toast.error('Thao tác thất bại');
     } finally {
@@ -188,7 +198,7 @@ export function ExpenseManagement() {
       const res = await fetch(`/api/expenses/${id}`, { method: 'DELETE', headers });
       if (!res.ok) throw new Error('Failed');
       toast.success('Đã xóa chi phí');
-      fetchExpenses();
+      fetchExpenses(); fetchSummary();
     } catch {
       toast.error('Xóa thất bại');
     }
@@ -232,7 +242,7 @@ export function ExpenseManagement() {
               <div className={`flex items-center gap-3 mb-2 ${getCategoryColor(cat).split(' ')[1]}`}>
                 {getCategoryIcon(cat)}<h3 className="font-semibold text-slate-900">{getCategoryName(cat)}</h3>
               </div>
-              <p className="text-2xl font-bold text-slate-900">{formatCurrency(totalByCategory[cat])}</p>
+              <p className="text-2xl font-bold text-slate-900">{formatCurrency(summary[cat])}</p>
             </div>
           ))}
         </div>
@@ -254,7 +264,7 @@ export function ExpenseManagement() {
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200">
           <div className="p-6 border-b border-slate-200">
             <h2 className="text-xl font-bold text-slate-900">Danh sách chi phí</h2>
-            <p className="text-sm text-slate-600 mt-1">Hiển thị {filteredExpenses.length} / {expenses.length} khoản chi</p>
+            <p className="text-sm text-slate-600 mt-1">Hiển thị {filteredExpenses.length} / {total} khoản chi{selectedCategory !== 'all' ? ` (lọc: ${getCategoryName(selectedCategory as any)})` : ''}</p>
           </div>
 
           {loading ? (
@@ -300,6 +310,17 @@ export function ExpenseManagement() {
             </div>
             <form onSubmit={onFormSubmit(onSubmit)}>
               <div className="p-6 space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Câu lạc bộ <span className="text-red-500">*</span></label>
+                  <select {...register('locationId', { required: 'Vui lòng chọn câu lạc bộ' })}
+                    className={`w-full px-4 py-3 border ${errors.locationId ? 'border-red-400' : 'border-slate-300'} rounded-lg focus:ring-2 focus:ring-indigo-500`}>
+                    <option value="">Chọn câu lạc bộ</option>
+                    {clubs.map((c: any) => (
+                      <option key={c._id} value={c._id}>{c.name || c.address}</option>
+                    ))}
+                  </select>
+                  {errors.locationId && <span className="text-red-500 text-sm mt-1">{errors.locationId.message}</span>}
+                </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">Loại chi phí <span className="text-red-500">*</span></label>
                   <select {...register('category')}

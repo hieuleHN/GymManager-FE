@@ -63,6 +63,12 @@ export function ExpiredCustomers() {
   const [ticketStatus, setTicketStatus] = useState('chờ xác nhận');
   const [loadingTickets, setLoadingTickets] = useState(false);
 
+  // Bộ lọc bổ sung (kế thừa từ main): quá hạn + bộ môn
+  const [overdueFilter, setOverdueFilter] = useState<'all' | '7' | '30' | '90'>('all');
+  const [disciplineFilter, setDisciplineFilter] = useState<string>('all');
+  const [disciplines, setDisciplines] = useState<any[]>([]);
+  const [pkgDisciplineMap, setPkgDisciplineMap] = useState<Record<string, string[]>>({});
+
   // Modal tạo phiếu
   const [renewTarget, setRenewTarget] = useState<ExpiringRow | null>(null);
   const [pkgOptions, setPkgOptions] = useState<PackageOption[]>([]);
@@ -173,6 +179,36 @@ export function ExpiredCustomers() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, ticketStatus]);
 
+  // Tải danh sách bộ môn + ánh xạ tên gói -> bộ môn (cho bộ lọc bộ môn)
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const discRes = await fetch(`${getApiUrl()}/api/disciplines?limit=100`, { headers: headers as any });
+        const discData = await discRes.json();
+        const discList = Array.isArray(discData) ? discData : (discData.data || []);
+        if (!cancelled) setDisciplines(discList);
+
+        const pkgRes = await fetch(`${getApiUrl()}/api/packages?page=1&limit=100`, { headers: headers as any });
+        const pkgData = await pkgRes.json();
+        const pkgList = Array.isArray(pkgData) ? pkgData : (pkgData.data || []);
+        const map: Record<string, string[]> = {};
+        pkgList.forEach((p: any) => {
+          const names: string[] = [];
+          if (p?.disciplineId?.name) names.push(p.disciplineId.name);
+          (p?.disciplines || []).forEach((d: any) => {
+            const n = d?.name || d;
+            if (n && !names.includes(n)) names.push(n);
+          });
+          if (p?.name && names.length > 0) map[p.name] = names;
+        });
+        if (!cancelled) setPkgDisciplineMap(map);
+      } catch {}
+    })();
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedClub]);
+
   // Mở modal tạo phiếu: tải gói đang bán
   const openRenewModal = async (row: ExpiringRow) => {
     setRenewTarget(row);
@@ -269,6 +305,20 @@ export function ExpiredCustomers() {
       r.customer?.account?.toLowerCase().includes(q) ||
       r.customer?.phone?.includes(searchTerm.trim())
     );
+  }).filter((r) => {
+    // Lọc theo mức quá hạn (remaining_days <= 0 là đã hết hạn)
+    const daysOverdue = Math.max(0, -(r.remaining_days || 0));
+    if (overdueFilter === '7' && daysOverdue > 7) return false;
+    if (overdueFilter === '30' && (daysOverdue <= 7 || daysOverdue > 30)) return false;
+    if (overdueFilter === '90' && daysOverdue <= 30) return false;
+    return true;
+  }).filter((r) => {
+    // Lọc theo bộ môn (ánh xạ từ tên gói -> bộ môn)
+    if (disciplineFilter === 'all') return true;
+    const discNames = pkgDisciplineMap[r.packageName || ''] || [];
+    if (discNames.includes(disciplineFilter)) return true;
+    const chosen = disciplines.find((d: any) => String(d._id) === disciplineFilter);
+    return chosen ? discNames.includes(chosen.name) : false;
   });
 
   const allVisibleSelected =
@@ -353,6 +403,32 @@ export function ExpiredCustomers() {
               <option value={15}>Trong 15 ngày</option>
               <option value={30}>Trong 30 ngày</option>
               <option value={60}>Trong 60 ngày</option>
+            </select>
+          )}
+          {tab === 'expiring' && (
+            <select
+              value={overdueFilter}
+              onChange={(e) => setOverdueFilter(e.target.value as any)}
+              className="px-3 py-2.5 border border-slate-200 rounded-xl bg-white text-sm"
+              title="Lọc theo mức quá hạn"
+            >
+              <option value="all">Tất cả thời gian</option>
+              <option value="7">Quá hạn &lt;7 ngày</option>
+              <option value="30">Quá hạn 7-30 ngày</option>
+              <option value="90">Quá hạn &gt;30 ngày</option>
+            </select>
+          )}
+          {tab === 'expiring' && disciplines.length > 0 && (
+            <select
+              value={disciplineFilter}
+              onChange={(e) => setDisciplineFilter(e.target.value)}
+              className="px-3 py-2.5 border border-slate-200 rounded-xl bg-white text-sm"
+              title="Lọc theo bộ môn"
+            >
+              <option value="all">Tất cả bộ môn</option>
+              {disciplines.map((d: any) => (
+                <option key={d._id} value={String(d._id)}>{d.name}</option>
+              ))}
             </select>
           )}
           {tab === 'tickets' && (

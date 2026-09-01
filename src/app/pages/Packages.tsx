@@ -342,13 +342,29 @@ export function Packages() {
         <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {filteredPackages.map((plan, index) => {
             const isAlreadyRegistered = activePackageIds.has(plan._id);
-            const sameDisciplineActiveReg = activeRegistrations.find(
+            const sameDisciplineActiveRegs = activeRegistrations.filter(
               (r) => {
-                const did = r.package_id?.disciplineId?._id || r.package_id?.disciplineId;
-                const regDisciplineId = typeof did === "string" ? did : (did as any)?._id || did;
-                return regDisciplineId === plan.disciplineId?._id;
+                const regPkg = r.package_id as any;
+                const regIds = new Set<string>();
+                if (regPkg?.disciplineId) {
+                  regIds.add(regPkg.disciplineId?._id || regPkg.disciplineId);
+                }
+                (regPkg?.disciplines || []).forEach((d: any) => regIds.add(d?._id || d));
+
+                const planIds = new Set<string>();
+                if (plan.disciplineId) {
+                  planIds.add(plan.disciplineId?._id || plan.disciplineId);
+                }
+                (plan.disciplines || []).forEach((d: any) => planIds.add(d?._id || d));
+
+                return [...regIds].some((id) => planIds.has(id));
               }
             );
+            const sameDisciplineActiveReg = sameDisciplineActiveRegs.length > 0
+              ? sameDisciplineActiveRegs.reduce((best, r) =>
+                  new Date(r.end_date) > new Date(best.end_date) ? r : best
+                )
+              : null;
             const canUpgrade = !isAlreadyRegistered && !!sameDisciplineActiveReg;
 
             return (

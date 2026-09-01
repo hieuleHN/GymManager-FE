@@ -1,10 +1,11 @@
 import { DashboardLayout } from '../../components/DashboardLayout';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { Star, Calendar, MoreVertical, Flag, X, Send, MessageCircle } from 'lucide-react';
 import { Button } from '@mui/material';
 import { Link } from 'react-router';
 import { motion } from 'motion/react';
 import { useAuth, getApiUrl, getAuthHeaders } from '../../context/AuthContext';
+import { useChatContext } from '../../context/ChatContext';
 
 interface Trainer {
   _id: string;
@@ -31,15 +32,9 @@ interface Discipline {
   name: string;
 }
 
-interface ChatMessage {
-  id: number;
-  content: string;
-  timestamp: string;
-  isOwn: boolean;
-}
-
 export function Trainers() {
   const { user } = useAuth();
+  const { openChatWith } = useChatContext();
   const [trainers, setTrainers] = useState<Trainer[]>([]);
   const [disciplines, setDisciplines] = useState<Discipline[]>([]);
   const [selectedDiscipline, setSelectedDiscipline] = useState('all');
@@ -48,18 +43,6 @@ export function Trainers() {
   const [reportTitle, setReportTitle] = useState('');
   const [reportReason, setReportReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [chatTrainer, setChatTrainer] = useState<Trainer | null>(null);
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
-    { id: 1, content: 'Chào bạn! Tôi có thể giúp gì cho bạn?', timestamp: '9:30 AM', isOwn: false },
-    { id: 2, content: 'Dạ em muốn hỏi về lịch tập ạ', timestamp: '9:32 AM', isOwn: true },
-    { id: 3, content: 'Được thôi, bạn muốn đặt lịch vào ngày nào?', timestamp: '9:33 AM', isOwn: false },
-  ]);
-  const [chatInput, setChatInput] = useState('');
-  const chatEndRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [chatMessages]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -115,30 +98,11 @@ export function Trainers() {
   };
 
   const openChat = (trainer: Trainer) => {
-    setChatTrainer(trainer);
-    setChatMessages([
-      { id: 1, content: `Chào bạn! Tôi là ${trainer.fullName}, tôi có thể giúp gì cho bạn?`, timestamp: 'Vừa xong', isOwn: false },
-    ]);
-  };
-
-  const sendChatMessage = () => {
-    if (!chatInput.trim()) return;
-    const newMsg: ChatMessage = {
-      id: chatMessages.length + 1,
-      content: chatInput,
-      timestamp: 'Vừa xong',
-      isOwn: true
-    };
-    setChatMessages(prev => [...prev, newMsg]);
-    setChatInput('');
-    setTimeout(() => {
-      setChatMessages(prev => [...prev, {
-        id: prev.length + 1,
-        content: 'Cảm ơn bạn đã liên hệ! Tôi sẽ phản hồi sớm nhất.',
-        timestamp: 'Vừa xong',
-        isOwn: false
-      }]);
-    }, 1000);
+    openChatWith(trainer._id, {
+      fullName: trainer.fullName,
+      avatar: trainer.avatar,
+      role: trainer.disciplineId?.name || trainer.job?.name || 'HLV'
+    });
   };
 
   return (
@@ -256,63 +220,7 @@ export function Trainers() {
           </>
         )}
 
-        {/* Chat Modal */}
-        {chatTrainer && (
-          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setChatTrainer(null)}>
-            <div className="bg-white rounded-2xl max-w-lg w-full h-[600px] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
-              {/* Chat Header */}
-              <div className="p-4 border-b border-slate-200 flex items-center justify-between bg-white shrink-0">
-                <div className="flex items-center gap-3">
-                  <img
-                    src={chatTrainer.avatar || 'https://images.unsplash.com/photo-1548690312-e3b507d17a4d?auto=format&fit=crop&q=80&w=100'}
-                    alt={chatTrainer.fullName}
-                    className="w-12 h-12 rounded-full object-cover"
-                  />
-                  <div>
-                    <h3 className="font-bold text-slate-900">{chatTrainer.fullName}</h3>
-                    <p className="text-sm text-green-600">Đang hoạt động</p>
-                  </div>
-                </div>
-                <button onClick={() => setChatTrainer(null)} className="p-2 hover:bg-slate-100 rounded-lg">
-                  <X className="w-5 h-5 text-slate-600" />
-                </button>
-              </div>
-
-              {/* Messages */}
-              <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-slate-50">
-                {chatMessages.map((msg) => (
-                  <div key={msg.id} className={`flex ${msg.isOwn ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-md ${msg.isOwn ? 'order-2' : 'order-1'}`}>
-                      <div className={`p-4 rounded-2xl ${msg.isOwn ? 'bg-indigo-600 text-white' : 'bg-white text-slate-900 border border-slate-200'}`}>
-                        <p className="text-sm">{msg.content}</p>
-                      </div>
-                      <p className={`text-xs text-slate-500 mt-1 ${msg.isOwn ? 'text-right' : 'text-left'}`}>{msg.timestamp}</p>
-                    </div>
-                  </div>
-                ))}
-                <div ref={chatEndRef} />
-              </div>
-
-              {/* Input */}
-              <div className="p-4 border-t border-slate-200 bg-white shrink-0">
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={chatInput}
-                    onChange={(e) => setChatInput(e.target.value)}
-                    placeholder="Nhập tin nhắn..."
-                    className="flex-1 px-4 py-3 border border-slate-200 rounded-full focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
-                    onKeyDown={(e) => { if (e.key === 'Enter') sendChatMessage(); }}
-                  />
-                  <button onClick={sendChatMessage} disabled={!chatInput.trim()}
-                    className="p-3 rounded-full bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors">
-                    <Send className="w-5 h-5" />
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+        {/* Chat Modal - sử dụng ChatWidget toàn cục từ ChatContext */}
 
         {reportModal && (
           <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setReportModal(null)}>

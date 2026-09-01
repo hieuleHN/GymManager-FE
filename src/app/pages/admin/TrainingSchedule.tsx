@@ -68,8 +68,13 @@ export function TrainingSchedule() {
   const [transferNewDate, setTransferNewDate] = useState('');
   const [conflictError, setConflictError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [selectedTrainer, setSelectedTrainer] = useState('all');
+  const [trainerSearch, setTrainerSearch] = useState('');
+  const [trainerDropdownOpen, setTrainerDropdownOpen] = useState(false);
 
-  const isAdminOrManager = user?.isAdmin === true || user?.jobPermissions?.includes('quan_ly');
+  const isAdminOrManager = user?.isAdmin === true ||
+    user?.jobPermissions?.includes('quan_ly') ||
+    user?.jobPermissions?.includes('le_tan');
 
   const fetchData = async () => {
     setLoading(true);
@@ -271,7 +276,14 @@ export function TrainingSchedule() {
       (booking.trainerId?._id === user?.id || isAdminOrManager);
   };
 
-  const groupedByDate = bookings.reduce<Record<string, Booking[]>>((acc, b) => {
+  const visibleBookings = isAdminOrManager && selectedTrainer !== 'all'
+    ? bookings.filter(b => {
+        const tid = typeof b.trainerId === 'object' ? b.trainerId?._id : b.trainerId;
+        return tid === selectedTrainer;
+      })
+    : bookings;
+
+  const groupedByDate = visibleBookings.reduce<Record<string, Booking[]>>((acc, b) => {
     const d = new Date(b.date).toLocaleDateString('vi-VN');
     if (!acc[d]) acc[d] = [];
     acc[d].push(b);
@@ -309,11 +321,105 @@ export function TrainingSchedule() {
             <p className="text-sm text-slate-600 mt-1">Chuyển cho đồng nghiệp khi bận</p>
           </button>
 
-          <button className="p-6 bg-white rounded-xl border border-slate-200 hover:border-green-400 hover:bg-green-50 transition-all text-left">
+          <button
+            onClick={() => {
+              const now = new Date();
+              const from = new Date(now.getFullYear(), now.getMonth(), 1);
+              const to = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+              setDateFrom(from.toISOString().split('T')[0]);
+              setDateTo(to.toISOString().split('T')[0]);
+            }}
+            className="p-6 bg-white rounded-xl border border-slate-200 hover:border-green-400 hover:bg-green-50 transition-all text-left"
+          >
             <Clock className="w-8 h-8 text-green-600 mb-3" />
             <h3 className="font-bold text-slate-900">Xem lịch tháng</h3>
             <p className="text-sm text-slate-600 mt-1">Xem toàn bộ lịch trong tháng</p>
           </button>
+        </div>
+
+        {/* Bộ lọc thời gian */}
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
+          <div className="flex flex-wrap items-end gap-4">
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-1">Từ ngày</label>
+              <input
+                type="date"
+                value={dateFrom}
+                onChange={e => setDateFrom(e.target.value)}
+                className="px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-1">Đến ngày</label>
+              <input
+                type="date"
+                value={dateTo}
+                onChange={e => setDateTo(e.target.value)}
+                className="px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  const d = new Date();
+                  d.setDate(d.getDate() - 30);
+                  setDateFrom(d.toISOString().split('T')[0]);
+                  setDateTo(new Date().toISOString().split('T')[0]);
+                }}
+                className="px-4 py-2.5 text-sm font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
+              >
+                30 ngày gần đây
+              </button>
+              <button
+                onClick={() => {
+                  const now = new Date();
+                  const from = new Date(now.getFullYear(), now.getMonth(), 1);
+                  setDateFrom(from.toISOString().split('T')[0]);
+                  setDateTo(now.toISOString().split('T')[0]);
+                }}
+                className="px-4 py-2.5 text-sm font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
+              >
+                Từ đầu tháng
+              </button>
+            </div>
+            {isAdminOrManager && (
+              <div className="relative min-w-[240px]">
+                <label className="block text-sm font-semibold text-slate-700 mb-1">Huấn luyện viên</label>
+                <input
+                  type="text"
+                  value={trainerDropdownOpen ? trainerSearch : (selectedTrainer === 'all' ? 'Tất cả HLV' : trainers.find(t => t._id === selectedTrainer)?.fullName || 'Tất cả HLV')}
+                  onChange={e => { setTrainerSearch(e.target.value); setTrainerDropdownOpen(true); }}
+                  onFocus={() => { setTrainerSearch(''); setTrainerDropdownOpen(true); }}
+                  placeholder="Tìm và chọn HLV..."
+                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+                {trainerDropdownOpen && (
+                  <>
+                    <div className="absolute left-0 right-0 mt-1 bg-white rounded-xl shadow-lg border border-slate-200 z-50 max-h-64 overflow-y-auto">
+                      <button
+                        onClick={() => { setSelectedTrainer('all'); setTrainerSearch(''); setTrainerDropdownOpen(false); }}
+                        className={`w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50 ${selectedTrainer === 'all' ? 'text-indigo-600 font-semibold' : 'text-slate-600'}`}
+                      >
+                        Tất cả HLV
+                      </button>
+                      {trainers
+                        .filter(t => (t.fullName || '').toLowerCase().includes(trainerSearch.toLowerCase()))
+                        .map(t => (
+                          <button
+                            key={t._id}
+                            onClick={() => { setSelectedTrainer(t._id); setTrainerSearch(''); setTrainerDropdownOpen(false); }}
+                            className={`w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50 ${selectedTrainer === t._id ? 'text-indigo-600 font-semibold' : 'text-slate-600'}`}
+                          >
+                            {t.fullName}
+                          </button>
+                        ))}
+                    </div>
+                    <div className="fixed inset-0 z-40" onClick={() => setTrainerDropdownOpen(false)} />
+                  </>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
 
@@ -323,7 +429,7 @@ export function TrainingSchedule() {
           </div>
         ) : error ? (
           <div className="p-6 bg-red-50 rounded-xl border border-red-200 text-red-700">{error}</div>
-        ) : bookings.length === 0 ? (
+        ) : visibleBookings.length === 0 ? (
           <div className="p-12 bg-white rounded-2xl border border-slate-200 text-center">
             <Calendar className="w-12 h-12 text-slate-300 mx-auto mb-4" />
             <p className="text-slate-500">Không có lịch tập nào trong khoảng thời gian này</p>
@@ -361,6 +467,12 @@ export function TrainingSchedule() {
                             {getTransferBadge(booking)}
                           </div>
                           <div className="flex items-center gap-4 text-sm text-slate-600 flex-wrap">
+                            {isAdminOrManager && booking.trainerId?.fullName && (
+                              <div className="flex items-center gap-1.5">
+                                <User className="w-4 h-4" />
+                                HLV: {booking.trainerId.fullName}
+                              </div>
+                            )}
                             <div className={`flex items-center gap-1.5 ${booking.transferStatus === 'approved' && booking.transferType === 'to_colleague' ? 'line-through text-slate-400' : ''}`}>
                               <Clock className="w-4 h-4" />
                               {`${booking.startTime || booking.time} - ${booking.endTime}`}

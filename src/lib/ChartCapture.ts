@@ -233,6 +233,162 @@ function drawLineChart(
   return toDataUrl(canvas);
 }
 
+// ============ HORIZONTAL BAR CHART (for activity stats) ============
+function drawHBarChart(
+  labels: string[],
+  values: number[],
+  title: string,
+  width = 600,
+  height = 360
+): string {
+  const { canvas, ctx } = createCanvas(width, height);
+  const padding = { top: 40, right: 20, bottom: 50, left: 90 };
+  const chartW = width - padding.left - padding.right;
+  const chartH = height - padding.top - padding.bottom;
+
+  drawText(ctx, title, width / 2, 24, { size: 14, bold: true, align: 'center' });
+
+  const maxVal = Math.max(...values, 1) * 1.15;
+  const rowH = chartH / labels.length;
+  const barH = Math.min(rowH * 0.55, 22);
+
+  // Grid lines (vertical)
+  const gridLines = 5;
+  for (let i = 0; i <= gridLines; i++) {
+    const x = padding.left + (i / gridLines) * chartW;
+    ctx.strokeStyle = '#e2e8f0';
+    ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    ctx.moveTo(x, padding.top);
+    ctx.lineTo(x, padding.top + chartH);
+    ctx.stroke();
+    const val = (maxVal / gridLines) * i;
+    drawText(ctx, `${val.toFixed(0)}`, x, padding.top + chartH + 16, { size: 10, color: '#94a3b8', align: 'center' });
+  }
+
+  // Bars
+  labels.forEach((label, i) => {
+    const y = padding.top + i * rowH + (rowH - barH) / 2;
+    const barW = (values[i] / maxVal) * chartW;
+
+    ctx.fillStyle = COLORS[i % COLORS.length];
+    ctx.beginPath();
+    ctx.roundRect(padding.left, y, Math.max(barW, 2), barH, 3);
+    ctx.fill();
+
+    drawText(ctx, label, padding.left - 8, y + barH / 2 + 4, { size: 11, color: '#475569', align: 'right' });
+    if (barW > 40) {
+      drawText(ctx, `${values[i]}`, padding.left + barW - 8, y + barH / 2 + 4, { size: 10, bold: true, color: '#ffffff', align: 'right' });
+    } else {
+      drawText(ctx, `${values[i]}`, padding.left + barW + 6, y + barH / 2 + 4, { size: 10, color: '#475569', align: 'left' });
+    }
+  });
+
+  return toDataUrl(canvas);
+}
+
+// ============ ACTIVITY STATS CHART IMAGES ============
+export function generateActivityChartImages(data: any): { name: string; dataUrl: string }[] {
+  const images: { name: string; dataUrl: string }[] = [];
+  if (!data) return images;
+
+  const growth = data.customerGrowth || [];
+  const sports = data.sportDistribution || [];
+  const checkins = data.checkInOfWeek || [];
+  const trainers = data.trainerPerformance || [];
+
+  if (growth.length > 0) {
+    images.push({
+      name: 'Tăng trưởng Hội viên mới',
+      dataUrl: drawBarChart(
+        growth.map((g: any) => g.month),
+        [{ name: 'Hội viên mới', values: growth.map((g: any) => g.count || 0), color: '#6366f1' }],
+        'Tăng trưởng Hội viên mới'
+      ),
+    });
+  }
+
+  if (sports.length > 0) {
+    images.push({
+      name: 'Phân bổ Hội viên theo Gói môn tập',
+      dataUrl: drawHBarChart(
+        sports.map((s: any) => s.name),
+        sports.map((s: any) => s.value || 0),
+        'Phân bổ Hội viên theo Gói môn tập'
+      ),
+    });
+  }
+
+  if (checkins.length > 0) {
+    images.push({
+      name: 'Tần suất Điểm danh theo ngày trong Tuần',
+      dataUrl: drawBarChart(
+        checkins.map((c: any) => c.day),
+        [{ name: 'Lượt điểm danh', values: checkins.map((c: any) => c.count || 0), color: '#8b5cf6' }],
+        'Tần suất Điểm danh'
+      ),
+    });
+  }
+
+  if (trainers.length > 0) {
+    images.push({
+      name: 'Biểu đồ Hiệu suất Huấn luyện viên (PT)',
+      dataUrl: drawBarChart(
+        trainers.map((t: any) => t.name),
+        [
+          { name: 'Đã xác nhận', values: trainers.map((t: any) => t.sessions || 0), color: '#6366f1' },
+          { name: 'Từ chối', values: trainers.map((t: any) => t.rejected || 0), color: '#ef4444' },
+          { name: 'Đã hủy', values: trainers.map((t: any) => t.cancelled || 0), color: '#f59e0b' },
+        ],
+        'Hiệu suất Huấn luyện viên (PT)'
+      ),
+    });
+  }
+
+  return images;
+}
+
+// ============ ATTENDANCE STATS CHART IMAGES ============
+export function generateAttendanceChartImages(data: any): { name: string; dataUrl: string }[] {
+  const images: { name: string; dataUrl: string }[] = [];
+  if (!data) return images;
+
+  const daily = data.daily || [];
+  const shiftDist = data.shiftDist || [];
+
+  if (daily.length > 0) {
+    images.push({
+      name: 'Lượt chấm công theo ngày',
+      dataUrl: drawBarChart(
+        daily.map((d: any) => d.date),
+        [{ name: 'Lượt chấm công', values: daily.map((d: any) => d.count || 0), color: '#6366f1' }],
+        'Lượt chấm công theo ngày'
+      ),
+    });
+    images.push({
+      name: 'Tổng giờ làm theo ngày',
+      dataUrl: drawBarChart(
+        daily.map((d: any) => d.date),
+        [{ name: 'Giờ làm', values: daily.map((d: any) => Math.round((d.totalMinutes || 0) / 60 * 10) / 10), color: '#10b981' }],
+        'Tổng giờ làm theo ngày (giờ)'
+      ),
+    });
+  }
+
+  if (shiftDist.length > 0) {
+    images.push({
+      name: 'Phân bổ theo ca làm',
+      dataUrl: drawPieChart(
+        shiftDist.map((s: any) => s.name),
+        shiftDist.map((s: any) => s.value || 0),
+        'Phân bổ theo ca làm'
+      ),
+    });
+  }
+
+  return images;
+}
+
 // ============ PUBLIC ============
 export function generateChartImages(data: any): { name: string; dataUrl: string }[] {
   const images: { name: string; dataUrl: string }[] = [];
