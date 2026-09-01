@@ -81,6 +81,7 @@ import { BookingManagement } from './pages/admin/BookingManagement';
 import { PostManagement } from './pages/admin/PostManagement';
 import { ArticleManagement } from './pages/admin/ArticleManagement';
 import { Recruitment } from './pages/Recruitment';
+import { Policies } from './pages/Policies';
 import { Articles } from './pages/Articles';
 import { ArticleDetail } from './pages/ArticleDetail';
 import { AdminCommunity } from './pages/admin/AdminCommunity';
@@ -210,6 +211,7 @@ export const router = createBrowserRouter([
       { path: 'disciplines/:id', Component: DisciplineDetail },
       { path: 'auth', Component: Auth },
       { path: 'recruitment', Component: Recruitment },
+      { path: 'policies', Component: Policies },
       { path: 'articles', Component: Articles },
       { path: 'articles/:id', Component: ArticleDetail },
       {
