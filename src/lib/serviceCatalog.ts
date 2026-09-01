@@ -1,9 +1,7 @@
 export type ServiceKey =
   | 'freeze'
   | 'activate'
-  | 'reactivate-expired'
   | 'transfer'
-  | 'change-club'
   | 'contract'
   | 'support'
   | 'cancel-refund'
@@ -19,9 +17,7 @@ export interface ServiceCatalogItem {
 export const SERVICE_TYPES: ServiceCatalogItem[] = [
   { key: 'freeze', title: 'Tạm ngưng gói tập', description: 'Tạm dừng gói tập của bạn khi cần nghỉ ngơi' },
   { key: 'activate', title: 'Kích hoạt gói tập', description: 'Kích hoạt lại gói tập đã tạm ngưng' },
-  { key: 'reactivate-expired', title: 'Kích hoạt gói đã hết hạn', description: 'Gia hạn và kích hoạt lại gói tập đã hết hạn' },
   { key: 'transfer', title: 'Chuyển nhượng', description: 'Chuyển nhượng gói tập cho người khác' },
-  { key: 'change-club', title: 'Chuyển cơ sở phòng tập', description: 'Chuyển sang cơ sở khác của ZenFitness' },
   { key: 'contract', title: 'Xem hợp đồng', description: 'Xem và tải xuống hợp đồng của bạn' },
   { key: 'support', title: 'Hỗ trợ khách hàng', description: 'Liên hệ với đội ngũ hỗ trợ' },
   { key: 'cancel-refund', title: 'Hủy gói / Hoàn phí', description: 'Yêu cầu hủy gói và hoàn lại phí còn lại' },
@@ -31,13 +27,18 @@ export const SERVICE_TYPES: ServiceCatalogItem[] = [
 
 export const ALL_SERVICE_KEYS: ServiceKey[] = SERVICE_TYPES.map(t => t.key);
 
-export const SERVICE_LABELS: Record<string, string> = SERVICE_TYPES.reduce(
-  (acc, t) => {
-    acc[t.key] = t.title;
-    return acc;
-  },
-  {} as Record<string, string>
-);
+export const SERVICE_LABELS: Record<string, string> = {
+  ...SERVICE_TYPES.reduce(
+    (acc, t) => {
+      acc[t.key] = t.title;
+      return acc;
+    },
+    {} as Record<string, string>
+  ),
+  // Giữ label cũ để hiển thị lịch sử (đã bỏ chức năng tạo mới)
+  'reactivate-expired': 'Kích hoạt gói đã hết hạn',
+  'change-club': 'Chuyển cơ sở phòng tập'
+};
 
 export const SERVICE_STATUS_LABELS: Record<string, string> = {
   pending: 'Đang xử lý',
