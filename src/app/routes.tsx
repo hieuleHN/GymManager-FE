@@ -41,12 +41,11 @@ import { Services } from './pages/admin/Services';
 import { ServiceHistory } from './pages/admin/ServiceHistory';
 import { AttendanceHistory } from './pages/admin/AttendanceHistory';
 import { StaffList } from './pages/admin/StaffList';
-import { StaffSalary } from './pages/admin/StaffSalary';
-import { StaffSalaryHistory } from './pages/admin/StaffSalaryHistory';
 import { AddStaff } from './pages/admin/AddStaff';
+import { StaffDetail } from './pages/admin/StaffDetail';
 import { StaffPermissions } from './pages/admin/StaffPermissions';
+import { StaffShift } from './pages/admin/StaffShift';
 import { StaffWallet } from './pages/admin/StaffWallet';
-import { StaffCheckIn } from './pages/admin/StaffCheckIn';
 import { JobList } from './pages/admin/JobList';
 import { AddJob } from './pages/admin/AddJob';
 import { EditJob } from './pages/admin/EditJob';
@@ -71,7 +70,7 @@ import { RecruitmentManagement } from './pages/admin/RecruitmentManagement';
 import { ExpenseManagement } from './pages/admin/ExpenseManagement';
 import { TrainerProfile } from './pages/admin/TrainerProfile';
 import { TrainingSchedule } from './pages/admin/TrainingSchedule';
-import { LockerManagement } from './pages/admin/LockerManagement';
+import { LockerManagementDiagram } from './pages/admin/LockerManagementDiagram';
 import { ScheduleConfirmations } from './pages/admin/ScheduleConfirmations';
 import { Community } from './pages/dashboard/Community';
 import { Messages } from './pages/dashboard/Messages';
@@ -86,6 +85,7 @@ import { Articles } from './pages/Articles';
 import { ArticleDetail } from './pages/ArticleDetail';
 import { AdminCommunity } from './pages/admin/AdminCommunity';
 import { AdminMessages } from './pages/admin/AdminMessages';
+import { FaceScannerPopup } from './pages/admin/FaceScannerPopup';
 
 // IMPORT TRANG THỐNG KÊ BIỂU ĐỒ ADMIN
 import { AdminStats } from './pages/dashboard/AdminStats';
@@ -134,10 +134,11 @@ const routeFeatures: Record<string, string> = {
   '/admin/products/returns': 'products',
   '/admin/products/:id/edit': 'products',
   '/admin/staff': 'staff',
-  '/admin/staff/salary': 'salary',
-  '/admin/staff/salary-history': 'salary',
   '/admin/staff/add': 'staff',
+  '/admin/staff/:id': 'staff',
+  '/admin/staff/:id/edit': 'staff',
   '/admin/staff/permissions': 'permissions',
+  '/admin/staff/shifts': 'staff',
   '/admin/jobs': 'tasks',
   '/admin/jobs/add': 'tasks',
   '/admin/jobs/:id/edit': 'tasks',
@@ -289,6 +290,10 @@ export const router = createBrowserRouter([
     element: <ProtectedRoute role="staff"><AttendanceScanner /></ProtectedRoute>
   },
   {
+    path: '/admin/attendance/face-popup',
+    element: <FaceScannerPopup />
+  },
+  {
     path: '/dashboard/settings',
     element: <ProtectedRoute role="member"><Settings /></ProtectedRoute>
   },
@@ -369,10 +374,6 @@ export const router = createBrowserRouter([
     element: <ProtectedRoute role="staff"><AttendanceHistory /></ProtectedRoute>
   },
   {
-    path: '/admin/staff-attendance',
-    element: <ProtectedRoute role="staff"><StaffCheckIn /></ProtectedRoute>
-  },
-  {
     path: '/admin/products',
     element: <ProtectedRoute role="staff"><ProductList /></ProtectedRoute>
   },
@@ -393,20 +394,24 @@ export const router = createBrowserRouter([
     element: <ProtectedRoute role="staff"><StaffList /></ProtectedRoute>
   },
   {
-    path: '/admin/staff/salary',
-    element: <ProtectedRoute role="staff"><StaffSalary /></ProtectedRoute>
-  },
-  {
-    path: '/admin/staff/salary-history',
-    element: <ProtectedRoute role="staff"><StaffSalaryHistory /></ProtectedRoute>
-  },
-  {
     path: '/admin/staff/add',
     element: <ProtectedRoute role="staff"><AddStaff /></ProtectedRoute>
   },
   {
     path: '/admin/staff/permissions',
     element: <ProtectedRoute role="staff"><StaffPermissions /></ProtectedRoute>
+  },
+  {
+    path: '/admin/staff/shifts',
+    element: <ProtectedRoute role="staff"><StaffShift /></ProtectedRoute>
+  },
+  {
+    path: '/admin/staff/:id',
+    element: <ProtectedRoute role="staff"><StaffDetail /></ProtectedRoute>
+  },
+  {
+    path: '/admin/staff/:id/edit',
+    element: <ProtectedRoute role="staff"><AddStaff /></ProtectedRoute>
   },
   {
     path: '/admin/wallet',
@@ -470,7 +475,7 @@ export const router = createBrowserRouter([
   },
   {
     path: '/admin/lockers',
-    element: <ProtectedRoute role="staff"><LockerManagement /></ProtectedRoute>
+    element: <ProtectedRoute role="staff"><LockerManagementDiagram /></ProtectedRoute>
   },
   {
     path: '/admin/schedule-confirmations',
