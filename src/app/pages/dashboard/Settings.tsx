@@ -32,10 +32,7 @@ export function Settings() {
     sessionTimeout: '30',
     language: 'vi'
   });
-  const [idCardFront, setIdCardFront] = useState<File | null>(null);
-  const [idCardBack, setIdCardBack] = useState<File | null>(null);
-  const [idCardFrontPreview, setIdCardFrontPreview] = useState('');
-  const [idCardBackPreview, setIdCardBackPreview] = useState('');
+
 
   const initialFetchDone = useRef(false);
 
@@ -57,8 +54,7 @@ export function Settings() {
               address: data.address || '',
               idNumber: data.idNumber || ''
             }));
-            if (data.idCardFront) setIdCardFrontPreview(`${getApiUrl()}/uploads/customers/${data.idCardFront}`);
-            if (data.idCardBack) setIdCardBackPreview(`${getApiUrl()}/uploads/customers/${data.idCardBack}`);
+
           }
         })
         .catch(() => {})
@@ -80,19 +76,6 @@ export function Settings() {
 
   const handleInputChange = (field: string, value: any) => {
     setFormData({ ...formData, [field]: value });
-  };
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, side: 'front' | 'back') => {
-    const file = e.target.files?.[0];
-    if (file) {
-      if (side === 'front') {
-        setIdCardFront(file);
-        setIdCardFrontPreview(URL.createObjectURL(file));
-      } else {
-        setIdCardBack(file);
-        setIdCardBackPreview(URL.createObjectURL(file));
-      }
-    }
   };
 
   const handleSaveProfile = async () => {
@@ -122,8 +105,6 @@ export function Settings() {
       form.append('email', formData.email);
       form.append('address', formData.address);
       form.append('idNumber', formData.idNumber);
-      if (idCardFront) form.append('idCardFront', idCardFront);
-      if (idCardBack) form.append('idCardBack', idCardBack);
 
       const res = await fetch(`${getApiUrl()}/api/customers/submit-info`, {
         method: 'POST',
@@ -168,23 +149,34 @@ export function Settings() {
   };
 
   const handleSaveSecurity = async () => {
-    if (formData.newPassword && formData.newPassword !== formData.confirmPassword) {
+    setError('');
+    setSuccess('');
+    if (!formData.currentPassword || !formData.newPassword || !formData.confirmPassword) {
+      setError('Vui lòng nhập đầy đủ mật khẩu hiện tại, mật khẩu mới và xác nhận!');
+      return;
+    }
+    if (formData.newPassword.length < 6) {
+      setError('Mật khẩu mới phải có ít nhất 6 ký tự!');
+      return;
+    }
+    if (formData.newPassword !== formData.confirmPassword) {
       setError('Mật khẩu mới không khớp!');
       return;
     }
     setLoading(true);
     try {
-      const res = await fetch(`${getApiUrl()}/api/customers/${user?.id}`, {
-        method: 'PUT',
-        headers: getAuthHeaders(),
+      const res = await fetch(`${getApiUrl()}/api/customers/change-password`, {
+        method: 'POST',
+        headers: getAuthHeaders() as any,
         body: JSON.stringify({
           currentPassword: formData.currentPassword,
-          password: formData.newPassword || undefined
+          newPassword: formData.newPassword
         })
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Lỗi cập nhật!');
-      setSuccess('Cập nhật bảo mật thành công!');
+      if (!res.ok) throw new Error(data.error || 'Lỗi đổi mật khẩu!');
+      setSuccess('Đổi mật khẩu thành công!');
+      setFormData(prev => ({ ...prev, currentPassword: '', newPassword: '', confirmPassword: '' }));
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -356,24 +348,6 @@ export function Settings() {
                       <input type="text" value={formData.address}
                         onChange={(e) => handleInputChange('address', e.target.value)}
                         className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-2">Ảnh mặt trước căn cước</label>
-                      <label className="flex items-center gap-3 p-3 border border-dashed border-slate-300 rounded-xl cursor-pointer hover:border-indigo-400 transition-colors">
-                        <Camera className="w-5 h-5 text-slate-400" />
-                        <span className="text-sm text-slate-500">{idCardFront ? 'Đã chọn' : 'Chọn ảnh'}</span>
-                        <input type="file" accept="image/*" className="hidden" onChange={(e) => handleFileChange(e, 'front')} />
-                      </label>
-                      {idCardFrontPreview && <img src={idCardFrontPreview} alt="Front" className="mt-2 w-full h-32 object-cover rounded-lg" />}
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-2">Ảnh mặt sau căn cước</label>
-                      <label className="flex items-center gap-3 p-3 border border-dashed border-slate-300 rounded-xl cursor-pointer hover:border-indigo-400 transition-colors">
-                        <Camera className="w-5 h-5 text-slate-400" />
-                        <span className="text-sm text-slate-500">{idCardBack ? 'Đã chọn' : 'Chọn ảnh'}</span>
-                        <input type="file" accept="image/*" className="hidden" onChange={(e) => handleFileChange(e, 'back')} />
-                      </label>
-                      {idCardBackPreview && <img src={idCardBackPreview} alt="Back" className="mt-2 w-full h-32 object-cover rounded-lg" />}
                     </div>
                   </div>
 

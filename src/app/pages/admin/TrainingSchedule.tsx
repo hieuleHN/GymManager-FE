@@ -179,18 +179,39 @@ export function TrainingSchedule() {
   const fetchBookingMemberPtSessions = async (customerId: string) => {
     setBookingMemberPtLoading(true);
     try {
-      const res = await fetch(`${getApiUrl()}/api/user-packages/pt-sessions?customerId=${customerId}`, { headers: getAuthHeaders() });
-      if (res.ok) {
-        const data = await res.json();
-        const byDisc: Record<string, number> = {};
-        const owned = new Set<string>();
+      const [ptRes, pkgRes] = await Promise.all([
+        fetch(`${getApiUrl()}/api/user-packages/pt-sessions?customerId=${customerId}`, { headers: getAuthHeaders() }),
+        fetch(`${getApiUrl()}/api/user-packages/my?customerId=${customerId}`, { headers: getAuthHeaders() })
+      ]);
+      const byDisc: Record<string, number> = {};
+      const owned = new Set<string>();
+      if (ptRes.ok) {
+        const data = await ptRes.json();
         data.forEach((p: any) => {
           const discIds = [p.disciplineId, ...(p.comboDisciplineIds || [])].filter(Boolean);
-          discIds.forEach((id: string) => { owned.add(id); byDisc[id] = (byDisc[id] || 0) + (p.currentMonthRemaining || 0); });
+          discIds.forEach((id: string) => { owned.add(id); owned.add(p.disciplineName); byDisc[id] = (byDisc[id] || 0) + (p.currentMonthRemaining || 0); if (p.disciplineName) byDisc[p.disciplineName] = (byDisc[p.disciplineName] || 0) + (p.currentMonthRemaining || 0); });
         });
-        setBookingFreeSessions(byDisc);
-        setBookingOwnedDisciplines(owned);
       }
+      // Lấy tất cả gói của hội viên để check sở hữu bộ môn (kể cả gói không có PT)
+      if (pkgRes.ok) {
+        const pkgs = await pkgRes.json();
+        const list: any[] = Array.isArray(pkgs) ? pkgs : [];
+        const activePkgs = list.filter((p: any) => p.payment_status === 'đã thanh toán' && ['đang hoạt động','còn 10 ngày','đang tạm ngưng'].includes(p.status) && new Date(p.end_date) > new Date());
+        for (const pkg of activePkgs) {
+          const pid = pkg.package_id;
+          if (pid?.disciplineId?._id) owned.add(pid.disciplineId._id);
+          if (pid?.disciplineId?.name) owned.add(pid.disciplineId.name);
+          (pid?.disciplines || []).forEach((d: any) => { owned.add(d._id || d); if (d.name) owned.add(d.name); });
+          // Fallback: nếu gói không có disciplineId rõ ràng, vẫn coi là sở hữu nếu gói đang hoạt động (cho phép đặt)
+          if (!pid?.disciplineId && !(pid?.disciplines || []).length) {
+            // Không thêm gì cụ thể, nhưng sẽ được xử lý ở UI fallback
+          }
+        }
+        // Lưu lại để hiển thị tên gói
+        setBookingMemberPackages(activePkgs);
+      }
+      setBookingFreeSessions(byDisc);
+      setBookingOwnedDisciplines(owned);
     } catch {} finally { setBookingMemberPtLoading(false); }
   };
   const fetchBookingTrainerShifts = async (trainerId: string, year: number, month: number) => {
