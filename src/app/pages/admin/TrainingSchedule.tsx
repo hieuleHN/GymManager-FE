@@ -333,6 +333,7 @@ export function TrainingSchedule() {
       alert(data.message || 'Đặt lịch thành công!');
       setShowBookingModal(false);
       fetchData();
+      try { const ch = new BroadcastChannel('GYM_ATTENDANCE_CHANNEL'); ch.postMessage({ type: 'BOOKING_CREATED' }); ch.close(); } catch {}
     } catch (e: any) { alert(e.message); } finally { setBookingSubmitting(false); }
   };
 

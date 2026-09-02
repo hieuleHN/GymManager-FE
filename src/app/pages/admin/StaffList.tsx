@@ -293,7 +293,7 @@ export function StaffList() {
     try {
       ch = new BroadcastChannel('GYM_ATTENDANCE_CHANNEL');
       ch.onmessage = (e: any) => {
-        if (e.data?.type === 'CHECKIN_EVENT' || e.data?.type === 'FACE_CHECKIN_TRIGGER') {
+        if (e.data?.type === 'CHECKIN_EVENT' || e.data?.type === 'FACE_CHECKIN_TRIGGER' || e.data?.type === 'BOOKING_CREATED') {
           fetchTodayStaffAttendance();
           fetchTodayShifts();
           fetchTrainerSessions();
