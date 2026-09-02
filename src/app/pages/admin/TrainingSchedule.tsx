@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Calendar, Clock, User, AlertCircle, Check, X, ArrowRight, UserPlus, CalendarDays, Loader2 } from 'lucide-react';
 import { AdminLayout } from '../../components/AdminLayout';
 import { getAuthHeaders, getApiUrl, useAuth } from '../../context/AuthContext';
+import { useClub } from '../../context/ClubContext';
 
 interface Staff {
   _id: string;
@@ -44,6 +45,7 @@ interface Booking {
 
 export function TrainingSchedule() {
   const { user } = useAuth();
+  const { selectedClub } = useClub();
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [trainers, setTrainers] = useState<Staff[]>([]);
   const [loading, setLoading] = useState(true);
@@ -100,9 +102,10 @@ export function TrainingSchedule() {
   const fetchData = async () => {
     setLoading(true);
     try {
+      const locParam = selectedClub && selectedClub !== 'all' ? `&locationId=${selectedClub}` : '';
       const urls = [
-        fetch(`${getApiUrl()}/api/bookings/my-trainer?dateFrom=${dateFrom}&dateTo=${dateTo}`, { headers: getAuthHeaders() }),
-        fetch(`${getApiUrl()}/api/staff/trainers?permission=huan_luyen_vien`, { headers: getAuthHeaders() })
+        fetch(`${getApiUrl()}/api/bookings/my-trainer?dateFrom=${dateFrom}&dateTo=${dateTo}${locParam}`, { headers: getAuthHeaders() }),
+        fetch(`${getApiUrl()}/api/staff/trainers?permission=huan_luyen_vien${locParam}`, { headers: getAuthHeaders() })
       ];
       if (isAdminOrManager) {
         urls.push(fetch(`${getApiUrl()}/api/bookings/transfer-requests`, { headers: getAuthHeaders() }));
@@ -133,7 +136,7 @@ export function TrainingSchedule() {
     setLoading(false);
   };
 
-  useEffect(() => { fetchData(); }, [dateFrom, dateTo]);
+  useEffect(() => { fetchData(); }, [dateFrom, dateTo, selectedClub]);
 
   useEffect(() => {
     if (!transferNewDate || !selectedBooking || transferTab !== 'date') {
@@ -512,12 +515,12 @@ export function TrainingSchedule() {
           </button>
 
           <button
-            onClick={() => setShowTransferModal(true)}
+            onClick={() => alert('Vui lòng chọn một lịch tập bên dưới và bấm Chuyển lịch')}
             className="p-6 bg-white rounded-xl border border-slate-200 hover:border-orange-400 hover:bg-orange-50 transition-all text-left"
           >
             <AlertCircle className="w-8 h-8 text-orange-600 mb-3" />
             <h3 className="font-bold text-slate-900">Chuyển lịch</h3>
-            <p className="text-sm text-slate-600 mt-1">Chuyển cho đồng nghiệp khi bận</p>
+            <p className="text-sm text-slate-600 mt-1">Chọn lịch bên dưới để chuyển</p>
           </button>
 
           <button
@@ -747,6 +750,108 @@ export function TrainingSchedule() {
     </div>
   </div>
 </div>
+
+        {/* Modal chuyển lịch */}
+        {showTransferModal && selectedBooking && (
+          <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4" onClick={() => setShowTransferModal(false)}>
+            <div className="bg-white rounded-2xl max-w-lg w-full" onClick={e => e.stopPropagation()}>
+              <div className="p-6 border-b border-slate-200">
+                <h3 className="text-2xl font-bold text-slate-900">Chuyển lịch tập</h3>
+                <p className="text-sm text-slate-600 mt-1">
+                  Hội viên: <strong>{selectedBooking.customerId?.fullName}</strong> -{' '}
+                  {new Date(selectedBooking.date).toLocaleDateString('vi-VN')} lúc{' '}
+                  {`${selectedBooking.startTime || selectedBooking.time} - ${selectedBooking.endTime}`}
+                </p>
+              </div>
+              <div className="p-6 space-y-4">
+                <div className="flex gap-2">
+                  <button onClick={() => setTransferTab('colleague')}
+                    className={`flex-1 py-3 rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-2 ${transferTab === 'colleague' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+                    <UserPlus className="w-4 h-4" />
+                    Chuyển cho đồng nghiệp
+                  </button>
+                  <button onClick={() => setTransferTab('date')}
+                    className={`flex-1 py-3 rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-2 ${transferTab === 'date' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+                    <CalendarDays className="w-4 h-4" />
+                    Chuyển sang ngày khác
+                  </button>
+                </div>
+                {transferTab === 'colleague' ? (
+                  <>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">
+                        Chọn đồng nghiệp
+                        {selectedBooking.disciplineId && (
+                          <span className="text-xs text-slate-500 ml-2">(cùng bộ môn)</span>
+                        )}
+                      </label>
+                      <select value={selectedColleague} onChange={e => setSelectedColleague(e.target.value)}
+                        className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 bg-white">
+                        <option value="">-- Chọn HLV --</option>
+                        {trainers
+                          .filter(t => !selectedBooking.disciplineId || t.disciplineId?._id === selectedBooking.disciplineId)
+                          .map(t => (
+                            <option key={t._id} value={t._id}>
+                              {t.fullName} {t.job?.name ? `(${t.job.name})` : ''}
+                            </option>
+                          ))}
+                      </select>
+                      {selectedBooking.disciplineId && trainers.filter(t => t.disciplineId?._id === selectedBooking.disciplineId).length === 0 && (
+                        <p className="text-sm text-amber-600 mt-2">Không có HLV nào dạy bộ môn này trong danh sách</p>
+                      )}
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">Lý do chuyển lịch</label>
+                      <textarea value={transferReason} onChange={e => setTransferReason(e.target.value)}
+                        className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 resize-none"
+                        rows={2} placeholder="Nhập lý do (vd: HLV bận việc gia đình...)" />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">Chọn ngày mới</label>
+                      <input type="date" value={transferNewDate} onChange={e => setTransferNewDate(e.target.value)}
+                        className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500" />
+                      {selectedBooking && (
+                        <p className="text-sm text-slate-500 mt-2">
+                          Giữ nguyên khung giờ: <strong>{`${selectedBooking.startTime || selectedBooking.time} - ${selectedBooking.endTime}`}</strong>
+                        </p>
+                      )}
+                      {conflictError && (
+                        <p className="text-sm text-red-600 mt-2 flex items-center gap-1">
+                          <AlertCircle className="w-4 h-4" /> {conflictError}
+                        </p>
+                      )}
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">Lý do chuyển lịch</label>
+                      <textarea value={transferReason} onChange={e => setTransferReason(e.target.value)}
+                        className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 resize-none"
+                        rows={2} placeholder="Nhập lý do..." />
+                    </div>
+                    <div className="p-4 bg-green-50 rounded-lg border border-green-200">
+                      <p className="text-sm text-green-900">
+                        <span className="font-semibold">Lưu ý:</span> Giữ nguyên khung giờ cũ, chỉ thay đổi ngày tập. Lịch sẽ được cập nhật ngay, hội viên sẽ nhận được thông báo.
+                      </p>
+                    </div>
+                  </>
+                )}
+              </div>
+              <div className="p-6 border-t border-slate-200 flex gap-3">
+                <button onClick={handleTransfer} disabled={submitting}
+                  className="flex-1 px-4 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-semibold disabled:opacity-50 flex items-center justify-center gap-2">
+                  {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
+                  {transferTab === 'colleague' ? 'Gửi yêu cầu' : 'Xác nhận chuyển'}
+                </button>
+                <button onClick={() => setShowTransferModal(false)}
+                  className="flex-1 px-4 py-3 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 transition-colors font-semibold">
+                  Hủy
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Modal đặt lịch cho hội viên (admin/trainer) */}
         {showBookingModal && (
