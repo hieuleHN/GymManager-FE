@@ -157,9 +157,16 @@ export function AttendanceScanner() {
 
     const [successAnimation, setSuccessAnimation] = useState<{
         active: boolean;
+        type?: 'member' | 'staff';
         memberCode: string;
         name: string;
         phone: string;
+        avatar?: string;
+        job?: string;
+        shiftLabel?: string | null;
+        hasTrainingToday?: boolean;
+        trainingCount?: number;
+        trainingSummary?: { customerName: string; time: string; status: string }[];
         packages?: PackageInfo[];
         lockerName?: string;
         isCheckout?: boolean;
@@ -170,7 +177,21 @@ export function AttendanceScanner() {
 
     const backendUrl = getApiUrl() || 'http://localhost:5000';
 
-    // Lắng nghe dữ liệu điểm danh từ Cửa Sổ Pop-up độc lập
+    // Đảm bảo mọi thông báo check-in/out tự tắt sau 4s (fallback nếu setTimeout trước miss)
+    useEffect(() => {
+        if (successAnimation?.active) {
+            const t = setTimeout(() => setSuccessAnimation(null), 4000);
+            return () => clearTimeout(t);
+        }
+    }, [successAnimation]);
+    useEffect(() => {
+        if (staffResult) {
+            const t = setTimeout(() => setStaffResult(null), 4000);
+            return () => clearTimeout(t);
+        }
+    }, [staffResult]);
+
+    // Lắng nghe dữ liệu điểm danh từ Cửa Sổ Pop-up độc lập - phân biệt member / staff
     useEffect(() => {
         const channel = new BroadcastChannel('GYM_ATTENDANCE_CHANNEL');
         channel.onmessage = (event) => {
@@ -179,7 +200,59 @@ export function AttendanceScanner() {
             }
 
             if (event.data?.type === 'FACE_CHECKIN_TRIGGER') {
-                const { status, customer, totalMinutes, checkCount, frozenNotice } = event.data.payload;
+                const payload = event.data.payload || {};
+                const isStaff = payload.type === 'staff' || !!payload.staff;
+                if (isStaff) {
+                    const staff = payload.staff || {};
+                    const name = staff.fullName || payload.customer?.fullName || 'Nhân viên';
+                    const isCheckout = payload.status === 'checked-out';
+                    loadTodayHistory();
+                    if (isCheckout) {
+                        speak(`Kính chào ${name} ra về`);
+                        setSuccessAnimation({
+                            active: true,
+                            type: 'staff',
+                            memberCode: 'NV',
+                            name,
+                            phone: staff.phone || '',
+                            avatar: staff.avatar || '',
+                            job: staff.job || '',
+                            shiftLabel: payload.shiftLabel || null,
+                            hasTrainingToday: !!payload.hasTrainingToday,
+                            trainingCount: payload.trainingCount || 0,
+                            trainingSummary: payload.trainingSummary || [],
+                            isCheckout: true,
+                            totalMinutes: payload.totalMinutes,
+                            checkCount: 1,
+                            frozenNotice: null
+                        } as any);
+                        setTimeout(() => setSuccessAnimation(null), 4000);
+                    } else {
+                        const isLate = payload.status === 'late';
+                        speak(isLate ? `${name} đi muộn` : `Xin mời ${name} vào làm`);
+                        // Giống hội viên: hỏi tủ đồ kèm thông tin nhân viên (hiển thị đúng trên admin/attendance)
+                        setPendingStaff({
+                            active: true,
+                            name,
+                            job: staff.job || '',
+                            phone: staff.phone || '',
+                            avatar: staff.avatar || '',
+                            shiftLabel: payload.shiftLabel || null,
+                            hasTrainingToday: !!payload.hasTrainingToday,
+                            trainingCount: payload.trainingCount || 0,
+                            trainingSummary: payload.trainingSummary || [],
+                            status: payload.status,
+                            message: `${name} check-in FaceID thành công${isLate ? ' • Đi muộn' : ''}${payload.shiftLabel ? ` • ${payload.shiftLabel}` : ''}`
+                        } as any);
+                        setScannedCustomer(null);
+                        setAssignedLockerName('');
+                        setLockers([]);
+                        setLockerModal(true);
+                        setWantLocker(null);
+                    }
+                    return;
+                }
+                const { status, customer, totalMinutes, checkCount, frozenNotice } = payload;
                 const verifiedCode = customer.id || 'HV';
                 const verifiedName = customer.fullName || 'Hội viên';
                 const packages = customer.packages || [];
@@ -192,6 +265,7 @@ export function AttendanceScanner() {
 
                     setSuccessAnimation({
                         active: true,
+                        type: 'member',
                         memberCode: verifiedCode,
                         name: verifiedName,
                         phone: customer.phone || 'Chưa cập nhật',
@@ -200,7 +274,7 @@ export function AttendanceScanner() {
                         totalMinutes,
                         checkCount: count,
                         frozenNotice: null
-                    });
+                    } as any);
                     setTimeout(() => setSuccessAnimation(null), 4000);
                 } else {
                     const matchedInfo: ScannedCustomer = {
@@ -268,7 +342,7 @@ export function AttendanceScanner() {
                 });
             }
             if (labeled.length > 0) {
-                setFaceMatcher(new faceapi.FaceMatcher(labeled, 0.62));
+                setFaceMatcher(new faceapi.FaceMatcher(labeled, 0.60));
                 setFaceStatusText(`Sẵn sàng quét · Đã nạp ${custList.length} hội viên, ${staffList2.length} nhân viên`);
             } else {
                 setFaceMatcher(null);
@@ -314,7 +388,7 @@ export function AttendanceScanner() {
                     }
                     const match = faceMatcher.findBestMatch(detection.descriptor);
                     if (match.label !== 'unknown') {
-                        setFaceStatusText('Khớp khuôn mặt! Đang xử lý điểm danh...');
+                        setFaceStatusText(`Khớp khuôn mặt! (${match.label.split(':')[0]}) Đang xử lý...`);
                         if (match.label.startsWith('staff:')) {
                             await handleStaffFaceCheckIn(match.label.replace('staff:', ''));
                         } else if (match.label.startsWith('customer:')) {
@@ -412,8 +486,11 @@ export function AttendanceScanner() {
         setScanResult(null);
         try {
             const response = await axios.post(`${backendUrl}/api/staff/face/verify`, { staffId }, { headers: getAuthHeaders() });
-            const staffName = response.data.staff?.fullName || 'Nhân viên';
-            const isCheckout = response.data.status === 'checked-out';
+            const data = response.data;
+            const staffName = data.staff?.fullName || 'Nhân viên';
+            const isCheckout = data.status === 'checked-out';
+            const staffDetail = data.staff;
+            const shiftLabel = data.shiftLabel || null;
             if (isCheckout) {
                 speak(`Kính chào ${staffName} ra về`);
                 setHistory(prev => [{
@@ -422,35 +499,94 @@ export function AttendanceScanner() {
                     customerName: staffName,
                     time: new Date().toLocaleTimeString('vi-VN'),
                     status: 'success',
-                    message: `${staffName} check-out FaceID thành công${response.data.totalMinutes ? ` • ${Math.floor(response.data.totalMinutes/60)}h${response.data.totalMinutes%60}p` : ''}`
+                    message: `${staffName} check-out FaceID thành công${data.totalMinutes ? ` • ${Math.floor(data.totalMinutes/60)}h${data.totalMinutes%60}p` : ''}${shiftLabel ? ` • ${shiftLabel}` : ''}`
                 }, ...prev.slice(0,6)]);
                 setSuccessAnimation({
                     active: true,
                     memberCode: 'NV',
                     name: staffName,
-                    phone: response.data.staff?.phone || '',
+                    phone: staffDetail?.phone || '',
+                    avatar: staffDetail?.avatar || '',
                     isCheckout: true,
-                    totalMinutes: response.data.totalMinutes,
+                    totalMinutes: data.totalMinutes,
                     checkCount: 1,
-                    frozenNotice: null
-                });
+                    frozenNotice: null,
+                    type: 'staff',
+                    staff: staffDetail,
+                    shiftLabel,
+                    hasTrainingToday: data.hasTrainingToday,
+                    trainingCount: data.trainingCount,
+                    trainingSummary: data.trainingSummary
+                } as any);
                 setTimeout(() => setSuccessAnimation(null), 4000);
+                try {
+                    const ch = new BroadcastChannel('GYM_ATTENDANCE_CHANNEL');
+                    ch.postMessage({
+                        type: 'FACE_CHECKIN_TRIGGER',
+                        payload: {
+                            type: 'staff',
+                            status: data.status,
+                            staff: staffDetail,
+                            shift: data.shift,
+                            shiftLabel,
+                            shiftsToday: data.shiftsToday,
+                            hasTrainingToday: data.hasTrainingToday,
+                            trainingCount: data.trainingCount,
+                            trainingSummary: data.trainingSummary,
+                            totalMinutes: data.totalMinutes,
+                            customer: { fullName: staffName }
+                        }
+                    });
+                    ch.close();
+                } catch {}
             } else {
-                const isLate = response.data.status === 'late';
+                const isLate = data.status === 'late';
                 speak(`${isLate ? 'Bạn đi muộn' : `Xin mời ${staffName} vào làm`}`);
-                setHistory(prev => [{
-                    id: Math.random().toString(),
-                    memberCode: 'NV',
-                    customerName: staffName,
-                    time: new Date().toLocaleTimeString('vi-VN'),
-                    status: 'success',
-                    message: `${staffName} check-in FaceID thành công${isLate ? ' • Đi muộn' : ''}`
-                }, ...prev.slice(0,6)]);
-                try { const ch = new BroadcastChannel('GYM_ATTENDANCE_CHANNEL'); ch.postMessage({ type: 'FACE_CHECKIN_TRIGGER', payload: { status: response.data.status, customer: { fullName: staffName } } }); ch.close(); } catch {}
+                // Giống hội viên: hỏi tủ đồ đồng thời hiện đầy đủ thông tin nhân viên
+                setPendingStaff({
+                    active: true,
+                    name: staffName,
+                    job: staffDetail?.job || '',
+                    phone: staffDetail?.phone || '',
+                    avatar: staffDetail?.avatar || '',
+                    shiftLabel,
+                    hasTrainingToday: !!data.hasTrainingToday,
+                    trainingCount: data.trainingCount || 0,
+                    trainingSummary: data.trainingSummary || [],
+                    status: data.status,
+                    message: `${staffName} check-in FaceID thành công${isLate ? ' • Đi muộn' : ''}${shiftLabel ? ` • ${shiftLabel}` : ''}`
+                } as any);
+                // Mở modal tủ cho nhân viên (hiển thị avatar, ca, lịch tập)
+                setScannedCustomer(null);
+                setAssignedLockerName('');
+                setLockers([]);
+                setLockerModal(true);
+                setWantLocker(null);
+                try {
+                    const ch = new BroadcastChannel('GYM_ATTENDANCE_CHANNEL');
+                    ch.postMessage({
+                        type: 'FACE_CHECKIN_TRIGGER',
+                        payload: {
+                            type: 'staff',
+                            status: data.status,
+                            staff: staffDetail,
+                            shift: data.shift,
+                            shiftLabel,
+                            shiftsToday: data.shiftsToday,
+                            hasTrainingToday: data.hasTrainingToday,
+                            trainingCount: data.trainingCount,
+                            trainingSummary: data.trainingSummary,
+                            minutesLate: data.minutesLate,
+                            customer: { fullName: staffName }
+                        }
+                    });
+                    ch.close();
+                } catch {}
             }
             try { const ch2 = new BroadcastChannel('GYM_ATTENDANCE_CHANNEL'); ch2.postMessage({ type: 'CHECKIN_EVENT' }); ch2.close(); } catch {}
         } catch (err: any) {
-            const msg = err.response?.data?.error || err.message || 'Chấm công FaceID nhân viên thất bại';
+            const raw = err.response?.data?.error || err.message || 'Chấm công FaceID nhân viên thất bại';
+            const msg = raw.includes('trống FaceID') || raw.includes('Không tìm thấy nhân viên') ? 'Khuôn mặt nhân viên chưa được đăng ký. Vui lòng kiểm tra hội viên đã đăng ký FaceID chưa.' : raw;
             setScanResult({ success: false, message: msg });
         } finally {
             setLoading(false);
@@ -585,7 +721,7 @@ export function AttendanceScanner() {
             ? { ...pendingStaff, message: `${pendingStaff.message} · Tủ ${lockerName}` }
             : pendingStaff;
         setStaffResult(result);
-        setTimeout(() => setStaffResult(null), 5000);
+        setTimeout(() => setStaffResult(null), 4000);
         setPendingStaff(null);
         closeLockerModal();
     };
@@ -924,8 +1060,16 @@ export function AttendanceScanner() {
                         <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 mb-4">
                             <div className="flex items-center justify-between mb-2">
                                 <div className="flex items-center gap-3">
-                                    <div className="w-11 h-11 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-black">
-                                        {pendingStaff ? 'NV' : 'HV'}
+                                    <div className="w-11 h-11 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-black overflow-hidden">
+                                        {pendingStaff ? (
+                                          (pendingStaff as any).avatar ? (
+                                            <img src={(pendingStaff as any).avatar.startsWith('http') || (pendingStaff as any).avatar.startsWith('data:') ? (pendingStaff as any).avatar : `${backendUrl}/uploads/staff/${(pendingStaff as any).avatar}`} alt="avatar" className="w-full h-full object-cover" />
+                                          ) : (
+                                            <span className="font-black text-amber-700">{pendingStaff.name.charAt(0)}</span>
+                                          )
+                                        ) : (
+                                          'HV'
+                                        )}
                                     </div>
                                     <div>
                                         <p className="font-bold text-slate-900 text-lg">
@@ -943,6 +1087,28 @@ export function AttendanceScanner() {
                                     {pendingStaff ? `Nhân viên${pendingStaff.job ? ` · ${pendingStaff.job}` : ''}` : 'Hội viên'}
                                 </span>
                             </div>
+                            {pendingStaff && (
+                              <div className="grid grid-cols-2 gap-3 mt-3 text-xs">
+                                <div className="bg-white rounded-lg p-2.5 border border-slate-200">
+                                  <p className="text-slate-500 mb-1">Phân ca hôm nay</p>
+                                  <p className="font-bold text-slate-900">{(pendingStaff as any).shiftLabel || 'Không có ca'}</p>
+                                </div>
+                                <div className="bg-white rounded-lg p-2.5 border border-slate-200">
+                                  <p className="text-slate-500 mb-1">Lịch tập với HV</p>
+                                  <p className={`font-bold ${(pendingStaff as any).hasTrainingToday ? 'text-emerald-600' : 'text-slate-400'}`}>{(pendingStaff as any).hasTrainingToday ? `Có ${(pendingStaff as any).trainingCount} lịch` : 'Không có lịch'}</p>
+                                </div>
+                              </div>
+                            )}
+                            {pendingStaff && (pendingStaff as any).trainingSummary && (pendingStaff as any).trainingSummary.length > 0 && (
+                              <div className="mt-3 pt-3 border-t border-slate-200 space-y-1.5">
+                                {(pendingStaff as any).trainingSummary.map((t: any, idx: number) => (
+                                  <div key={idx} className="flex justify-between text-xs bg-white rounded-lg px-3 py-2 border border-slate-100">
+                                    <span className="text-slate-600">{t.customerName}</span>
+                                    <span className="text-indigo-600 font-bold">{t.time} · {t.status}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
                             {!pendingStaff && scannedCustomer && scannedCustomer.packages.map((p, idx) => (
                                 <p key={idx} className="text-xs text-slate-500">
                                     Gói {scannedCustomer.packages.length > 1 ? `${idx + 1} · ` : ''}{p.packageName} · hạn {p.endDate}
@@ -1092,26 +1258,74 @@ export function AttendanceScanner() {
                 </div>
             )}
 
-            {/* Modal Thông Báo Check-in Thành Công Hội Viên */}
+            {/* Modal Thông Báo Check-in/Chấm công - phân biệt Hội viên / Nhân viên */}
             {successAnimation?.active && (
                 <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50">
                     <div className="bg-white border border-slate-200 max-w-sm w-full rounded-2xl p-6 shadow-2xl flex flex-col items-center text-center mx-4 border-t-4 border-t-emerald-500">
-                        <div className="w-14 h-14 bg-emerald-50 border-4 border-emerald-500 rounded-full flex items-center justify-center mb-4">
-                            <Check className="w-6 h-6 text-emerald-500 stroke-[3]" />
+                        <div className={`w-14 h-14 border-4 rounded-full flex items-center justify-center mb-4 ${successAnimation.isCheckout ? 'bg-blue-50 border-blue-500' : 'bg-emerald-50 border-emerald-500'}`}>
+                            <Check className={`w-6 h-6 stroke-[3] ${successAnimation.isCheckout ? 'text-blue-500' : 'text-emerald-500'}`} />
                         </div>
 
                         <h2 className="text-xl font-extrabold text-slate-900 tracking-tight">
-                            {successAnimation.isCheckout ? 'Check-out thành công!' : 'Check-in thành công!'}
+                            {successAnimation.isCheckout
+                              ? (successAnimation as any).type === 'staff' ? 'Chấm công ra về!' : 'Check-out thành công!'
+                              : (successAnimation as any).type === 'staff' ? 'Chấm công thành công!' : 'Check-in thành công!'}
                         </h2>
-                        <p className="text-base font-extrabold text-purple-700 mt-1">{successAnimation.name}</p>
-                        <p className="text-xs text-slate-950 font-mono font-bold">Mã số hội viên: {successAnimation.memberCode}</p>
-                        {successAnimation.checkCount && (
+                        {(successAnimation as any).type === 'staff' && (successAnimation as any).avatar ? (
+                          <img src={(successAnimation as any).avatar.startsWith('http') || (successAnimation as any).avatar.startsWith('data:') ? (successAnimation as any).avatar : `${backendUrl}/uploads/staff/${(successAnimation as any).avatar}`} alt="avatar" className="w-16 h-16 rounded-full object-cover border-2 border-indigo-100 mt-3" />
+                        ) : null}
+                        <p className="text-base font-extrabold text-purple-700 mt-2">{successAnimation.name}</p>
+                        {(successAnimation as any).type === 'staff' ? (
+                          <span className="mt-1 px-2.5 py-1 rounded-full bg-amber-100 text-amber-700 border border-amber-200 text-xs font-bold">Nhân viên{(successAnimation as any).job ? ` · ${(successAnimation as any).job}` : ''}</span>
+                        ) : (
+                          <span className="mt-1 px-2.5 py-1 rounded-full bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-bold">Hội viên</span>
+                        )}
+                        <p className="text-xs text-slate-950 font-mono font-bold mt-1">Mã: {successAnimation.memberCode}{(successAnimation as any).phone ? ` · ${(successAnimation as any).phone}` : ''}</p>
+                        {successAnimation.checkCount && (successAnimation as any).type !== 'staff' && (
                           <span className="mt-2 px-3 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 text-xs font-bold">
                             Lần {successAnimation.checkCount} hôm nay
                           </span>
                         )}
 
-                        <div className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3.5 mt-4 space-y-1 text-left text-xs text-slate-900 font-bold">
+                        {(successAnimation as any).type === 'staff' ? (
+                          <div className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3.5 mt-4 space-y-2 text-left text-xs">
+                            <div className="flex justify-between">
+                              <span className="text-slate-500">Phân ca hôm nay:</span>
+                              <span className="font-bold text-slate-900">{(successAnimation as any).shiftLabel || 'Không có ca'}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-slate-500">Lịch tập với HV:</span>
+                              <span className={`font-bold ${(successAnimation as any).hasTrainingToday ? 'text-emerald-600' : 'text-slate-400'}`}>
+                                {(successAnimation as any).hasTrainingToday ? `Có ${(successAnimation as any).trainingCount} lịch` : 'Không có lịch'}
+                              </span>
+                            </div>
+                            {(successAnimation as any).trainingSummary && (successAnimation as any).trainingSummary.length > 0 && (
+                              <div className="pt-2 border-t border-slate-200 space-y-1">
+                                {(successAnimation as any).trainingSummary.map((t: any, i: number) => (
+                                  <div key={i} className="flex justify-between text-xs">
+                                    <span className="text-slate-600">{t.customerName}</span>
+                                    <span className="text-indigo-600 font-bold">{t.time} · {t.status}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            {successAnimation.isCheckout && typeof successAnimation.totalMinutes === 'number' && (
+                              <div className="flex justify-between">
+                                <span className="text-slate-600">Thời gian làm:</span>
+                                <span className="text-indigo-600 font-bold">{Math.floor(successAnimation.totalMinutes / 60)}h{successAnimation.totalMinutes % 60}p</span>
+                              </div>
+                            )}
+                            {successAnimation.lockerName && (
+                              <div className="flex justify-between">
+                                <span className="text-slate-600">Tủ đồ:</span>
+                                <span className="text-indigo-600 flex items-center gap-1">
+                                  <Lock className="w-3 h-3" /> {successAnimation.lockerName}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3.5 mt-4 space-y-1 text-left text-xs text-slate-900 font-bold">
                             {successAnimation.isCheckout && typeof successAnimation.totalMinutes === 'number' && (
                                 <div className="flex justify-between">
                                     <span className="text-slate-600 font-normal">Thời gian tại phòng gym:</span>
@@ -1138,8 +1352,9 @@ export function AttendanceScanner() {
                                     </span>
                                 </div>
                             )}
-                        </div>
-                        {successAnimation.frozenNotice && !successAnimation.isCheckout && (
+                          </div>
+                        )}
+                        {successAnimation.frozenNotice && !successAnimation.isCheckout && (successAnimation as any).type !== 'staff' && (
                             <div className="w-full mt-3 bg-amber-50 border border-amber-200 rounded-xl p-3 flex gap-2 text-left">
                                 <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                                 <p className="text-xs text-amber-800">{successAnimation.frozenNotice}</p>
