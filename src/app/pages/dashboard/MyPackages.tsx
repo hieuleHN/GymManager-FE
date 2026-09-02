@@ -302,36 +302,7 @@ export function MyPackages() {
       </DashboardLayout>
     );
 
-  if (customer && customer.status !== "approved") {
-    return (
-      <DashboardLayout>
-        <div className="max-w-7xl mx-auto space-y-6">
-          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-8 text-center">
-            <AlertTriangle className="w-16 h-16 text-amber-500 mx-auto mb-4" />
-            <h2 className="text-2xl font-bold text-amber-900 mb-2">
-              Chưa được xác nhận
-            </h2>
-            <p className="text-amber-700 mb-6">
-              Bạn cần hoàn thiện thông tin cá nhân và được nhân viên xác nhận
-              trước khi đăng ký gói tập.
-            </p>
-            <Button
-              variant="contained"
-              onClick={() => navigate("/dashboard/settings")}
-              sx={{
-                bgcolor: "#d97706",
-                "&:hover": { bgcolor: "#b45309" },
-                textTransform: "none",
-                borderRadius: 2,
-              }}
-            >
-              Đi đến cài đặt <ArrowRight className="ml-2 w-4 h-4" />
-            </Button>
-          </div>
-        </div>
-      </DashboardLayout>
-    );
-  }
+  const showApprovalWarning = customer && customer.status !== "approved";
 
 
   const activeRegistrations = registrations.filter(r =>
@@ -425,6 +396,23 @@ export function MyPackages() {
             >
               {notification.message}
             </h2>
+          </div>
+        )}
+
+        {showApprovalWarning && (
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-amber-600 mt-0.5 shrink-0" />
+            <div className="flex-1">
+              <p className="font-bold text-amber-900">Tài khoản chưa được xác nhận</p>
+              <p className="text-sm text-amber-700 mt-1">Bạn cần hoàn thiện thông tin và được nhân viên xác nhận, nhưng các gói đã đăng ký (kể cả do nhân viên đăng ký hộ) vẫn hiển thị bên dưới.</p>
+            </div>
+            <Button
+              variant="contained"
+              onClick={() => navigate("/dashboard/settings")}
+              sx={{ bgcolor: "#d97706", "&:hover": { bgcolor: "#b45309" }, textTransform: "none", borderRadius: 2, whiteSpace: "nowrap" }}
+            >
+              Đi đến cài đặt
+            </Button>
           </div>
         )}
 

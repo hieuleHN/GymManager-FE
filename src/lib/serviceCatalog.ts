@@ -18,7 +18,7 @@ export const SERVICE_TYPES: ServiceCatalogItem[] = [
   { key: 'freeze', title: 'Tạm ngưng gói tập', description: 'Tạm dừng gói tập của bạn khi cần nghỉ ngơi' },
   { key: 'activate', title: 'Kích hoạt gói tập', description: 'Kích hoạt lại gói tập đã tạm ngưng' },
   { key: 'transfer', title: 'Chuyển nhượng', description: 'Chuyển nhượng gói tập cho người khác' },
-  { key: 'contract', title: 'Xem hợp đồng', description: 'Xem và tải xuống hợp đồng của bạn' },
+  { key: 'contract', title: 'Xem chính sách', description: 'Xem và tải xuống chính sách của bạn' },
   { key: 'support', title: 'Hỗ trợ khách hàng', description: 'Liên hệ với đội ngũ hỗ trợ' },
   { key: 'cancel-refund', title: 'Hủy gói / Hoàn phí', description: 'Yêu cầu hủy gói và hoàn lại phí còn lại' },
   { key: 'locker', title: 'Thuê tủ đồ', description: 'Đăng ký thuê tủ đồ tại cơ sở' },

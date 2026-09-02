@@ -1131,10 +1131,10 @@ export function Services() {
         {selectedService === 'contract' && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={handleCloseModal}>
             <div className="bg-white rounded-2xl p-8 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-              <h2 className="text-2xl font-bold text-slate-900 mb-6">Hợp đồng của tôi</h2>
+              <h2 className="text-2xl font-bold text-slate-900 mb-6">Chính sách của tôi</h2>
 
               {contractList.length === 0 ? (
-                <p className="text-slate-500 text-center py-8">Bạn chưa có gói tập nào đã thanh toán để xem hợp đồng.</p>
+                <p className="text-slate-500 text-center py-8">Bạn chưa có gói tập nào đã thanh toán để xem chính sách.</p>
               ) : (
                 <div className="space-y-4">
                   {contractList.map((contract) => {
@@ -1159,7 +1159,7 @@ export function Services() {
                         </a>
                         <a
                           href={pdfUrl}
-                          download={`hop-dong-${contract._id}.pdf`}
+                          download={`chinh-sach-${contract._id}.pdf`}
                           className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
                         >
                           <Download className="w-4 h-4" />

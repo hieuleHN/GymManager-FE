@@ -72,6 +72,27 @@ export function TrainingSchedule() {
   const [trainerSearch, setTrainerSearch] = useState('');
   const [trainerDropdownOpen, setTrainerDropdownOpen] = useState(false);
 
+  // Đặt lịch cho hội viên - state cho admin/trainer
+  const [showBookingModal, setShowBookingModal] = useState(false);
+  const [bookingMember, setBookingMember] = useState<any>(null);
+  const [bookingMemberSearch, setBookingMemberSearch] = useState('');
+  const [bookingMemberResults, setBookingMemberResults] = useState<any[]>([]);
+  const [bookingTrainerId, setBookingTrainerId] = useState<string>('');
+  const [bookingDisciplineId, setBookingDisciplineId] = useState<string>('');
+  const [bookingSelections, setBookingSelections] = useState<Record<string, { start: string; end: string }>>({});
+  const [bookingActiveDate, setBookingActiveDate] = useState<string | null>(null);
+  const [bookingFreeSessions, setBookingFreeSessions] = useState<Record<string, number>>({});
+  const [bookingOwnedDisciplines, setBookingOwnedDisciplines] = useState<Set<string>>(new Set());
+  const [bookingCurrentMonth, setBookingCurrentMonth] = useState(new Date());
+  const [bookingTrainerShifts, setBookingTrainerShifts] = useState<Record<string, string[]>>({});
+  const [bookingBookedTimes, setBookingBookedTimes] = useState<Set<string>>(new Set());
+  const [bookingSubmitting, setBookingSubmitting] = useState(false);
+  const [bookingMemberPtLoading, setBookingMemberPtLoading] = useState(false);
+  const [bookingTrainerPrice, setBookingTrainerPrice] = useState<number>(500000);
+  const [bookingMemberPackages, setBookingMemberPackages] = useState<any[]>([]);
+
+  const isTrainerAccount = !user?.isAdmin && (user?.jobPermissions?.includes('huan_luyen_vien') || (user?.role || '').toLowerCase().includes('huấn luyện viên') || (user?.role || '').toLowerCase().includes('hlv'));
+
   const isAdminOrManager = user?.isAdmin === true ||
     user?.jobPermissions?.includes('quan_ly') ||
     user?.jobPermissions?.includes('le_tan');
@@ -133,6 +154,163 @@ export function TrainingSchedule() {
     };
     checkConflict();
   }, [transferNewDate, selectedBooking, transferTab]);
+
+  // Đặt lịch cho hội viên - logic giống BookTrainer nhưng cho admin/trainer
+  const timeSlots = [
+    { start: '06:00', end: '07:30' },
+    { start: '07:30', end: '09:00' },
+    { start: '09:00', end: '10:30' },
+    { start: '10:30', end: '12:00' },
+    { start: '12:00', end: '13:30' },
+    { start: '13:30', end: '15:00' },
+    { start: '15:00', end: '16:30' },
+    { start: '16:30', end: '18:00' },
+    { start: '18:00', end: '19:30' },
+    { start: '19:30', end: '21:00' }
+  ];
+  const formatDateKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const searchBookingMembers = async (q: string) => {
+    if (!q.trim()) { setBookingMemberResults([]); return; }
+    try {
+      const res = await fetch(`${getApiUrl()}/api/customers/search?q=${encodeURIComponent(q)}`, { headers: getAuthHeaders() });
+      if (res.ok) { const data = await res.json(); setBookingMemberResults(Array.isArray(data) ? data : []); }
+    } catch { setBookingMemberResults([]); }
+  };
+  const fetchBookingMemberPtSessions = async (customerId: string) => {
+    setBookingMemberPtLoading(true);
+    try {
+      const res = await fetch(`${getApiUrl()}/api/user-packages/pt-sessions?customerId=${customerId}`, { headers: getAuthHeaders() });
+      if (res.ok) {
+        const data = await res.json();
+        const byDisc: Record<string, number> = {};
+        const owned = new Set<string>();
+        data.forEach((p: any) => {
+          const discIds = [p.disciplineId, ...(p.comboDisciplineIds || [])].filter(Boolean);
+          discIds.forEach((id: string) => { owned.add(id); byDisc[id] = (byDisc[id] || 0) + (p.currentMonthRemaining || 0); });
+        });
+        setBookingFreeSessions(byDisc);
+        setBookingOwnedDisciplines(owned);
+      }
+    } catch {} finally { setBookingMemberPtLoading(false); }
+  };
+  const fetchBookingTrainerShifts = async (trainerId: string, year: number, month: number) => {
+    try {
+      const start = formatDateKey(new Date(year, month, 1));
+      const end = formatDateKey(new Date(year, month + 1, 0));
+      const res = await fetch(`${getApiUrl()}/api/staff-shifts/by-range?startDate=${start}&endDate=${end}`, { headers: getAuthHeaders() });
+      if (res.ok) {
+        const data = await res.json();
+        const shifts: Record<string, string[]> = {};
+        (data.data || []).forEach((a: any) => {
+          if (String(a.staffId?._id || a.staffId) === String(trainerId)) {
+            const d = a.date ? a.date.split('T')[0] : '';
+            if (!shifts[d]) shifts[d] = [];
+            if (!shifts[d].includes(a.shift)) shifts[d].push(a.shift);
+          }
+        });
+        setBookingTrainerShifts(shifts);
+      }
+    } catch {}
+  };
+  const fetchBookingBookedTimes = async (trainerId: string, dateStr: string) => {
+    try {
+      const res = await fetch(`${getApiUrl()}/api/bookings/trainer/${trainerId}?date=${dateStr}`, { headers: getAuthHeaders() });
+      if (res.ok) {
+        const data = await res.json();
+        const times = new Set<string>();
+        (Array.isArray(data) ? data : []).forEach((b: any) => { if (b.time) times.add(b.time); if (b.startTime) times.add(b.startTime); });
+        setBookingBookedTimes(times);
+      }
+    } catch { setBookingBookedTimes(new Set()); }
+  };
+  useEffect(() => {
+    if (bookingMember?._id) {
+      fetchBookingMemberPtSessions(bookingMember._id);
+      // Lấy tên các gói tập của hội viên để hiển thị khi không còn buổi free
+      fetch(`${getApiUrl()}/api/user-packages/my?customerId=${bookingMember._id}`, { headers: getAuthHeaders() })
+        .then(r => r.json())
+        .then(data => {
+          const list = Array.isArray(data) ? data : [];
+          setBookingMemberPackages(list.filter((p: any) => p.status !== 'đã hủy' && p.status !== 'hết hạn'));
+        })
+        .catch(() => setBookingMemberPackages([]));
+    } else {
+      setBookingMemberPackages([]);
+    }
+  }, [bookingMember]);
+  useEffect(() => {
+    const tid = isTrainerAccount ? user?.id : bookingTrainerId;
+    if (tid) fetchBookingTrainerShifts(tid, bookingCurrentMonth.getFullYear(), bookingCurrentMonth.getMonth());
+  }, [bookingCurrentMonth, bookingTrainerId, user]);
+  useEffect(() => {
+    const tid = isTrainerAccount ? user?.id : bookingTrainerId;
+    if (bookingActiveDate && tid) fetchBookingBookedTimes(tid, bookingActiveDate);
+    else setBookingBookedTimes(new Set());
+  }, [bookingActiveDate, bookingTrainerId]);
+  useEffect(() => {
+    const tid = isTrainerAccount ? user?.id : bookingTrainerId;
+    if (!tid) { setBookingTrainerPrice(500000); return; }
+    fetch(`${getApiUrl()}/api/staff/${tid}`, { headers: getAuthHeaders() })
+      .then(r => r.json())
+      .then(data => setBookingTrainerPrice(data.pricePerSession || 500000))
+      .catch(() => setBookingTrainerPrice(500000));
+  }, [bookingTrainerId, user]);
+  const openBookingModal = () => {
+    setBookingMember(null); setBookingMemberSearch(''); setBookingMemberResults([]);
+    setBookingTrainerId(isTrainerAccount ? (user?.id || '') : '');
+    setBookingDisciplineId(''); setBookingSelections({}); setBookingActiveDate(null);
+    setBookingFreeSessions({}); setBookingOwnedDisciplines(new Set());
+    setBookingCurrentMonth(new Date()); setBookingTrainerShifts({}); setBookingBookedTimes(new Set());
+    setShowBookingModal(true);
+  };
+  const handleBookingDateClick = (day: number) => {
+    const d = new Date(bookingCurrentMonth.getFullYear(), bookingCurrentMonth.getMonth(), day);
+    const today = new Date(); today.setHours(0,0,0,0);
+    if (d < today) return;
+    const key = formatDateKey(d);
+    if (bookingActiveDate === key) setBookingActiveDate(null);
+    else setBookingActiveDate(key);
+  };
+  const handleBookingTimeSelect = (slot: { start: string; end: string }) => {
+    if (!bookingActiveDate) return;
+    const tid = isTrainerAccount ? user?.id : bookingTrainerId;
+    if (!tid) return;
+    // check shift
+    const shifts = bookingTrainerShifts[bookingActiveDate] || [];
+    if (shifts.length) {
+      const idx = timeSlots.findIndex(s => s.start === slot.start);
+      const isMorning = idx >=0 && idx <5;
+      if (isMorning && !shifts.includes('morning-noon')) return;
+      if (!isMorning && !shifts.includes('afternoon-evening')) return;
+    } else return;
+    if (bookingBookedTimes.has(slot.start)) return;
+    setBookingSelections(prev => ({ ...prev, [bookingActiveDate]: slot }));
+    setBookingActiveDate(null);
+  };
+  const handleBookingSubmit = async () => {
+    const tid = isTrainerAccount ? user?.id : bookingTrainerId;
+    if (!bookingMember?._id) { alert('Vui lòng chọn hội viên'); return; }
+    if (!tid) { alert('Vui lòng chọn HLV'); return; }
+    if (!bookingDisciplineId) { alert('Vui lòng chọn bộ môn'); return; }
+    if (Object.keys(bookingSelections).length === 0) { alert('Chọn ít nhất một ngày và giờ'); return; }
+    setBookingSubmitting(true);
+    try {
+      const slots = Object.entries(bookingSelections).map(([date, t]) => ({ date, time: t.start, startTime: t.start, endTime: t.end }));
+      const trainerRes = await fetch(`${getApiUrl()}/api/staff/${tid}`, { headers: getAuthHeaders() });
+      const trainerData = await trainerRes.json();
+      const price = trainerData?.pricePerSession || 500000;
+      const locId = trainerData?.locationId?._id || trainerData?.locationId || null;
+      const res = await fetch(`${getApiUrl()}/api/bookings/admin-create`, {
+        method: 'POST', headers: { ...getAuthHeaders() as any, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ customerId: bookingMember._id, trainerId: tid, disciplineId: bookingDisciplineId, slots, locationId: locId, price })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Tạo lịch thất bại');
+      alert(data.message || 'Đặt lịch thành công!');
+      setShowBookingModal(false);
+      fetchData();
+    } catch (e: any) { alert(e.message); } finally { setBookingSubmitting(false); }
+  };
 
   const openTransfer = (booking: Booking) => {
     setSelectedBooking(booking);
@@ -306,7 +484,7 @@ export function TrainingSchedule() {
 
         {/* Quick Actions */}
         <div className="grid md:grid-cols-3 gap-4">
-          <button className="p-6 bg-white rounded-xl border border-slate-200 hover:border-indigo-400 hover:bg-indigo-50 transition-all text-left">
+          <button onClick={openBookingModal} className="p-6 bg-white rounded-xl border border-slate-200 hover:border-indigo-400 hover:bg-indigo-50 transition-all text-left">
             <Calendar className="w-8 h-8 text-indigo-600 mb-3" />
             <h3 className="font-bold text-slate-900">Đặt lịch mới</h3>
             <p className="text-sm text-slate-600 mt-1">Tạo lịch tập cho hội viên</p>
@@ -548,6 +726,211 @@ export function TrainingSchedule() {
     </div>
   </div>
 </div>
+
+        {/* Modal đặt lịch cho hội viên (admin/trainer) */}
+        {showBookingModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowBookingModal(false)}>
+            <div className="bg-white rounded-2xl max-w-5xl w-full max-h-[90vh] overflow-y-auto p-6" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-2xl font-bold text-slate-900">Đặt lịch tập cho hội viên</h2>
+                <button onClick={() => setShowBookingModal(false)} className="p-2 hover:bg-slate-100 rounded-lg"><X className="w-5 h-5" /></button>
+              </div>
+
+              {/* Chọn hội viên */}
+              <div className="mb-6">
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Chọn hội viên *</label>
+                {bookingMember ? (
+                  <div className="flex items-center gap-3 p-3 bg-indigo-50 border border-indigo-200 rounded-xl">
+                    <img src={bookingMember.avatar || 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&q=80&w=100'} alt="" className="w-10 h-10 rounded-full object-cover" />
+                    <div className="flex-1">
+                      <p className="font-bold text-slate-900">{bookingMember.fullName}</p>
+                      <p className="text-xs text-slate-500">{bookingMember.phone} {bookingMember.account ? `· ${bookingMember.account}` : ''}</p>
+                    </div>
+                    <button onClick={() => { setBookingMember(null); setBookingMemberSearch(''); }} className="p-2 hover:bg-white rounded-lg"><X className="w-4 h-4" /></button>
+                  </div>
+                ) : (
+                  <div className="relative">
+                    <input type="text" value={bookingMemberSearch} onChange={e => { setBookingMemberSearch(e.target.value); searchBookingMembers(e.target.value); }} placeholder="Nhập tên, SĐT, tài khoản hội viên..." className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                    {bookingMemberResults.length > 0 && (
+                      <div className="absolute z-10 mt-2 w-full bg-white border border-slate-200 rounded-xl shadow-lg max-h-64 overflow-y-auto">
+                        {bookingMemberResults.map((m: any) => (
+                          <button key={m._id} onClick={() => { setBookingMember(m); setBookingMemberSearch(''); setBookingMemberResults([]); }} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-50 text-left">
+                            <img src={m.avatar || 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&q=80&w=100'} alt="" className="w-8 h-8 rounded-full object-cover" />
+                            <div><p className="font-semibold text-slate-900">{m.fullName}</p><p className="text-xs text-slate-500">{m.phone} {m.account ? `· ${m.account}` : ''}</p></div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Chọn HLV - chỉ hiện nếu không phải tài khoản HLV */}
+              {!isTrainerAccount && (
+                <div className="mb-6">
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Chọn HLV *</label>
+                  <select value={bookingTrainerId} onChange={e => setBookingTrainerId(e.target.value)} className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
+                    <option value="">-- Chọn HLV --</option>
+                    {trainers.map(t => <option key={t._id} value={t._id}>{t.fullName}</option>)}
+                  </select>
+                </div>
+              )}
+              {isTrainerAccount && (
+                <div className="mb-6 p-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
+                  HLV: <b>{user?.fullName || user?.name}</b> (tài khoản huấn luyện viên chỉ đặt cho hội viên, HLV tự động là bạn)
+                </div>
+              )}
+
+              {/* Chọn bộ môn */}
+              {(bookingTrainerId || isTrainerAccount) && (
+                <div className="mb-6">
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Chọn bộ môn *</label>
+                  {(() => {
+                    const tid = isTrainerAccount ? user?.id : bookingTrainerId;
+                    const tr = trainers.find(t => t._id === tid) || (isTrainerAccount ? { disciplineId: null, specialties: [] } as any : null);
+                    if (!tr && !isTrainerAccount) return <p className="text-sm text-slate-500">Chọn HLV trước</p>;
+                    const items: { id: string; name: string }[] = [];
+                    // Lấy từ trainer data thực tế
+                    const realTr = trainers.find(t => t._id === tid);
+                    if (realTr?.disciplineId) items.push({ id: realTr.disciplineId._id, name: realTr.disciplineId.name });
+                    realTr?.specialties?.forEach((s: string) => { if (!items.find(i => i.name === s)) items.push({ id: s, name: s }); });
+                    if (items.length === 0) return <p className="text-sm text-slate-500">HLV chưa có bộ môn</p>;
+                    return (
+                      <div className="flex flex-wrap gap-2">
+                        {items.map(item => {
+                          const isOwned = bookingOwnedDisciplines.has(item.id) || bookingOwnedDisciplines.has(item.name);
+                          const isSelected = bookingDisciplineId === item.id;
+                          const free = (bookingFreeSessions[item.id] || 0) + (bookingFreeSessions[item.name] || 0);
+                          return (
+                            <button key={item.id} onClick={() => {
+                              if (!bookingMember) { alert('Chọn hội viên trước'); return; }
+                              if (!isOwned) { alert('Hội viên chưa mua gói bộ môn này - vẫn đặt được nhưng sẽ tính phí'); }
+                              setBookingDisciplineId(item.id);
+                            }} className={`px-4 py-2 rounded-xl border-2 text-sm font-semibold ${isSelected ? 'border-indigo-600 bg-indigo-600 text-white' : isOwned ? 'border-slate-200 hover:border-indigo-300' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>
+                              {item.name} {isOwned && free > 0 ? `(${free} buổi free)` : !isOwned ? '(Chưa mua)' : ''}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
+                  {bookingMemberPtLoading && <p className="text-xs text-slate-500 mt-2">Đang kiểm tra số buổi của hội viên...</p>}
+                  {bookingMember && bookingDisciplineId && (
+                    <div className="mt-3 p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm">
+                      {(() => {
+                        const free = (bookingFreeSessions[bookingDisciplineId] || 0);
+                        const isFull = Object.values(bookingFreeSessions).some(v => v >= 999);
+                        if (isFull) return <span className="text-green-700 font-bold">Gói full tháng - chọn ngày miễn phí</span>;
+                        if (free > 0) return <span className="text-green-700">Còn <b>{free}</b> buổi miễn phí trong tháng</span>;
+                        return <span className="text-amber-700">Hết buổi miễn phí - sẽ tính phí theo giá HLV</span>;
+                      })()}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Lịch */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                <div className="bg-slate-50 rounded-xl p-4">
+                  <div className="flex items-center justify-between mb-4">
+                    <button onClick={() => setBookingCurrentMonth(new Date(bookingCurrentMonth.getFullYear(), bookingCurrentMonth.getMonth() -1, 1))} className="p-2 hover:bg-white rounded-lg"><X className="w-4 h-4 rotate-90" /></button>
+                    <span className="font-bold">Tháng {bookingCurrentMonth.getMonth()+1}/{bookingCurrentMonth.getFullYear()}</span>
+                    <button onClick={() => setBookingCurrentMonth(new Date(bookingCurrentMonth.getFullYear(), bookingCurrentMonth.getMonth() +1, 1))} className="p-2 hover:bg-white rounded-lg"><X className="w-4 h-4 -rotate-90" /></button>
+                  </div>
+                  <div className="grid grid-cols-7 gap-1 mb-2">
+                    {['CN','T2','T3','T4','T5','T6','T7'].map(d => <div key={d} className="text-center text-xs font-semibold text-slate-500 py-1">{d}</div>)}
+                  </div>
+                  <div className="grid grid-cols-7 gap-1">
+                    {Array.from({ length: new Date(bookingCurrentMonth.getFullYear(), bookingCurrentMonth.getMonth()+1,0).getDate() }, (_, i) => {
+                      const day = i+1;
+                      const d = new Date(bookingCurrentMonth.getFullYear(), bookingCurrentMonth.getMonth(), day);
+                      const key = formatDateKey(d);
+                      const isPast = d < new Date(new Date().setHours(0,0,0,0));
+                      const hasShift = (bookingTrainerShifts[key] || []).length > 0;
+                      const isSelected = !!bookingSelections[key];
+                      const isActive = bookingActiveDate === key;
+                      return (
+                        <button key={day} disabled={isPast || !hasShift} onClick={() => handleBookingDateClick(day)} className={`aspect-square rounded-lg text-sm font-semibold border ${isPast ? 'bg-slate-100 text-slate-300 border-slate-100' : !hasShift ? 'bg-orange-50 text-orange-300 border-orange-100' : isSelected ? 'bg-indigo-600 text-white border-indigo-600' : isActive ? 'bg-indigo-100 text-indigo-700 border-indigo-300' : 'bg-white hover:bg-slate-50 border-slate-200'}`}>
+                          {day}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="text-xs text-slate-500 mt-2">Cam = HLV không có ca, Xám = quá khứ</p>
+                </div>
+                <div className="bg-slate-50 rounded-xl p-4">
+                  <h4 className="font-bold text-slate-900 mb-3">{bookingActiveDate ? `Chọn giờ ${bookingActiveDate.split('-')[2]}/${bookingActiveDate.split('-')[1]}` : Object.keys(bookingSelections).length ? `Đã chọn ${Object.keys(bookingSelections).length} buổi` : 'Chọn ngày trước'}</h4>
+                  {bookingActiveDate ? (
+                    <div className="grid grid-cols-2 gap-2">
+                      {timeSlots.map(slot => {
+                        const tid = isTrainerAccount ? user?.id : bookingTrainerId;
+                        const shifts = bookingTrainerShifts[bookingActiveDate] || [];
+                        const isMorning = timeSlots.findIndex(s=>s.start===slot.start) <5;
+                        const noShift = shifts.length && ((isMorning && !shifts.includes('morning-noon')) || (!isMorning && !shifts.includes('afternoon-evening')));
+                        const booked = bookingBookedTimes.has(slot.start);
+                        const disabled = !!noShift || booked;
+                        const selected = bookingSelections[bookingActiveDate]?.start === slot.start;
+                        return (
+                          <button key={slot.start} disabled={disabled} onClick={() => handleBookingTimeSelect(slot)} className={`px-3 py-2 rounded-xl text-sm font-semibold border ${disabled ? 'bg-slate-100 text-slate-300 border-slate-100' : selected ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white hover:border-indigo-300 border-slate-200'}`}>
+                            {slot.start}-{slot.end}{booked ? ' (Đã đặt)' : noShift ? ' (Không ca)' : ''}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : Object.keys(bookingSelections).length ? (
+                    <div className="space-y-2">
+                      {Object.entries(bookingSelections).map(([k, v]) => (
+                        <div key={k} className="flex items-center justify-between p-2 bg-indigo-50 border border-indigo-200 rounded-lg">
+                          <span className="text-sm font-semibold text-indigo-900">{k} {v.start}-{v.end}</span>
+                          <button onClick={() => setBookingSelections(prev => { const n={...prev}; delete n[k]; return n; })} className="p-1 hover:bg-white rounded"><X className="w-4 h-4 text-red-600" /></button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-slate-500 text-center py-8">Chọn ngày trên lịch để chọn giờ</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Tổng kết - hiển thị số tiền kể cả khi không có buổi free */}
+              {Object.keys(bookingSelections).length > 0 && (
+                <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 mb-6 space-y-2">
+                  <p className="font-semibold text-indigo-900">Tổng {Object.keys(bookingSelections).length} buổi</p>
+                  {(() => {
+                    const free = bookingDisciplineId ? (bookingFreeSessions[bookingDisciplineId] || 0) : 0;
+                    const total = Object.keys(bookingSelections).length;
+                    const freeCount = Math.min(free, total);
+                    const paidCount = total - freeCount;
+                    const isFull = free >= 999;
+                    const totalPrice = paidCount * bookingTrainerPrice;
+                    return (
+                      <div className="text-sm text-indigo-700 space-y-1">
+                        {isFull ? (
+                          <span className="text-green-700 font-bold">Full tháng - miễn phí toàn bộ (0đ)</span>
+                        ) : (
+                          <>
+                            <p>{freeCount > 0 ? `${freeCount} buổi miễn phí, ${paidCount} buổi × ${bookingTrainerPrice.toLocaleString('vi-VN')}đ` : `${paidCount} buổi × ${bookingTrainerPrice.toLocaleString('vi-VN')}đ`} = <b className="text-indigo-900">{totalPrice.toLocaleString('vi-VN')}đ</b></p>
+                            {freeCount > 0 && <p className="text-xs text-slate-500">Hội viên còn {free} buổi free cho bộ môn này</p>}
+                            {paidCount > 0 && freeCount === 0 && (
+                              <p className="text-xs text-slate-600">Gói của hội viên: {bookingMemberPackages.length ? bookingMemberPackages.map((p: any) => p.package_id?.name || p.name || 'Gói tập').join(', ') : 'Chưa có gói'}</p>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+
+              <div className="flex gap-3">
+                <button onClick={() => setShowBookingModal(false)} className="flex-1 py-3 bg-slate-100 text-slate-700 rounded-xl font-semibold">Hủy</button>
+                <button onClick={handleBookingSubmit} disabled={bookingSubmitting || Object.keys(bookingSelections).length===0} className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 disabled:opacity-50 flex items-center justify-center gap-2">
+                  {bookingSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : null} Tạo lịch ngay
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </AdminLayout>
   );
