@@ -875,33 +875,33 @@ export function CustomerList() {
 
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden w-full max-w-full min-w-0">
           <div className="overflow-x-auto w-full max-w-full overscroll-x-contain">
-            <table className="w-full min-w-[1100px]">
+            <table className="w-full min-w-[1000px]">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
-                  <th className="px-3 py-4"><input type="checkbox" checked={selectedIds.size===filteredCustomers.length && filteredCustomers.length>0} onChange={toggleSelectAll} /></th>
-                  <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">STT</th>
-                  <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Họ và tên</th>
-                  <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Tài khoản</th>
-                  <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Giới tính</th>
-                  <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Số điện thoại</th>
-                  <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Ngày đăng ký</th>
-                  <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Email</th>
-                  <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Trạng thái</th>
-                  <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Thao tác</th>
+                  <th className="px-2 py-3 w-[36px]"><input type="checkbox" checked={selectedIds.size===filteredCustomers.length && filteredCustomers.length>0} onChange={toggleSelectAll} /></th>
+                  <th className="px-2 py-3 text-left text-sm font-bold text-slate-900 w-[48px]">STT</th>
+                  <th className="px-3 py-3 text-left text-sm font-bold text-slate-900 whitespace-nowrap">Họ và tên</th>
+                  <th className="px-3 py-3 text-left text-sm font-bold text-slate-900">Tài khoản</th>
+                  <th className="px-3 py-3 text-left text-sm font-bold text-slate-900">Giới tính</th>
+                  <th className="px-3 py-3 text-left text-sm font-bold text-slate-900">Số điện thoại</th>
+                  <th className="px-3 py-3 text-left text-sm font-bold text-slate-900">Ngày đăng ký</th>
+                  <th className="px-3 py-3 text-left text-sm font-bold text-slate-900">Email</th>
+                  <th className="px-3 py-3 text-left text-sm font-bold text-slate-900">Trạng thái</th>
+                  <th className="px-3 py-3 text-left text-sm font-bold text-slate-900">Thao tác</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredCustomers.map((customer, index) => (
                   <tr key={customer._id} className="border-b border-slate-100 hover:bg-slate-50">
-                    <td className="px-3 py-4"><input type="checkbox" checked={selectedIds.has(customer._id)} onChange={()=>toggleSelect(customer._id)} /></td>
-                    <td className="px-6 py-4 text-sm text-slate-900">{index + 1}</td>
-                    <td className="px-6 py-4 text-sm font-medium text-slate-900">{customer.fullName || '-'}</td>
-                    <td className="px-6 py-4 text-sm text-slate-600">{customer.account}</td>
-                    <td className="px-6 py-4 text-sm text-slate-600">{customer.gender || '-'}</td>
-                    <td className="px-6 py-4 text-sm text-slate-600">{customer.phone || '-'}</td>
-                    <td className="px-6 py-4 text-sm text-slate-600">{customer.registerDate ? new Date(customer.registerDate).toLocaleDateString('vi-VN') : ''}</td>
-                    <td className="px-6 py-4 text-sm text-slate-600">{customer.email || '-'}</td>
-                    <td className="px-6 py-4">
+                    <td className="px-2 py-3"><input type="checkbox" checked={selectedIds.has(customer._id)} onChange={()=>toggleSelect(customer._id)} /></td>
+                    <td className="px-2 py-3 text-sm text-slate-900 text-center w-[48px]">{index + 1}</td>
+                    <td className="px-3 py-3 text-sm font-medium text-slate-900 whitespace-nowrap max-w-[180px] overflow-hidden text-ellipsis" title={customer.fullName || ''}>{customer.fullName || '-'}</td>
+                    <td className="px-3 py-3 text-sm text-slate-600">{customer.account}</td>
+                    <td className="px-3 py-3 text-sm text-slate-600">{customer.gender || '-'}</td>
+                    <td className="px-3 py-3 text-sm text-slate-600">{customer.phone || '-'}</td>
+                    <td className="px-3 py-3 text-sm text-slate-600">{customer.registerDate ? new Date(customer.registerDate).toLocaleDateString('vi-VN') : ''}</td>
+                    <td className="px-3 py-3 text-sm text-slate-600">{customer.email || '-'}</td>
+                    <td className="px-3 py-3">
                       {(() => {
                         const info = todayCheckMap.get(customer._id);
                         if (info) {
@@ -910,7 +910,7 @@ export function CustomerList() {
                           const label = isCheckedOut ? (cnt > 1 ? `đã check out lần ${cnt}` : 'đã check out') : (cnt > 1 ? `đã check in lần ${cnt}` : 'đã check in');
                           const color = isCheckedOut ? 'bg-blue-100 text-blue-700 border-blue-200' : 'bg-emerald-100 text-emerald-700 border-emerald-200';
                           return (
-                            <button onClick={() => setCheckDetail({ customer, sessions: info.sessions })} className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold border ${color} hover:opacity-80`} title="Xem chi tiết điểm danh">
+                            <button onClick={() => setCheckDetail({ customer, sessions: info.sessions })} className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold border ${color} hover:opacity-80`} title="Xem chi tiết điểm danh">
                               {label}
                             </button>
                           );
@@ -918,7 +918,7 @@ export function CustomerList() {
                         return statusBadge(customer.status);
                       })()}
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-3 py-3">
                       <div className="flex items-center gap-1.5">
                         <button
                           onClick={() => setFaceModal({ open: true, customer })}

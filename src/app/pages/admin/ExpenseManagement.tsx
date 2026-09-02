@@ -142,7 +142,17 @@ export function ExpenseManagement() {
 
   const filteredExpenses = expenses;
 
-  const totalExpenses = summary.all + importCost + equipmentCost;
+  // Tổng hợp client-side để fallback khi summary chưa kịp cập nhật hoặc lỗi
+  const totalByClient = {
+    equipment: expenses.filter(e => e.category === 'equipment').reduce((sum, e) => sum + e.amount, 0),
+    utilities: expenses.filter(e => e.category === 'utilities').reduce((sum, e) => sum + e.amount, 0),
+    tax: expenses.filter(e => e.category === 'tax').reduce((sum, e) => sum + e.amount, 0),
+    other: expenses.filter(e => e.category === 'other').reduce((sum, e) => sum + e.amount, 0),
+  };
+  const clientAll = Object.values(totalByClient).reduce((sum, v) => sum + v, 0);
+  // Ưu tiên summary từ server, fallback về client nếu summary.all === 0 nhưng client có dữ liệu
+  const displaySummary = summary.all > 0 || clientAll === 0 ? summary : { ...totalByClient, all: clientAll, count: expenses.length };
+  const totalExpenses = displaySummary.all + importCost + equipmentCost;
 
   const formatCurrency = (amount: number) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
 
@@ -242,7 +252,7 @@ export function ExpenseManagement() {
               <div className={`flex items-center gap-3 mb-2 ${getCategoryColor(cat).split(' ')[1]}`}>
                 {getCategoryIcon(cat)}<h3 className="font-semibold text-slate-900">{getCategoryName(cat)}</h3>
               </div>
-              <p className="text-2xl font-bold text-slate-900">{formatCurrency(summary[cat])}</p>
+              <p className="text-2xl font-bold text-slate-900">{formatCurrency(displaySummary[cat])}</p>
             </div>
           ))}
         </div>
