@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router';
 import {
   LayoutDashboard, CreditCard, History, Calendar, UserCircle,
   Package, TrendingUp, Settings, LogOut, Menu, X, FileText,
-  Bell, Home, MessageCircle, AlertTriangle, CheckCircle, XCircle, Clock, ArrowRightLeft, Wallet, ScanLine
+  Bell, Home, MessageCircle, AlertTriangle, CheckCircle, XCircle, Clock, ArrowRightLeft, Wallet, ScanLine, Lock
 } from 'lucide-react';
 import { useAuth, getApiUrl, getAuthHeaders, customerAvatarSrc } from '../context/AuthContext';
 import { useChatContext } from '../context/ChatContext';
@@ -30,6 +30,10 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
   const updateNotifFromStatus = (status: string | undefined) => {
     if (!status || user?.isStaff) return;
+    if (status === 'locked') {
+      setProfileNotif({ type: 'error', title: 'Tài khoản bị khóa', message: 'Tài khoản của bạn đã bị khóa, mọi hoạt động tạm dừng. Chỉ nhắn tin cho lễ tân được phép. Vui lòng liên hệ quầy để mở khóa!' });
+      return;
+    }
     if (status === 'pending') {
       const created = localStorage.getItem('user_created_at');
       if (created) {
@@ -174,6 +178,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
   const totalUnread = unreadCount + (chatUnread?.total || 0);
   const hasRedDot = (user?.status && user.status !== 'approved' && user.status !== 'locked') || totalUnread > 0;
+  const isLocked = user?.status === 'locked' && !user?.isStaff;
 
   const menuItems = [
     { name: 'Tổng quan', href: '/dashboard', icon: LayoutDashboard },
@@ -227,6 +232,18 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                 const Icon = item.icon;
                 const isActive = location.pathname === item.href;
                 const chatBadge = item.href === '/dashboard/messages' ? (chatUnread?.total || 0) : 0;
+                const disabled = isLocked && item.href !== '/dashboard/messages';
+                if (disabled) {
+                  return (
+                    <li key={item.name}>
+                      <div className="flex items-center gap-3 px-4 py-3 rounded-xl text-slate-400 bg-slate-50 cursor-not-allowed opacity-60">
+                        <Icon className="w-5 h-5" />
+                        <span className="text-sm">{item.name}</span>
+                        <Lock className="w-3.5 h-3.5 ml-auto text-slate-400" />
+                      </div>
+                    </li>
+                  );
+                }
                 return (
                   <li key={item.name}>
                     <Link to={item.href}
@@ -358,7 +375,27 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
           </div>
         </header>
 
-        <main className="p-6">{children}</main>
+        {isLocked && (
+          <div className="mx-6 mt-4 bg-red-50 border border-red-200 rounded-xl p-4 flex items-center gap-3">
+            <Lock className="w-5 h-5 text-red-600 shrink-0" />
+            <div>
+              <p className="text-sm font-bold text-red-700">Tài khoản đã bị khóa</p>
+              <p className="text-xs text-red-600">Mọi hoạt động (đặt lịch, mua gói, check-in) đã tạm dừng. Bạn chỉ có thể nhắn tin cho lễ tân để được hỗ trợ mở khóa.</p>
+            </div>
+          </div>
+        )}
+        <main className="p-6">
+          {isLocked && location.pathname !== '/dashboard/messages' ? (
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-10 text-center">
+              <Lock className="w-10 h-10 text-red-400 mx-auto mb-3" />
+              <h3 className="text-lg font-bold text-slate-900">Tài khoản đang bị khóa</h3>
+              <p className="text-sm text-slate-500 mt-2">Vui lòng nhắn tin cho lễ tân hoặc liên hệ quầy để được mở khóa.</p>
+              <Link to="/dashboard/messages" className="inline-flex items-center gap-2 mt-4 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold">
+                <MessageCircle className="w-4 h-4" /> Đi đến nhắn tin
+              </Link>
+            </div>
+          ) : children}
+        </main>
       </div>
 
       {isSidebarOpen && (

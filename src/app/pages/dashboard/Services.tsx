@@ -3,9 +3,7 @@ import { Button } from '@mui/material';
 import {
   Pause,
   Play,
-  RotateCcw,
   Users,
-  MapPin,
   FileText,
   HelpCircle,
   Undo2,
@@ -44,9 +42,7 @@ interface ServiceMeta {
 const SERVICE_CATALOG: ServiceMeta[] = [
   { ...serviceMeta('freeze', Pause, 'bg-blue-50', 'text-blue-600') },
   { ...serviceMeta('activate', Play, 'bg-green-50', 'text-green-600') },
-  { ...serviceMeta('reactivate-expired', RotateCcw, 'bg-teal-50', 'text-teal-600') },
   { ...serviceMeta('transfer', Users, 'bg-purple-50', 'text-purple-600') },
-  { ...serviceMeta('change-club', MapPin, 'bg-amber-50', 'text-amber-600') },
   { ...serviceMeta('contract', FileText, 'bg-slate-50', 'text-slate-600') },
   { ...serviceMeta('support', HelpCircle, 'bg-indigo-50', 'text-indigo-600') },
   { ...serviceMeta('cancel-refund', Undo2, 'bg-rose-50', 'text-rose-600') },
@@ -171,8 +167,6 @@ export function Services() {
   const [recipientResults, setRecipientResults] = useState<any[]>([]);
   const [searchingRecipient, setSearchingRecipient] = useState(false);
   const [recipientOpen, setRecipientOpen] = useState(false);
-  const [showHlvWarning, setShowHlvWarning] = useState(false);
-  const [hlvCount, setHlvCount] = useState(0);
   const searchTimer = useRef<any>(null);
 
   const memberLocationId = user?.locationId || null;
@@ -331,7 +325,6 @@ export function Services() {
   const frozenPackages = dedupeByPackage(
     packages.filter(p => p.status === 'đang tạm ngưng')
   );
-  const expiredPackages = packages.filter(p => p.status === 'hết hạn');
   const cancelablePackages = packages.filter(p => p.status !== 'đã hủy');
   const contractList = (() => {
     const map = new Map<string, MyPackage>();
@@ -469,14 +462,6 @@ export function Services() {
           description: `Kích hoạt lại gói "${pkgName}"${reason ? `. Lý do: ${reason}` : ''}`,
           data
         };
-      case 'reactivate-expired':
-        data.packageId = form.packageId;
-        data.duration = form.duration;
-        data.reason = reason;
-        return {
-          description: `Kích hoạt gói hết hạn "${pkgName}" (gia hạn ${form.duration} tháng)${reason ? `. Ghi chú: ${reason}` : ''}`,
-          data
-        };
       case 'transfer':
         data.packageId = form.packageId;
         data.recipientId = form.recipientId;
@@ -486,16 +471,6 @@ export function Services() {
           description: `Chuyển nhượng gói "${pkgName}" cho ${form.recipientName || form.recipient}${reason ? `. Lý do: ${reason}` : ''}`,
           data
         };
-      case 'change-club':
-        data.targetClub = form.targetClub;
-        data.reason = reason;
-        {
-          const loc = locations.find(l => l._id === form.targetClub);
-          return {
-            description: `Chuyển đến cơ sở ${loc?.title || loc?.address || form.targetClub}${reason ? `. Lý do: ${reason}` : ''}`,
-            data
-          };
-        }
       case 'cancel-refund':
         data.packageId = form.packageId;
         data.bankName = form.bankName;
@@ -529,35 +504,7 @@ export function Services() {
 
   const handleSubmitRequest = async () => {
     if (!selectedService) return;
-
-    if (selectedService === 'change-club') {
-      const hasHlv = await checkHlvBooking();
-      if (hasHlv) {
-        setShowHlvWarning(true);
-        return;
-      }
-    }
-
     await doSubmitRequest();
-  };
-
-  const checkHlvBooking = async (): Promise<boolean> => {
-    try {
-      const res = await fetch(`${getApiUrl()}/api/bookings/my`, { headers: headers as any });
-      if (!res.ok) return false;
-      const data = await res.json();
-      const bookings = Array.isArray(data) ? data : [];
-      const upcoming = bookings.filter((b: any) => {
-        if (!b.trainerId || b.trainerId === null) return false;
-        if (b.status === 'cancelled' || b.status === 'rejected' || b.status === 'completed') return false;
-        if (!b.date) return true;
-        return new Date(b.date) >= new Date(new Date().toDateString());
-      });
-      setHlvCount(upcoming.length);
-      return upcoming.length > 0;
-    } catch {
-      return false;
-    }
   };
 
   const doSubmitRequest = async () => {
@@ -602,12 +549,8 @@ export function Services() {
         return !!form.packageId && form.description.trim().length > 0;
       case 'activate':
         return !!form.packageId;
-      case 'reactivate-expired':
-        return !!form.packageId;
       case 'transfer':
         return !!form.packageId && !!form.recipientId && form.description.trim().length > 0;
-      case 'change-club':
-        return !!form.targetClub && form.description.trim().length > 0 && locations.some(loc => loc._id !== memberLocationId);
       case 'cancel-refund':
         return !!form.packageId && form.description.trim().length > 0;
       case 'locker':
@@ -694,44 +637,6 @@ export function Services() {
               ))}
             </select>
           </div>
-        );
-      case 'reactivate-expired':
-        if (expiredPackages.length === 0) {
-          return (
-            <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl text-sm text-slate-600">
-              Bạn hiện không có gói tập nào đã hết hạn. Hãy thử đăng ký gói mới nếu bạn muốn tiếp tục tập luyện.
-            </div>
-          );
-        }
-        return (
-          <>
-            <div>
-              <label className={labelCls}>Gói đã hết hạn</label>
-              <select
-                value={form.packageId}
-                onChange={e => setField('packageId', e.target.value)}
-                className={inputCls}
-              >
-                <option value="">Chọn gói cần kích hoạt lại</option>
-                {expiredPackages.map(pkg => (
-                  <option key={pkg._id} value={pkg._id}>{pkg.name}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className={labelCls}>Thời gian gia hạn</label>
-              <select
-                value={form.duration}
-                onChange={e => setField('duration', e.target.value)}
-                className={inputCls}
-              >
-                <option value="1">1 tháng</option>
-                <option value="3">3 tháng</option>
-                <option value="6">6 tháng</option>
-                <option value="12">12 tháng</option>
-              </select>
-            </div>
-          </>
         );
       case 'transfer':
         return (
@@ -850,38 +755,6 @@ export function Services() {
                   </div>
                 )}
               </div>
-            </div>
-          </>
-        );
-      case 'change-club':
-        const otherLocations = locations.filter(loc => loc._id !== memberLocationId);
-        return (
-          <>
-            <div>
-              <label className={labelCls}>Lý do chuyển cơ sở</label>
-              <textarea
-                value={form.description}
-                onChange={e => setField('description', e.target.value)}
-                placeholder="Vui lòng cho chúng tôi biết lý do chuyển cơ sở..."
-                className={`${inputCls} resize-none`}
-                rows={3}
-              />
-            </div>
-            <div>
-              <label className={labelCls}>Chọn cơ sở muốn chuyển đến</label>
-              <select
-                value={form.targetClub}
-                onChange={e => setField('targetClub', e.target.value)}
-                className={inputCls}
-              >
-                <option value="">Chọn cơ sở</option>
-                {otherLocations.map(loc => (
-                  <option key={loc._id} value={loc._id}>{loc.title || loc.address}</option>
-                ))}
-              </select>
-              {otherLocations.length === 0 && (
-                <p className="text-xs text-slate-500 mt-2">Hiện tại hệ thống chỉ có một cơ sở. Không có cơ sở nào khác để chuyển đến.</p>
-              )}
             </div>
           </>
         );
@@ -1194,14 +1067,6 @@ export function Services() {
                 </div>
               )}
 
-              {selectedService === 'reactivate-expired' && expiredPackages.length > 0 && (
-                <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl mb-6">
-                  <p className="text-sm text-amber-800">
-                    <strong>Lưu ý:</strong> Gói sẽ được gia hạn từ thời điểm được duyệt theo số tháng bạn chọn.
-                  </p>
-                </div>
-              )}
-
               {selectedService === 'activate' && frozenPackages.length > 0 && (
                 <div className="bg-blue-50 border border-blue-200 p-4 rounded-xl mb-6">
                   <p className="text-sm text-blue-800">
@@ -1214,14 +1079,6 @@ export function Services() {
                 <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl mb-6">
                   <p className="text-sm text-amber-800">
                     <strong>Lưu ý:</strong> Việc hoàn phí sẽ được tính theo chính sách của phòng tập. Yêu cầu sẽ được xử lý trong vòng 24 giờ.
-                  </p>
-                </div>
-              )}
-
-              {selectedService === 'change-club' && (
-                <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl mb-6">
-                  <p className="text-sm text-amber-800">
-                    <strong>Lưu ý:</strong> Bạn có thể tiếp tục sử dụng cơ sở hiện tại trong thời gian chờ xét duyệt.
                   </p>
                 </div>
               )}
@@ -1265,58 +1122,6 @@ export function Services() {
                   }}
                 >
                   {submitting ? 'Đang gửi...' : 'Gửi yêu cầu'}
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {showHlvWarning && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]" onClick={() => setShowHlvWarning(false)}>
-            <div className="bg-white rounded-2xl p-8 max-w-md w-full mx-4" onClick={(e) => e.stopPropagation()}>
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-12 h-12 bg-amber-100 rounded-xl flex items-center justify-center">
-                  <MessageSquareWarning className="w-6 h-6 text-amber-600" />
-                </div>
-                <h2 className="text-xl font-bold text-slate-900">Xác nhận chuyển cơ sở</h2>
-              </div>
-              <p className="text-slate-600 mb-6">
-                Bạn hiện có <strong className="text-slate-900">{hlvCount} lịch tập với HLV</strong> tại cơ sở hiện tại.
-                Sau khi chuyển cơ sở, lịch tập với HLV có thể bị ảnh hưởng. Bạn có chắc chắn muốn tiếp tục?
-              </p>
-              <div className="flex gap-3">
-                <Button
-                  fullWidth
-                  variant="outlined"
-                  onClick={() => setShowHlvWarning(false)}
-                  sx={{
-                    height: 48,
-                    borderRadius: 2,
-                    textTransform: 'none',
-                    borderColor: '#cbd5e1',
-                    color: '#475569',
-                    '&:hover': { borderColor: '#94a3b8', bgcolor: '#f8fafc' }
-                  }}
-                >
-                  Hủy
-                </Button>
-                <Button
-                  fullWidth
-                  variant="contained"
-                  onClick={() => {
-                    setShowHlvWarning(false);
-                    doSubmitRequest();
-                  }}
-                  disabled={submitting}
-                  sx={{
-                    height: 48,
-                    borderRadius: 2,
-                    textTransform: 'none',
-                    bgcolor: '#4f46e5',
-                    '&:hover': { bgcolor: '#4338ca' }
-                  }}
-                >
-                  {submitting ? 'Đang gửi...' : 'OK'}
                 </Button>
               </div>
             </div>

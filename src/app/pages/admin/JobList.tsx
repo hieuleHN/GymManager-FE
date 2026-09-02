@@ -16,7 +16,6 @@ const ROLE_LABELS: Record<string, string> = {
 interface Job {
   _id: string;
   name: string;
-  salary: number;
   description?: string;
   isAdmin?: boolean;
   permissions?: string[];
@@ -108,7 +107,6 @@ export function JobList() {
                     <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">STT</th>
                     <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Tên công việc</th>
                     <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Mô tả</th>
-                    <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Tiền lương</th>
                     <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Phân quyền</th>
                     <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Quyền</th>
                     <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Thao tác</th>
@@ -120,7 +118,6 @@ export function JobList() {
                       <td className="px-6 py-4 text-sm text-slate-900">{index + 1}</td>
                       <td className="px-6 py-4 text-sm font-medium text-slate-900">{job.name}</td>
                       <td className="px-6 py-4 text-sm text-slate-600">{job.description || '-'}</td>
-                      <td className="px-6 py-4 text-sm text-indigo-600 font-bold">{(job.salary ?? 0).toLocaleString('vi-VN')}đ</td>
                       <td className="px-6 py-4">
                         <span className={`inline-flex px-3 py-1 rounded-full text-xs font-semibold ${job.isAdmin ? 'bg-purple-100 text-purple-700' : 'bg-slate-100 text-slate-600'}`}>
                           {job.isAdmin ? 'Có quyền' : 'Không'}
@@ -151,7 +148,7 @@ export function JobList() {
                     </tr>
                   ))}
                   {jobs.length === 0 && (
-                    <tr><td colSpan={7} className="px-6 py-12 text-center text-slate-500">Chưa có công việc nào. Hãy thêm công việc đầu tiên!</td></tr>
+                    <tr><td colSpan={6} className="px-6 py-12 text-center text-slate-500">Chưa có công việc nào. Hãy thêm công việc đầu tiên!</td></tr>
                   )}
                 </tbody>
               </table>
