@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
-import { DollarSign, Plus, Edit2, Trash2, Wrench, Wifi, Droplet, Zap, Receipt, Calendar, Loader2, Package } from 'lucide-react';
+import { DollarSign, Plus, Edit2, Trash2, Wrench, Wifi, Droplet, Zap, Receipt, Calendar, Loader2, Package, Search, X } from 'lucide-react';
 import { AdminLayout } from '../../components/AdminLayout';
 import { Pagination } from '../../components/Pagination';
 import { getAuthHeaders } from '../../context/AuthContext';
@@ -26,11 +26,13 @@ interface ExpenseFormData {
 }
 
 export function ExpenseManagement() {
-  const headers = getAuthHeaders();
   const { selectedClub, clubs } = useClub();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [searchText, setSearchText] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<Expense | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -40,20 +42,32 @@ export function ExpenseManagement() {
   const [importCost, setImportCost] = useState(0);
   const [equipmentCost, setEquipmentCost] = useState(0);
   const [summary, setSummary] = useState({ equipment: 0, utilities: 0, tax: 0, other: 0, all: 0, count: 0 });
+  const [drilldown, setDrilldown] = useState<{ title: string; subtitle: string; columns: string[]; rows: any[] } | null>(null);
+  const [drillSearch, setDrillSearch] = useState('');
+  const [products, setProducts] = useState<any[]>([]);
+  const [equipments, setEquipments] = useState<any[]>([]);
 
   const { register, handleSubmit: onFormSubmit, formState: { errors }, reset } = useForm<ExpenseFormData>({
     defaultValues: { category: 'equipment', description: '', amount: '', date: '', note: '', locationId: '' }
   });
 
-  const fetchExpenses = async (p = page) => {
+  const fetchExpenses = async (p = page, club?: string, cat?: string, search?: string, from?: string, to?: string) => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
       params.set('page', String(p));
       params.set('limit', '15');
-      if (selectedClub && selectedClub !== 'all') params.set('locationId', selectedClub);
-      if (selectedCategory !== 'all') params.set('category', selectedCategory);
-      const res = await fetch(`/api/expenses?${params.toString()}`, { headers });
+      const clubVal = club ?? selectedClub;
+      if (clubVal && clubVal !== 'all') params.set('locationId', clubVal);
+      const catVal = cat ?? selectedCategory;
+      if (catVal && catVal !== 'all') params.set('category', catVal);
+      const searchVal = search ?? searchText;
+      if (searchVal.trim()) params.set('search', searchVal.trim());
+      const fromVal = from ?? dateFrom;
+      const toVal = to ?? dateTo;
+      if (fromVal) params.set('startDate', fromVal);
+      if (toVal) params.set('endDate', toVal);
+      const res = await fetch(`/api/expenses?${params.toString()}`, { headers: getAuthHeaders() });
       if (!res.ok) throw new Error('Failed');
       const data = await res.json();
       setExpenses(data.data || []);
@@ -66,19 +80,38 @@ export function ExpenseManagement() {
     }
   };
 
-  const fetchSummary = async () => {
+  const fetchSummary = async (club?: string, search?: string, from?: string, to?: string) => {
     try {
       const params = new URLSearchParams();
-      if (selectedClub && selectedClub !== 'all') params.set('locationId', selectedClub);
-      const res = await fetch(`/api/expenses/summary?${params.toString()}`, { headers });
+      const clubVal = club ?? selectedClub;
+      if (clubVal && clubVal !== 'all') params.set('locationId', clubVal);
+      const searchVal = search ?? searchText;
+      if (searchVal.trim()) params.set('search', searchVal.trim());
+      const fromVal = from ?? dateFrom;
+      const toVal = to ?? dateTo;
+      if (fromVal) params.set('startDate', fromVal);
+      if (toVal) params.set('endDate', toVal);
+      const res = await fetch(`/api/expenses/summary?${params.toString()}`, { headers: getAuthHeaders() });
       if (!res.ok) return;
       const data = await res.json();
       setSummary(data);
     } catch {}
   };
 
-  useEffect(() => { setPage(1); fetchExpenses(1); fetchSummary(); }, [selectedClub]);
-  useEffect(() => { setPage(1); fetchExpenses(1); }, [selectedCategory]);
+  useEffect(() => {
+    setPage(1);
+    fetchExpenses(1, selectedClub, selectedCategory, searchText, dateFrom, dateTo);
+    fetchSummary(selectedClub, searchText, dateFrom, dateTo);
+  }, [selectedClub, selectedCategory, dateFrom, dateTo]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setPage(1);
+      fetchExpenses(1, selectedClub, selectedCategory, searchText, dateFrom, dateTo);
+      fetchSummary(selectedClub, searchText, dateFrom, dateTo);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchText]);
 
   useEffect(() => {
     const fetchImportCost = async () => {
@@ -86,11 +119,12 @@ export function ExpenseManagement() {
         const base = selectedClub && selectedClub !== 'all'
           ? `/api/products?locationId=${selectedClub}`
           : '/api/products';
-        const res = await fetch(base, { headers });
+        const res = await fetch(base, { headers: getAuthHeaders() });
         if (!res.ok) return;
         const data = await res.json();
-        const products = data.data || [];
-        const total = products.reduce((sum: number, p: any) => sum + (p.costPrice || 0) * (p.importQuantity || p.quantity || 0), 0);
+        const list = data.data || [];
+        setProducts(list);
+        const total = list.reduce((sum: number, p: any) => sum + (p.costPrice || 0) * (p.importQuantity || p.quantity || 0), 0);
         setImportCost(total);
       } catch {}
     };
@@ -103,11 +137,12 @@ export function ExpenseManagement() {
         const base = selectedClub && selectedClub !== 'all'
           ? `/api/equipments?locationId=${selectedClub}`
           : '/api/equipments';
-        const res = await fetch(base, { headers });
+        const res = await fetch(base, { headers: getAuthHeaders() });
         if (!res.ok) return;
         const data = await res.json();
-        const equipments = data.data || data || [];
-        const total = equipments.reduce((sum: number, e: any) => sum + (e.total || 0), 0);
+        const list = data.data || data || [];
+        setEquipments(Array.isArray(list) ? list : []);
+        const total = (Array.isArray(list) ? list : []).reduce((sum: number, e: any) => sum + (e.total || 0), 0);
         setEquipmentCost(total);
       } catch {}
     };
@@ -146,6 +181,79 @@ export function ExpenseManagement() {
 
   const formatCurrency = (amount: number) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
 
+  const drillFilteredRows = useMemo(() => {
+    if (!drilldown) return [];
+    if (!drillSearch.trim()) return drilldown.rows;
+    const q = drillSearch.toLowerCase();
+    return drilldown.rows.filter(row => Object.values(row).some(v => v != null && String(v).toLowerCase().includes(q)));
+  }, [drilldown, drillSearch]);
+
+  const drillAllExpenses = useMemo(() => {
+    const params = new URLSearchParams();
+    if (selectedClub && selectedClub !== 'all') params.set('locationId', selectedClub);
+    return { params };
+  }, [selectedClub]);
+
+  const openDrillAll = async () => {
+    try {
+      const params = new URLSearchParams(drillAllExpenses.params);
+      params.set('limit', '9999');
+      const res = await fetch(`/api/expenses?${params.toString()}`, { headers: getAuthHeaders() });
+      if (!res.ok) return;
+      const data = await res.json();
+      const rows = (data.data || []).map((e: any) => ({
+        'Mô tả': e.description,
+        'Loại': getCategoryName(e.category),
+        'Số tiền': formatCurrency(e.amount),
+        'Ngày': new Date(e.date).toLocaleDateString('vi-VN'),
+        'Ghi chú': e.note || '—',
+      }));
+      setDrilldown({ title: 'Tất cả chi phí', subtitle: `${rows.length} khoản chi — Tổng: ${formatCurrency(summary.all)}`, columns: ['Mô tả', 'Loại', 'Số tiền', 'Ngày', 'Ghi chú'], rows });
+      setDrillSearch('');
+    } catch {}
+  };
+
+  const openDrillCategory = async (cat: string, label: string) => {
+    try {
+      const params = new URLSearchParams(drillAllExpenses.params);
+      params.set('category', cat);
+      params.set('limit', '9999');
+      const res = await fetch(`/api/expenses?${params.toString()}`, { headers: getAuthHeaders() });
+      if (!res.ok) return;
+      const data = await res.json();
+      const rows = (data.data || []).map((e: any) => ({
+        'Mô tả': e.description,
+        'Số tiền': formatCurrency(e.amount),
+        'Ngày': new Date(e.date).toLocaleDateString('vi-VN'),
+        'Ghi chú': e.note || '—',
+      }));
+      setDrilldown({ title: label, subtitle: `${rows.length} khoản chi — Tổng: ${formatCurrency(summary[cat as keyof typeof summary] || 0)}`, columns: ['Mô tả', 'Số tiền', 'Ngày', 'Ghi chú'], rows });
+      setDrillSearch('');
+    } catch {}
+  };
+
+  const openDrillImport = () => {
+    const rows = products.map((p: any) => ({
+      'Tên hàng': p.name || p.title || '—',
+      'Giá vốn': formatCurrency(p.costPrice || 0),
+      'Số lượng': p.importQuantity || p.quantity || 0,
+      'Thành tiền': formatCurrency((p.costPrice || 0) * (p.importQuantity || p.quantity || 0)),
+    }));
+    setDrilldown({ title: 'Tiền nhập hàng', subtitle: `${rows.length} mặt hàng — Tổng: ${formatCurrency(importCost)}`, columns: ['Tên hàng', 'Giá vốn', 'Số lượng', 'Thành tiền'], rows });
+    setDrillSearch('');
+  };
+
+  const openDrillEquipment = () => {
+    const rows = equipments.map((e: any) => ({
+      'Tên thiết bị': e.name || '—',
+      'Nguyên giá': formatCurrency(e.total || 0),
+      'Thời gian mua': e.createdAt ? new Date(e.createdAt).toLocaleDateString('vi-VN') : '—',
+      'Tình trạng': e.status || 'active',
+    }));
+    setDrilldown({ title: 'Tiền thiết bị', subtitle: `${rows.length} thiết bị — Tổng: ${formatCurrency(equipmentCost)}`, columns: ['Tên thiết bị', 'Nguyên giá', 'Thời gian mua', 'Tình trạng'], rows });
+    setDrillSearch('');
+  };
+
   const openAdd = () => {
     setEditing(null);
     reset({ category: 'equipment', description: '', amount: '', date: '', note: '', locationId: selectedClub === 'all' ? '' : selectedClub });
@@ -180,13 +288,14 @@ export function ExpenseManagement() {
       const url = editing ? `/api/expenses/${editing._id}` : '/api/expenses';
       const method = editing ? 'PUT' : 'POST';
       const res = await fetch(url, { method, headers, body: JSON.stringify(body) });
-      if (!res.ok) throw new Error('Failed');
-      toast.success(editing ? 'Cập nhật chi phí thành công!' : 'Thêm chi phí thành công!');
+      const resData = await res.json();
+      if (!res.ok) throw new Error(resData.error || resData.message || 'Thao tác thất bại');
+      toast.success(resData.message || (editing ? 'Cập nhật chi phí thành công!' : 'Thêm chi phí thành công!'));
       setShowModal(false);
       reset();
-      setPage(1); fetchExpenses(1); fetchSummary();
-    } catch {
-      toast.error('Thao tác thất bại');
+      setPage(1); fetchExpenses(1, selectedClub, selectedCategory, searchText, dateFrom, dateTo); fetchSummary(selectedClub, searchText, dateFrom, dateTo);
+    } catch (e: any) {
+      toast.error(e.message || 'Thao tác thất bại');
     } finally {
       setSubmitting(false);
     }
@@ -196,11 +305,12 @@ export function ExpenseManagement() {
     if (!confirm('Bạn có chắc chắn muốn xóa chi phí này?')) return;
     try {
       const res = await fetch(`/api/expenses/${id}`, { method: 'DELETE', headers });
-      if (!res.ok) throw new Error('Failed');
-      toast.success('Đã xóa chi phí');
-      fetchExpenses(); fetchSummary();
-    } catch {
-      toast.error('Xóa thất bại');
+      const resData = await res.json();
+      if (!res.ok) throw new Error(resData.error || resData.message || 'Xóa thất bại');
+      toast.success(resData.message || 'Đã xóa chi phí');
+      fetchExpenses(page, selectedClub, selectedCategory, searchText, dateFrom, dateTo); fetchSummary(selectedClub, searchText, dateFrom, dateTo);
+    } catch (e: any) {
+      toast.error(e.message || 'Xóa thất bại');
     }
   };
 
@@ -221,24 +331,28 @@ export function ExpenseManagement() {
         </div>
 
         <div className="grid md:grid-cols-2 lg:grid-cols-6 gap-4">
-          <div className="bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-2xl p-6 text-white">
+          <div onClick={openDrillAll}
+            className="bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-2xl p-6 text-white cursor-pointer hover:shadow-lg hover:scale-[1.02] transition-all">
             <div className="flex items-center gap-3 mb-2"><DollarSign className="w-6 h-6" /><h3 className="font-semibold">Tổng chi phí</h3></div>
             <p className="text-3xl font-bold">{formatCurrency(totalExpenses)}</p>
           </div>
-          <div className="bg-white rounded-2xl p-6 border border-slate-200">
+          <div onClick={openDrillImport}
+            className="bg-white rounded-2xl p-6 border border-slate-200 cursor-pointer hover:shadow-md hover:border-amber-300 transition-all">
             <div className="flex items-center gap-3 mb-2 text-amber-600">
               <Package className="w-6 h-6" /><h3 className="font-semibold text-slate-900">Tiền nhập hàng</h3>
             </div>
             <p className="text-2xl font-bold text-slate-900">{formatCurrency(importCost)}</p>
           </div>
-          <div className="bg-white rounded-2xl p-6 border border-slate-200">
+          <div onClick={openDrillEquipment}
+            className="bg-white rounded-2xl p-6 border border-slate-200 cursor-pointer hover:shadow-md hover:border-blue-300 transition-all">
             <div className="flex items-center gap-3 mb-2 text-blue-600">
               <Wrench className="w-6 h-6" /><h3 className="font-semibold text-slate-900">Tiền thiết bị</h3>
             </div>
             <p className="text-2xl font-bold text-slate-900">{formatCurrency(equipmentCost)}</p>
           </div>
           {(['equipment', 'utilities', 'tax', 'other'] as const).map(cat => (
-            <div key={cat} className="bg-white rounded-2xl p-6 border border-slate-200">
+            <div key={cat} onClick={() => openDrillCategory(cat, getCategoryName(cat))}
+              className="bg-white rounded-2xl p-6 border border-slate-200 cursor-pointer hover:shadow-md hover:border-indigo-300 transition-all">
               <div className={`flex items-center gap-3 mb-2 ${getCategoryColor(cat).split(' ')[1]}`}>
                 {getCategoryIcon(cat)}<h3 className="font-semibold text-slate-900">{getCategoryName(cat)}</h3>
               </div>
@@ -248,16 +362,40 @@ export function ExpenseManagement() {
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
-          <div className="flex items-center gap-3">
-            <label className="text-sm font-medium text-slate-700">Lọc theo loại:</label>
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="text-sm font-medium text-slate-700">Lọc:</label>
             <select value={selectedCategory} onChange={(e) => setSelectedCategory(e.target.value)}
-              className="px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500">
-              <option value="all">Tất cả</option>
+              className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500">
+              <option value="all">Tất cả loại</option>
               <option value="equipment">Sửa thiết bị</option>
               <option value="utilities">Điện, nước, internet</option>
               <option value="tax">Thuế</option>
               <option value="other">Khác</option>
             </select>
+            <div className="relative flex-1 min-w-[200px]">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <input type="text" value={searchText} onChange={(e) => setSearchText(e.target.value)}
+                placeholder="Tìm theo mô tả, ghi chú..."
+                className="w-full pl-9 pr-8 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500" />
+              {searchText && (
+                <button onClick={() => setSearchText('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)}
+                className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500" />
+              <span className="text-slate-400">—</span>
+              <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)}
+                className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500" />
+            </div>
+            {(dateFrom || dateTo || searchText) && (
+              <button onClick={() => { setDateFrom(''); setDateTo(''); setSearchText(''); }}
+                className="text-xs text-red-500 hover:text-red-700 font-medium whitespace-nowrap">
+                Xóa bộ lọc
+              </button>
+            )}
           </div>
         </div>
 
@@ -298,7 +436,7 @@ export function ExpenseManagement() {
               {filteredExpenses.length === 0 && <div className="p-8 text-center text-slate-500">Chưa có khoản chi nào</div>}
             </div>
           )}
-          {!loading && <Pagination page={page} totalPages={totalPages} total={total} limit={15} onPageChange={(p) => { setPage(p); fetchExpenses(p); }} />}
+          {!loading && <Pagination page={page} totalPages={totalPages} total={total} limit={15} onPageChange={(p) => { setPage(p); fetchExpenses(p, selectedClub, selectedCategory, searchText, dateFrom, dateTo); }} />}
         </div>
       </div>
 
@@ -371,6 +509,77 @@ export function ExpenseManagement() {
                   className="flex-1 px-4 py-3 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 transition-colors font-semibold">Hủy</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {drilldown && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setDrilldown(null)}>
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[85vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-3 p-5 border-b border-slate-100">
+              <div className="flex-1">
+                <h3 className="text-lg font-bold text-slate-900">{drilldown.title}</h3>
+                <p className="text-sm text-slate-500">{drilldown.subtitle}</p>
+              </div>
+              <button onClick={() => setDrilldown(null)} className="text-slate-400 hover:text-slate-600 transition-colors p-1">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            {drilldown.rows.length > 3 && (
+              <div className="px-5 pt-4">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input type="text" value={drillSearch} onChange={e => setDrillSearch(e.target.value)}
+                    placeholder="Tìm kiếm..."
+                    className="w-full pl-10 pr-4 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400" />
+                  {drillSearch && (
+                    <button onClick={() => setDrillSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+            <div className="flex-1 overflow-y-auto p-5">
+              {drillFilteredRows.length > 0 ? (
+                <div className="border border-slate-200 rounded-xl overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="sticky top-0 bg-slate-50 border-b border-slate-200">
+                      <tr>
+                        {drilldown.columns.map(col => (
+                          <th key={col} className={`py-2.5 px-3 text-slate-600 font-medium ${['Số tiền', 'Thành tiền', 'Giá vốn', 'Nguyên giá'].includes(col) ? 'text-right' : 'text-left'}`}>{col}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {drillFilteredRows.map((row, i) => (
+                        <tr key={i} className="border-b border-slate-50 hover:bg-slate-50/50">
+                          {drilldown.columns.map(col => {
+                            const isMoney = ['Số tiền', 'Thành tiền', 'Giá vốn', 'Nguyên giá'].includes(col);
+                            return (
+                              <td key={col} className={`py-2.5 px-3 ${isMoney ? 'text-right font-medium text-slate-800' : 'text-slate-700'}`}>
+                                {row[col] ?? '—'}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-12 text-slate-400">
+                  <p className="text-sm">{drillSearch ? 'Không tìm thấy kết quả' : 'Không có dữ liệu'}</p>
+                </div>
+              )}
+            </div>
+            <div className="px-5 pb-4">
+              <button onClick={() => setDrilldown(null)}
+                className="w-full py-2.5 bg-slate-900 text-white rounded-xl text-sm font-medium hover:bg-slate-800 transition-colors">
+                Đóng
+              </button>
+            </div>
           </div>
         </div>
       )}
