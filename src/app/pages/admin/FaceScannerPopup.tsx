@@ -96,19 +96,22 @@ export function FaceScannerPopup() {
             setIsModelLoaded(true);
             setStatusText('Đang tải dữ liệu FaceID hội viên...');
 
-            const res = await axios.get(`${backendUrl}/api/checkin/face/descriptors`, {
-                headers: getDirectHeaders() as any
-            });
-
-            if (res.data.success && Array.isArray(res.data.data) && res.data.data.length > 0) {
-                const labeled = res.data.data.map((c: any) =>
-                    new faceapi.LabeledFaceDescriptors(c._id, [new Float32Array(c.faceDescriptor)])
-                );
-                setFaceMatcher(new faceapi.FaceMatcher(labeled, 0.62));
-                setStatusText(`Sẵn sàng nhận diện · Đã nạp ${labeled.length} hội viên`);
+            const [custRes, staffRes] = await Promise.all([
+                axios.get(`${backendUrl}/api/checkin/face/descriptors`, { headers: getDirectHeaders() as any }).catch(() => ({ data: { data: [] } } as any)),
+                axios.get(`${backendUrl}/api/staff/face/descriptors`, { headers: getDirectHeaders() as any }).catch(() => ({ data: { data: [] } } as any))
+            ]);
+            const custList = (custRes as any).data?.data || ((custRes as any).data?.success ? (custRes as any).data.data : []);
+            const staffList2 = (staffRes as any).data?.data || ((staffRes as any).data?.success ? (staffRes as any).data.data : []);
+            const labeled: faceapi.LabeledFaceDescriptors[] = [];
+            if (Array.isArray(custList)) custList.forEach((c: any) => { if (c.faceDescriptor?.length) labeled.push(new faceapi.LabeledFaceDescriptors(`customer:${c._id}`, [new Float32Array(c.faceDescriptor)])); });
+            if (Array.isArray(staffList2)) staffList2.forEach((s: any) => { if (s.faceDescriptor?.length) labeled.push(new faceapi.LabeledFaceDescriptors(`staff:${s._id}`, [new Float32Array(s.faceDescriptor)])); });
+            if (labeled.length > 0) {
+                // Ngưỡng 0.60 cân bằng: đủ chặt để tránh nhầm hội viên<->nhân viên nhưng không quá khắt khe làm mất nhận diện
+                setFaceMatcher(new faceapi.FaceMatcher(labeled, 0.60));
+                setStatusText(`Sẵn sàng nhận diện · Đã nạp ${custList.length} hội viên, ${staffList2.length} nhân viên`);
             } else {
                 setFaceMatcher(null);
-                setStatusText('Chưa có hội viên nào đăng ký FaceID');
+                setStatusText('Chưa có ai đăng ký FaceID');
             }
         } catch (e: any) {
             console.error("Face AI Error:", e);
@@ -147,9 +150,17 @@ export function FaceScannerPopup() {
 
                 if (detection) {
                     const match = faceMatcher.findBestMatch(detection.descriptor);
+                    // Debug: in ra label và khoảng cách để kiểm tra nhầm hội viên <-> nhân viên
+                    // console.log('[FaceMatch]', match.label, match.distance);
                     if (match.label !== 'unknown') {
-                        setStatusText('Đã nhận diện! Đang xử lý điểm danh...');
-                        await handleFaceCheckIn(match.label);
+                        setStatusText(`Đã nhận diện! (${match.label.split(':')[0]}) Đang xử lý...`);
+                        if (match.label.startsWith('staff:')) {
+                            await handleStaffFaceCheckIn(match.label.replace('staff:', ''));
+                        } else if (match.label.startsWith('customer:')) {
+                            await handleFaceCheckIn(match.label.replace('customer:', ''));
+                        } else {
+                            await handleFaceCheckIn(match.label);
+                        }
                     } else {
                         setStatusText('Khuôn mặt chưa được đăng ký trong hệ thống');
                     }
@@ -177,24 +188,28 @@ export function FaceScannerPopup() {
             const customer = response.data.customer;
             const name = customer?.fullName || 'Hội viên';
             const isCheckout = response.data.status === 'checked-out';
-
-            speak(isCheckout ? `Kính chào ${name} ra về` : `Xin mời ${name} vào tập`);
-
-            // Gửi toàn bộ dữ liệu xác thực sang màn hình chính để mở Modal tủ đồ / Check-out
-            channelRef.current?.postMessage({
-                type: 'FACE_CHECKIN_TRIGGER',
-                payload: {
-                    status: response.data.status,
-                    customer,
-                    totalMinutes: response.data.totalMinutes
-                }
-            });
+            // Để tránh nói lặp 2 lần, popup không speak, để trang chính phát
 
             setFeedback({
                 success: true,
                 name,
                 msg: isCheckout ? 'Check-out FaceID thành công!' : 'Điểm danh FaceID thành công!'
             });
+
+            // Gửi sang màn hình chính (bọc riêng để lỗi postMessage không làm báo thất bại)
+            try {
+                channelRef.current?.postMessage({
+                    type: 'FACE_CHECKIN_TRIGGER',
+                    payload: {
+                        type: 'member',
+                        status: response.data.status,
+                        customer,
+                        totalMinutes: response.data.totalMinutes,
+                        checkCount: response.data.checkCount || response.data.totalSessionsToday || 1,
+                        frozenNotice: response.data.frozenNotice || null
+                    }
+                });
+            } catch {}
         } catch (err: any) {
             const msg = err.response?.data?.error || err.response?.data?.message || 'Điểm danh FaceID thất bại';
             setFeedback({
@@ -208,6 +223,48 @@ export function FaceScannerPopup() {
                 setFeedback(null);
                 setStatusText('Sẵn sàng nhận diện...');
             }, 3000);
+        }
+    };
+
+    const handleStaffFaceCheckIn = async (staffId: string) => {
+        if (loading) return;
+        setLoading(true);
+        try {
+            const response = await axios.post(`${backendUrl}/api/staff/face/verify`, { staffId }, { headers: getDirectHeaders() as any });
+            const data = response.data;
+            const staffName = data.staff?.fullName || 'Nhân viên';
+            const isCheckout = data.status === 'checked-out';
+            setFeedback({ success: true, name: staffName, msg: isCheckout ? 'Check-out FaceID thành công!' : 'Chấm công FaceID thành công!' });
+            try {
+                channelRef.current?.postMessage({
+                    type: 'FACE_CHECKIN_TRIGGER',
+                    payload: {
+                        type: 'staff',
+                        status: data.status,
+                        staff: data.staff,
+                        shift: data.shift,
+                        shiftLabel: data.shiftLabel,
+                        shiftsToday: data.shiftsToday,
+                        hasTrainingToday: data.hasTrainingToday,
+                        trainingCount: data.trainingCount,
+                        trainingSummary: data.trainingSummary,
+                        totalMinutes: data.totalMinutes,
+                        minutesLate: data.minutesLate,
+                        minutesEarly: data.minutesEarly,
+                        overtime: data.overtime,
+                        customer: { fullName: staffName } // giữ tương thích cũ
+                    }
+                });
+                channelRef.current?.postMessage({ type: 'CHECKIN_EVENT' });
+            } catch {}
+        } catch (err: any) {
+            const raw = err.response?.data?.error || err.message || 'Chấm công FaceID nhân viên thất bại';
+            // Nếu quét hội viên mà nhầm sang nhân viên thì báo lỗi sẽ là "trống faceID" -> đổi thành thông báo chung để không gây hiểu nhầm
+            const msg = raw.includes('trống FaceID') || raw.includes('Không tìm thấy nhân viên') ? 'Khuôn mặt này chưa đăng ký cho nhân viên. Vui lòng thử lại hoặc kiểm tra hội viên đã đăng ký FaceID chưa.' : raw;
+            setFeedback({ success: false, name: 'Thông báo', msg });
+        } finally {
+            setLoading(false);
+            setTimeout(() => { setFeedback(null); setStatusText('Sẵn sàng nhận diện...'); }, 3000);
         }
     };
 

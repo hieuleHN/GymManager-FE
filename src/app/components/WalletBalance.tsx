@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useLocation } from 'react-router';
+import { useLocation, useNavigate } from 'react-router';
 import { Wallet, Plus, Loader2, X, ExternalLink, Smartphone, Check, FileText } from 'lucide-react';
 import { Button } from './ui/button';
 import { useAuth, getApiUrl, getAuthHeaders } from '../context/AuthContext';
@@ -19,6 +19,7 @@ function formatPrice(price: number) {
 export function WalletBalance({ balance: initialBalance = 0, onBalanceUpdate }: WalletBalanceProps) {
   const { user, refreshUser } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
   const [balance, setBalance] = useState(initialBalance);
   const [showModal, setShowModal] = useState(false);
   const [amount, setAmount] = useState(100000);
@@ -182,7 +183,7 @@ export function WalletBalance({ balance: initialBalance = 0, onBalanceUpdate }: 
                   </div>
                   <span className="text-sm text-slate-600 leading-relaxed">
                     Tôi đã đọc và đồng ý với{' '}
-                    <button onClick={e => { e.stopPropagation(); alert('Chính sách nạp tiền và hoàn tiền'); }}
+                    <button onClick={e => { e.stopPropagation(); setShowModal(false); navigate(`/policies?group=${encodeURIComponent('Chính sách nạp tiền')}`); }}
                       className="text-emerald-600 hover:text-emerald-700 underline font-medium">
                       Chính sách nạp & hoàn tiền
                     </button>
@@ -200,7 +201,7 @@ export function WalletBalance({ balance: initialBalance = 0, onBalanceUpdate }: 
                   </div>
                   <span className="text-sm text-slate-600 leading-relaxed">
                     Tôi đã đọc và đồng ý với{' '}
-                    <button onClick={e => { e.stopPropagation(); alert('Điều khoản sử dụng ví điện tử'); }}
+                    <button onClick={e => { e.stopPropagation(); setShowModal(false); navigate(`/policies?group=${encodeURIComponent('Điều khoản sử dụng Ví')}`); }}
                       className="text-emerald-600 hover:text-emerald-700 underline font-medium">
                       Điều khoản sử dụng Ví
                     </button>

@@ -69,6 +69,8 @@ const statusBadgeCls = (status: string) => {
       return 'bg-violet-100 text-violet-700';
     case 'accepted':
       return 'bg-green-100 text-green-700';
+    case 'success':
+      return 'bg-sky-100 text-sky-700';
     case 'rejected':
       return 'bg-red-100 text-red-700';
     default:
@@ -81,7 +83,7 @@ export function Services() {
   const headers = getAuthHeaders();
 
   const [tab, setTab] = useState<'requests' | 'visibility'>('requests');
-  const [filter, setFilter] = useState<'pending' | 'awaiting_payment' | 'accepted' | 'rejected' | 'all'>('pending');
+  const [filter, setFilter] = useState<'pending' | 'awaiting_payment' | 'accepted' | 'success' | 'rejected' | 'all'>('all');
   const [requests, setRequests] = useState<RequestItem[]>([]);
   const [loadingRequests, setLoadingRequests] = useState(false);
 
@@ -300,11 +302,12 @@ export function Services() {
   };
 
   const filterButtons: { key: typeof filter; label: string }[] = [
+    { key: 'all', label: 'Tất cả' },
     { key: 'pending', label: 'Đang xử lý' },
     { key: 'awaiting_payment', label: 'Chờ thanh toán' },
     { key: 'accepted', label: 'Đã chấp nhận' },
-    { key: 'rejected', label: 'Đã từ chối' },
-    { key: 'all', label: 'Tất cả' }
+    { key: 'success', label: 'Thành công' },
+    { key: 'rejected', label: 'Đã từ chối' }
   ];
 
   return (
@@ -415,12 +418,6 @@ export function Services() {
                           </td>
                           <td className="px-6 py-4 text-sm text-slate-900">
                             <p>{SERVICE_LABELS[request.service_type] || request.service_type}</p>
-                            {request.service_type === 'change-club' && request.has_hlv_booking && (
-                              <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[11px] font-semibold">
-                                <MessageSquareWarning className="w-3.5 h-3.5" />
-                                Có lịch tập với HLV
-                              </span>
-                            )}
                           </td>
                           <td className="px-6 py-4 text-sm text-slate-700 max-w-sm">
                             <p className="line-clamp-2">{extractContent(request)}</p>
@@ -666,14 +663,7 @@ export function Services() {
                   <p className="text-sm text-slate-700 whitespace-pre-wrap">{selectedRequest.description || '—'}</p>
                 </div>
 
-                {selectedRequest.service_type === 'change-club' && selectedRequest.has_hlv_booking && (
-                  <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl p-3">
-                    <MessageSquareWarning className="w-4 h-4 text-amber-600 shrink-0" />
-                    <p className="text-sm text-amber-800">
-                      <strong>Lưu ý:</strong> Hội viên này có lịch tập với HLV tại cơ sở hiện tại.
-                    </p>
-                  </div>
-                )}
+
 
                 {(() => {
                   const reason = extractReason(selectedRequest);

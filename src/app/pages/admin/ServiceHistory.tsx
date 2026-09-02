@@ -30,7 +30,7 @@ const formatDate = (iso: string) => {
 
 export function ServiceHistory() {
   const headers = getAuthHeaders();
-  const [filter, setFilter] = useState<'accepted' | 'rejected' | 'all'>('all');
+  const [filter, setFilter] = useState<'accepted' | 'success' | 'rejected' | 'all'>('all');
   const [history, setHistory] = useState<RequestItem[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -59,6 +59,7 @@ export function ServiceHistory() {
   const filterButtons: { key: typeof filter; label: string; color: string }[] = [
     { key: 'all', label: 'Tất cả', color: '#4f46e5' },
     { key: 'accepted', label: 'Đã chấp nhận', color: '#10b981' },
+    { key: 'success', label: 'Thành công', color: '#0ea5e9' },
     { key: 'rejected', label: 'Đã từ chối', color: '#ef4444' }
   ];
 
@@ -146,6 +147,8 @@ export function ServiceHistory() {
                         <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
                           item.status === 'accepted'
                             ? 'bg-green-100 text-green-700'
+                            : item.status === 'success'
+                            ? 'bg-sky-100 text-sky-700'
                             : 'bg-red-100 text-red-700'
                         }`}>
                           {SERVICE_STATUS_LABELS[item.status] || item.status}
