@@ -1,7 +1,7 @@
-import MemberQR from './pages/MemberQR'; // Nhúng màn hình QR vào route
+import MemberQR from './pages/MemberQR';
+import { StaffQR } from './pages/StaffQR';
 import { AttendanceScanner } from './pages/admin/AttendanceScanner';
 import { createBrowserRouter, Navigate, useLocation } from 'react-router';
-import { RouteErrorBoundary } from '../lib/ErrorBoundary';
 import { Layout } from './components/Layout';
 import { Home } from './pages/Home';
 import { Learn } from './pages/Learn';
@@ -17,6 +17,7 @@ import { PackageCheckout } from './pages/PackageCheckout';
 import { Contract } from './pages/Contract';
 import { Payment } from './pages/Payment';
 import { MyPackages } from './pages/dashboard/MyPackages';
+import { PackageUpgrade } from './pages/dashboard/PackageUpgrade';
 import { TransactionHistory } from './pages/dashboard/TransactionHistory';
 import { Schedule } from './pages/dashboard/Schedule';
 import { BookSchedule } from './pages/dashboard/BookSchedule';
@@ -39,19 +40,22 @@ import { EditEquipment } from './pages/admin/EditEquipment';
 import { Services } from './pages/admin/Services';
 import { ServiceHistory } from './pages/admin/ServiceHistory';
 import { AttendanceHistory } from './pages/admin/AttendanceHistory';
+import { StaffAttendanceHistory } from './pages/admin/StaffAttendanceHistory';
 import { StaffList } from './pages/admin/StaffList';
-import { StaffShift } from './pages/admin/StaffShift';
-import { StaffSalary } from './pages/admin/StaffSalary';
-import { StaffSalaryHistory } from './pages/admin/StaffSalaryHistory';
 import { AddStaff } from './pages/admin/AddStaff';
+import { StaffDetail } from './pages/admin/StaffDetail';
 import { StaffPermissions } from './pages/admin/StaffPermissions';
+import { StaffShift } from './pages/admin/StaffShift';
+import { StaffWallet } from './pages/admin/StaffWallet';
 import { JobList } from './pages/admin/JobList';
 import { AddJob } from './pages/admin/AddJob';
 import { EditJob } from './pages/admin/EditJob';
 import { Statistics } from './pages/admin/Statistics';
+import { PackageAnalytics } from './pages/admin/PackageAnalytics';
 import { PackageList } from './pages/admin/PackageList';
 import { AddPackage } from './pages/admin/AddPackage';
 import { EditPackage } from './pages/admin/EditPackage';
+import { PackagePriceHistory } from './pages/admin/PackagePriceHistory';
 import { ContractList } from './pages/admin/ContractList';
 import { EditContract } from './pages/admin/EditContract';
 import { EditProduct } from './pages/admin/EditProduct';
@@ -67,7 +71,7 @@ import { RecruitmentManagement } from './pages/admin/RecruitmentManagement';
 import { ExpenseManagement } from './pages/admin/ExpenseManagement';
 import { TrainerProfile } from './pages/admin/TrainerProfile';
 import { TrainingSchedule } from './pages/admin/TrainingSchedule';
-import { LockerManagement } from './pages/admin/LockerManagement';
+import { LockerManagementDiagram } from './pages/admin/LockerManagementDiagram';
 import { ScheduleConfirmations } from './pages/admin/ScheduleConfirmations';
 import { Community } from './pages/dashboard/Community';
 import { Messages } from './pages/dashboard/Messages';
@@ -75,10 +79,36 @@ import { Tasks } from './pages/admin/Tasks';
 import { Invoices } from './pages/admin/Invoices';
 import { BookingManagement } from './pages/admin/BookingManagement';
 import { PostManagement } from './pages/admin/PostManagement';
+import { ArticleManagement } from './pages/admin/ArticleManagement';
+import { Recruitment } from './pages/Recruitment';
+import { Policies } from './pages/Policies';
+import { Articles } from './pages/Articles';
+import { ArticleDetail } from './pages/ArticleDetail';
 import { AdminCommunity } from './pages/admin/AdminCommunity';
 import { AdminMessages } from './pages/admin/AdminMessages';
+import { FaceScannerPopup } from './pages/admin/FaceScannerPopup';
+
+// IMPORT TRANG THỐNG KÊ BIỂU ĐỒ ADMIN
 import { AdminStats } from './pages/dashboard/AdminStats';
 import { LockerIssues } from './pages/dashboard/LockerIssues';
+
+// Khai báo RouteErrorBoundary dự phòng
+const RouteErrorBoundary = () => {
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 p-6 text-center">
+      <div className="max-w-md p-8 bg-white rounded-2xl shadow-sm border border-slate-100">
+        <h2 className="text-2xl font-bold text-slate-950 mb-3">Đã xảy ra sự cố!</h2>
+        <p className="text-slate-500 text-sm mb-6">Trang web gặp sự cố nhỏ khi tải tài nguyên hệ thống. Vui lòng thử tải lại trang.</p>
+        <button
+          onClick={() => window.location.reload()}
+          className="px-5 py-2.5 bg-indigo-600 text-white font-semibold text-sm rounded-xl hover:bg-indigo-700 transition-all"
+        >
+          Tải lại trang
+        </button>
+      </div>
+    </div>
+  );
+};
 
 const routeFeatures: Record<string, string> = {
   '/admin/dashboard': 'statistics',
@@ -93,27 +123,30 @@ const routeFeatures: Record<string, string> = {
   '/admin/packages': 'packages',
   '/admin/packages/add': 'packages',
   '/admin/packages/:id/edit': 'packages',
+  '/admin/packages/:id/price-history': 'packages',
   '/admin/contracts': 'packages',
   '/admin/contracts/:id/edit': 'packages',
   '/admin/services': 'services',
   '/admin/services/history': 'services',
   '/admin/attendance': 'attendance',
   '/admin/attendance/history': 'attendance',
+  '/admin/staff-attendance/history': 'attendance',
+  '/admin/staff-attendance': 'attendance',
   '/admin/products': 'products',
   '/admin/products/add': 'products',
   '/admin/products/returns': 'products',
   '/admin/products/:id/edit': 'products',
   '/admin/staff': 'staff',
-  '/admin/staff/salary': 'salary',
-  '/admin/staff/salary-history': 'salary',
   '/admin/staff/add': 'staff',
-  '/admin/staff/permissions': 'permissions',
+  '/admin/staff/:id': 'staff',
   '/admin/staff/:id/edit': 'staff',
+  '/admin/staff/permissions': 'permissions',
   '/admin/staff/shifts': 'staff',
   '/admin/jobs': 'tasks',
   '/admin/jobs/add': 'tasks',
   '/admin/jobs/:id/edit': 'tasks',
   '/admin/statistics': 'statistics',
+  '/admin/package-analytics': 'statistics',
   '/admin/clubs': 'clubs',
   '/admin/disciplines': 'clubs',
   '/admin/policies': 'services',
@@ -129,6 +162,7 @@ const routeFeatures: Record<string, string> = {
   '/admin/bookings': 'schedule',
   '/admin/invoices': 'payment',
   '/admin/posts': 'services',
+  '/admin/articles': 'services',
   '/admin/community': 'services',
   '/admin/messages': 'services'
 };
@@ -145,10 +179,8 @@ function ProtectedRoute({ children, role }: { children: React.ReactNode, role?: 
   if (role === 'staff' && !isStaff) return <Navigate to="/" replace />;
   if (role === 'member' && isStaff) return <Navigate to="/admin/dashboard" replace />;
 
-  // Check feature permission for staff routes
   if (role === 'staff' && isStaff) {
     const path = location.pathname;
-    // Find matching feature for this route
     const feature = routeFeatures[path] || Object.entries(routeFeatures).find(([key]) => {
       if (key.includes(':id')) {
         const pattern = key.replace(/:id/g, '[^/]+');
@@ -182,12 +214,17 @@ export const router = createBrowserRouter([
       { path: 'clubs/:id', Component: ClubDetail },
       { path: 'disciplines/:id', Component: DisciplineDetail },
       { path: 'auth', Component: Auth },
-
-      // ĐÃ TỐI ƯU TẠI ĐÂY: Đưa trang QR vào làm con của Layout 
-      // để khi mở trang này, thanh menu Navbar màu trắng ở trên vẫn giữ cố định!
+      { path: 'recruitment', Component: Recruitment },
+      { path: 'policies', Component: Policies },
+      { path: 'articles', Component: Articles },
+      { path: 'articles/:id', Component: ArticleDetail },
       {
         path: 'dashboard/qr',
         element: <ProtectedRoute role="member"><MemberQR /></ProtectedRoute>
+      },
+      {
+        path: 'staff-qr',
+        element: <ProtectedRoute role="staff"><StaffQR /></ProtectedRoute>
       }
     ],
   },
@@ -198,6 +235,10 @@ export const router = createBrowserRouter([
   {
     path: '/dashboard/my-packages',
     element: <ProtectedRoute role="member"><MyPackages /></ProtectedRoute>
+  },
+  {
+    path: '/dashboard/upgrade/:registrationId',
+    element: <ProtectedRoute role="member"><PackageUpgrade /></ProtectedRoute>
   },
   {
     path: '/dashboard/history',
@@ -252,6 +293,10 @@ export const router = createBrowserRouter([
     element: <ProtectedRoute role="staff"><AttendanceScanner /></ProtectedRoute>
   },
   {
+    path: '/admin/attendance/face-popup',
+    element: <FaceScannerPopup />
+  },
+  {
     path: '/dashboard/settings',
     element: <ProtectedRoute role="member"><Settings /></ProtectedRoute>
   },
@@ -265,7 +310,7 @@ export const router = createBrowserRouter([
   },
   {
     path: '/admin/admin-stats',
-    element: <ProtectedRoute role="staff"><AdminStats /></ProtectedRoute>
+    element: <Navigate to="/admin/statistics" replace />
   },
   {
     path: '/admin/customers',
@@ -308,6 +353,10 @@ export const router = createBrowserRouter([
     element: <ProtectedRoute role="staff"><EditPackage /></ProtectedRoute>
   },
   {
+    path: '/admin/packages/:id/price-history',
+    element: <ProtectedRoute role="staff"><PackagePriceHistory /></ProtectedRoute>
+  },
+  {
     path: '/admin/contracts',
     element: <ProtectedRoute role="staff"><ContractList /></ProtectedRoute>
   },
@@ -326,6 +375,14 @@ export const router = createBrowserRouter([
   {
     path: '/admin/attendance/history',
     element: <ProtectedRoute role="staff"><AttendanceHistory /></ProtectedRoute>
+  },
+  {
+    path: '/admin/staff-attendance/history',
+    element: <ProtectedRoute role="staff"><StaffAttendanceHistory /></ProtectedRoute>
+  },
+  {
+    path: '/admin/staff-attendance',
+    element: <Navigate to="/admin/staff-attendance/history" replace />
   },
   {
     path: '/admin/products',
@@ -348,14 +405,6 @@ export const router = createBrowserRouter([
     element: <ProtectedRoute role="staff"><StaffList /></ProtectedRoute>
   },
   {
-    path: '/admin/staff/salary',
-    element: <ProtectedRoute role="staff"><StaffSalary /></ProtectedRoute>
-  },
-  {
-    path: '/admin/staff/salary-history',
-    element: <ProtectedRoute role="staff"><StaffSalaryHistory /></ProtectedRoute>
-  },
-  {
     path: '/admin/staff/add',
     element: <ProtectedRoute role="staff"><AddStaff /></ProtectedRoute>
   },
@@ -364,12 +413,20 @@ export const router = createBrowserRouter([
     element: <ProtectedRoute role="staff"><StaffPermissions /></ProtectedRoute>
   },
   {
+    path: '/admin/staff/shifts',
+    element: <ProtectedRoute role="staff"><StaffShift /></ProtectedRoute>
+  },
+  {
+    path: '/admin/staff/:id',
+    element: <ProtectedRoute role="staff"><StaffDetail /></ProtectedRoute>
+  },
+  {
     path: '/admin/staff/:id/edit',
     element: <ProtectedRoute role="staff"><AddStaff /></ProtectedRoute>
   },
   {
-    path: '/admin/staff/shifts',
-    element: <ProtectedRoute role="staff"><StaffShift /></ProtectedRoute>
+    path: '/admin/wallet',
+    element: <ProtectedRoute role="staff"><StaffWallet /></ProtectedRoute>
   },
   {
     path: '/admin/jobs',
@@ -386,6 +443,11 @@ export const router = createBrowserRouter([
     path: '/admin/statistics',
     element: <ProtectedRoute role="staff"><Statistics /></ProtectedRoute>
   },
+  {
+    path: '/admin/package-analytics',
+    element: <ProtectedRoute role="staff"><PackageAnalytics /></ProtectedRoute>
+  },
+  
   {
     path: '/admin/clubs',
     element: <ProtectedRoute role="staff"><ClubManagement /></ProtectedRoute>
@@ -424,7 +486,7 @@ export const router = createBrowserRouter([
   },
   {
     path: '/admin/lockers',
-    element: <ProtectedRoute role="staff"><LockerManagement /></ProtectedRoute>
+    element: <ProtectedRoute role="staff"><LockerManagementDiagram /></ProtectedRoute>
   },
   {
     path: '/admin/schedule-confirmations',
@@ -445,6 +507,10 @@ export const router = createBrowserRouter([
   {
     path: '/admin/posts',
     element: <ProtectedRoute role="staff"><PostManagement /></ProtectedRoute>
+  },
+  {
+    path: '/admin/articles',
+    element: <ProtectedRoute role="staff"><ArticleManagement /></ProtectedRoute>
   },
   {
     path: '/admin/community',

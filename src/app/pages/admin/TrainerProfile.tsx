@@ -122,8 +122,7 @@ export function TrainerProfile() {
           gender: profile.gender,
           experience: profile.experience,
           certifications: profile.certifications,
-          gallery: selectedImages,
-          pricePerSession: profile.pricePerSession
+          gallery: selectedImages
         })
       });
       if (!res.ok) throw new Error('Lỗi lưu');
@@ -221,13 +220,6 @@ export function TrainerProfile() {
               <input type="text" value={profile.experience}
                 onChange={(e) => setProfile({ ...profile, experience: e.target.value })}
                 placeholder="VD: 5 năm kinh nghiệm"
-                className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent" />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Phí / buổi (VNĐ)</label>
-              <input type="number" value={profile.pricePerSession}
-                onChange={(e) => setProfile({ ...profile, pricePerSession: Number(e.target.value) })}
                 className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent" />
             </div>
           </div>

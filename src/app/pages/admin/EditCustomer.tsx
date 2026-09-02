@@ -30,12 +30,6 @@ export function EditCustomer() {
       idNumber: ''
     }
   });
-  const [idCardFront, setIdCardFront] = useState<File | null>(null);
-  const [idCardBack, setIdCardBack] = useState<File | null>(null);
-  const [idCardFrontPreview, setIdCardFrontPreview] = useState('');
-  const [idCardBackPreview, setIdCardBackPreview] = useState('');
-  const [currentIdCardFront, setCurrentIdCardFront] = useState('');
-  const [currentIdCardBack, setCurrentIdCardBack] = useState('');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
@@ -54,8 +48,7 @@ export function EditCustomer() {
         address: customer.address || '',
         idNumber: customer.idNumber || ''
       });
-      if (customer.idCardFront) setCurrentIdCardFront(customer.idCardFront);
-      if (customer.idCardBack) setCurrentIdCardBack(customer.idCardBack);
+
     } catch {
       toast.error('Không thể tải thông tin khách hàng');
       navigate('/admin/customers');
@@ -65,22 +58,6 @@ export function EditCustomer() {
   };
 
   useEffect(() => { if (id) fetchCustomer(); }, [id]);
-
-  const handleFrontChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setIdCardFront(file);
-      setIdCardFrontPreview(URL.createObjectURL(file));
-    }
-  };
-
-  const handleBackChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setIdCardBack(file);
-      setIdCardBackPreview(URL.createObjectURL(file));
-    }
-  };
 
   const onSubmit = async (data: EditCustomerFormData) => {
     setSubmitting(true);
@@ -93,8 +70,6 @@ export function EditCustomer() {
       fd.append('email', data.email);
       fd.append('address', data.address);
       fd.append('idNumber', data.idNumber);
-      if (idCardFront) fd.append('idCardFront', idCardFront);
-      if (idCardBack) fd.append('idCardBack', idCardBack);
 
       const res = await fetch(`${getApiUrl()}/api/customers/${id}`, {
         method: 'PUT',
@@ -234,48 +209,7 @@ export function EditCustomer() {
               />
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-slate-200">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Ảnh mặt trước căn cước
-                </label>
-                {currentIdCardFront && (
-                  <div className="mb-3">
-                    <img src={`${getApiUrl()}/uploads/customers/${currentIdCardFront}`} alt="Current front" className="w-full max-w-xs rounded-lg border" />
-                    <p className="text-xs text-slate-400 mt-1">Ảnh hiện tại</p>
-                  </div>
-                )}
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={handleFrontChange}
-                  className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-                {idCardFrontPreview && (
-                  <img src={idCardFrontPreview} alt="Preview front" className="mt-2 w-full max-w-xs rounded-lg border" />
-                )}
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Ảnh mặt sau căn cước
-                </label>
-                {currentIdCardBack && (
-                  <div className="mb-3">
-                    <img src={`${getApiUrl()}/uploads/customers/${currentIdCardBack}`} alt="Current back" className="w-full max-w-xs rounded-lg border" />
-                    <p className="text-xs text-slate-400 mt-1">Ảnh hiện tại</p>
-                  </div>
-                )}
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={handleBackChange}
-                  className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-                {idCardBackPreview && (
-                  <img src={idCardBackPreview} alt="Preview back" className="mt-2 w-full max-w-xs rounded-lg border" />
-                )}
-              </div>
-            </div>
+
 
             <div className="flex justify-end gap-3 pt-6 border-t border-slate-200">
               <Button

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { CreditCard, QrCode, Edit2, Save, X, Loader2, CheckCircle, XCircle, Check, X as XIcon, Search, FileText, User, Package, MapPin } from 'lucide-react';
+import { CreditCard, QrCode, Edit2, Save, X, Loader2, CheckCircle, XCircle, Check, X as XIcon, Search, FileText, User, Package, MapPin, Bell } from 'lucide-react';
 import { Button } from '@mui/material';
 import { AdminLayout } from '../../components/AdminLayout';
 import { useClub } from '../../context/ClubContext';
@@ -57,7 +57,7 @@ export function PaymentManagement() {
   const [registrations, setRegistrations] = useState<Registration[]>([]);
   const [regLoading, setRegLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [regFilter, setRegFilter] = useState<'all' | 'pending_payment' | 'paid_pending' | 'active' | 'cancelled'>('all');
+  const [regFilter, setRegFilter] = useState<'all' | 'pending_payment' | 'paid_pending' | 'active' | 'frozen' | 'cancelled'>('all');
   const [pendingPayments, setPendingPayments] = useState<any[]>([]);
   const [loadingPayments, setLoadingPayments] = useState(false);
   const [paymentFilter, setPaymentFilter] = useState('chờ thanh toán');
@@ -118,6 +118,26 @@ export function PaymentManagement() {
       fetchPendingPayments();
     } catch {
       toast.error('Thao tác thất bại');
+    }
+  };
+
+  // Gửi notification nhắc thanh toán cho hội viên (đơn sẽ tự hủy sau 72h)
+  const handleSendPaymentReminder = async (id: string) => {
+    try {
+      const res = await fetch(`${getApiUrl()}/api/user-packages/${id}/payment-reminder`, {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' } as any,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Nhắc thanh toán thất bại');
+      toast.success(
+        data.hoursLeftToCancel !== undefined
+          ? `Đã gửi nhắc thanh toán! Đơn tự hủy sau ~${data.hoursLeftToCancel} giờ nếu chưa đóng tiền.`
+          : 'Đã gửi nhắc thanh toán!'
+      );
+      fetchPendingPayments(paymentFilter, paymentPage);
+    } catch (err: any) {
+      toast.error(err.message || 'Gửi nhắc thất bại');
     }
   };
 
@@ -263,6 +283,7 @@ export function PaymentManagement() {
     if (regFilter === 'pending_payment') return r.status === 'chờ xác nhận' && r.payment_status === 'pending';
     if (regFilter === 'paid_pending') return r.status === 'chờ xác nhận' && r.payment_status === 'paid';
     if (regFilter === 'active') return r.status === 'đang hoạt động' || r.status === 'còn 10 ngày';
+    if (regFilter === 'frozen') return r.status === 'đang tạm ngưng';
     if (regFilter === 'cancelled') return r.status === 'đã hủy';
     return true;
   });
@@ -275,6 +296,7 @@ export function PaymentManagement() {
     if (filter === 'pending_payment') return registrations.filter(r => r.status === 'chờ xác nhận' && r.payment_status === 'pending').length;
     if (filter === 'paid_pending') return registrations.filter(r => r.status === 'chờ xác nhận' && r.payment_status === 'paid').length;
     if (filter === 'active') return registrations.filter(r => r.status === 'đang hoạt động' || r.status === 'còn 10 ngày').length;
+    if (filter === 'frozen') return registrations.filter(r => r.status === 'đang tạm ngưng').length;
     if (filter === 'cancelled') return registrations.filter(r => r.status === 'đã hủy').length;
     return 0;
   };
@@ -282,6 +304,8 @@ export function PaymentManagement() {
   const regStatusBadge = (reg: Registration) => {
     if (reg.status === 'đang hoạt động' || reg.status === 'còn 10 ngày')
       return <span className="px-3 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700">{reg.status}</span>;
+    if (reg.status === 'đang tạm ngưng')
+      return <span className="px-3 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-700">{reg.status}</span>;
     if (reg.status === 'chờ xác nhận' && reg.payment_status === 'paid')
       return <span className="px-3 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-700">Đã thanh toán - chờ duyệt</span>;
     if (reg.status === 'chờ xác nhận' && reg.payment_status === 'pending')
@@ -413,10 +437,28 @@ export function PaymentManagement() {
                         </td>
                         <td className="py-3 px-4 text-slate-600">
                           {new Date(reg.createdAt).toLocaleDateString('vi-VN')}
+                          {reg.payment_status === 'chờ thanh toán' && (
+                            (() => {
+                              const hoursLeft = Math.max(0, Math.ceil(72 - (Date.now() - new Date(reg.createdAt).getTime()) / 3600000));
+                              return (
+                                <p className={`text-xs mt-0.5 font-medium ${hoursLeft <= 24 ? 'text-red-500' : 'text-slate-400'}`}>
+                                  Tự hủy sau ~{hoursLeft}h
+                                </p>
+                              );
+                            })()
+                          )}
                         </td>
                         <td className="py-3 px-4 text-center">
                           {reg.payment_status === 'chờ thanh toán' ? (
                             <div className="flex items-center justify-center gap-2">
+                              <button
+                                onClick={() => handleSendPaymentReminder(reg._id)}
+                                className="flex items-center gap-1 px-3 py-1.5 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors text-xs font-medium"
+                                title="Gửi thông báo nhắc thanh toán cho hội viên"
+                              >
+                                <Bell className="w-3.5 h-3.5" />
+                                Nhắc thanh toán
+                              </button>
                               <button
                                 onClick={() => handleConfirmPayment(reg._id)}
                                 className="flex items-center gap-1 px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-xs font-medium"
@@ -644,6 +686,7 @@ export function PaymentManagement() {
                       { key: 'pending_payment', label: 'Chưa thanh toán' },
                       { key: 'paid_pending', label: 'Chờ duyệt' },
                       { key: 'active', label: 'Đang hoạt động' },
+                      { key: 'frozen', label: 'Đang tạm ngưng' },
                       { key: 'cancelled', label: 'Đã hủy' }
                     ].map(tab => (
                       <button key={tab.key} onClick={() => setRegFilter(tab.key as typeof regFilter)}
