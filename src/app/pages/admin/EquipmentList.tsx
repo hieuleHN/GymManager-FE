@@ -42,6 +42,8 @@ export function EquipmentList() {
 
   const [resolveCost, setResolveCost] = useState("");
   const [resolveDowntime, setResolveDowntime] = useState("");
+  const [resolveResult, setResolveResult] = useState("");
+  const [resolveAssignee, setResolveAssignee] = useState("");
 
   const [alerts, setAlerts] = useState<any>({
     maintenance_due: [],
@@ -70,11 +72,23 @@ export function EquipmentList() {
 
   const fetchAlerts = async () => {
     try {
-      const res = await fetch(`${getApiUrl()}/api/equipments/alerts`, {
+      const res = await fetch("http://localhost:5000/api/equipments/alerts", {
         headers: getAuthHeaders(),
       });
       const data = await res.json();
-      if (res.ok) setAlerts(data.data);
+
+      if (res.ok && data) {
+        setAlerts({
+          maintenance_due:
+            data.maintenance_due || data.data?.maintenance_due || [],
+          warranty_expiring:
+            data.warranty_expiring || data.data?.warranty_expiring || [],
+          overdue_tickets:
+            data.overdue_tickets || data.data?.overdue_tickets || [],
+          broken_long_time:
+            data.broken_long_time || data.data?.broken_long_time || [],
+        });
+      }
     } catch (err) {
       console.error("Lỗi tải cảnh báo:", err);
     }
@@ -161,7 +175,8 @@ export function EquipmentList() {
           body: JSON.stringify({
             cost: Number(resolveCost) || 0,
             downtime_days: Number(resolveDowntime) || 0,
-            result: "Đã xử lý sự cố/bảo trì",
+            result: resolveResult,
+            assigned_to: resolveAssignee,
           }),
         },
       );
@@ -173,6 +188,8 @@ export function EquipmentList() {
         setSelectedEquipment(null);
         setResolveCost("");
         setResolveDowntime("");
+        setResolveResult("");
+        setResolveAssignee("");
         fetchEquipment(page);
         fetchAlerts();
       } else {
@@ -209,6 +226,8 @@ export function EquipmentList() {
     setSelectedReport(report);
     setResolveCost("");
     setResolveDowntime("");
+    setResolveResult("");
+    setResolveAssignee("");
     setShowReportDetailModal(true);
   };
 
@@ -239,11 +258,6 @@ export function EquipmentList() {
       item.supplier?.toLowerCase().includes(searchTerm.toLowerCase()),
   );
 
-  const hasAlerts =
-    alerts.maintenance_due.length > 0 ||
-    alerts.warranty_expiring.length > 0 ||
-    alerts.broken_long_time.length > 0;
-
   return (
     <AdminLayout>
       <div className="max-w-7xl mx-auto space-y-6">
@@ -256,93 +270,130 @@ export function EquipmentList() {
           </p>
         </div>
 
-        {/* Action Center - Bảng điều khiển cảnh báo đập vào mắt giám khảo */}
-        {hasAlerts && (
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
-            <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
-              <BellRing className="w-5 h-5 text-orange-500" /> Action Center -
-              Cần xử lý ngay
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {alerts.maintenance_due.map((eq: any) => (
-                <div
-                  key={`m-${eq._id}`}
-                  className="flex items-center justify-between bg-yellow-50 p-4 rounded-xl border border-yellow-200"
-                >
-                  <div className="flex items-start gap-3">
-                    <span className="w-2.5 h-2.5 rounded-full bg-yellow-500 animate-pulse mt-1.5"></span>
-                    <div>
-                      <p className="text-sm font-bold text-yellow-900">
-                        {eq.name}
-                      </p>
-                      <p className="text-xs text-yellow-700 mt-0.5">
-                        Đã đến hạn bảo trì định kỳ
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => handleOpenReportList(eq)}
-                    className="text-xs px-4 py-2 bg-yellow-600 text-white hover:bg-yellow-700 rounded-lg font-semibold transition-colors"
-                  >
-                    Xử lý
-                  </button>
-                </div>
-              ))}
+        {/* CẢNH BÁO BẢO HÀNH & SỰ CỐ - CHUẨN 30 NGÀY */}
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+          <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+            <BellRing className="w-5 h-5 text-orange-500" /> Cảnh báo Bảo hành &
+            Sự cố (30 ngày tới)
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {alerts.maintenance_due.length === 0 &&
+              alerts.warranty_expiring.length === 0 &&
+              alerts.broken_long_time.length === 0 &&
+              alerts.overdue_tickets.length === 0 && (
+                <p className="text-sm text-slate-500 italic col-span-2">
+                  Không có cảnh báo nào cần xử lý ngay.
+                </p>
+              )}
 
-              {alerts.warranty_expiring.map((eq: any) => (
-                <div
-                  key={`w-${eq._id}`}
-                  className="flex items-center justify-between bg-blue-50 p-4 rounded-xl border border-blue-200"
-                >
-                  <div className="flex items-start gap-3">
-                    <span className="w-2.5 h-2.5 rounded-full bg-blue-500 mt-1.5"></span>
-                    <div>
-                      <p className="text-sm font-bold text-blue-900">
-                        {eq.name}
-                      </p>
-                      <p className="text-xs text-blue-700 mt-0.5">
-                        Sắp hết hạn bảo hành (30 ngày)
-                      </p>
-                    </div>
+            {/* 1. Đến hạn bảo trì */}
+            {alerts.maintenance_due.map((eq: any) => (
+              <div
+                key={`m-${eq._id}`}
+                className="flex items-center justify-between bg-yellow-50 p-4 rounded-xl border border-yellow-200"
+              >
+                <div className="flex items-start gap-3">
+                  <span className="w-2.5 h-2.5 rounded-full bg-yellow-500 animate-pulse mt-1.5"></span>
+                  <div>
+                    <p className="text-sm font-bold text-yellow-900">
+                      {eq.name}
+                    </p>
+                    <p className="text-xs text-yellow-700 mt-0.5">
+                      Đã đến hạn bảo trì định kỳ
+                    </p>
                   </div>
-                  <button
-                    onClick={() => handleReport(eq)}
-                    className="text-xs px-4 py-2 bg-blue-600 text-white hover:bg-blue-700 rounded-lg font-semibold transition-colors"
-                  >
-                    Gửi đi BH
-                  </button>
                 </div>
-              ))}
+                <button
+                  onClick={() => handleOpenReportList(eq)}
+                  className="text-xs px-4 py-2 bg-yellow-600 text-white hover:bg-yellow-700 rounded-lg font-semibold transition-colors"
+                >
+                  Xử lý
+                </button>
+              </div>
+            ))}
 
-              {alerts.broken_long_time.map((eq: any) => (
-                <div
-                  key={`b-${eq._id}`}
-                  className="flex items-center justify-between bg-red-50 p-4 rounded-xl border border-red-200"
-                >
-                  <div className="flex items-start gap-3">
-                    <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse mt-1.5"></span>
-                    <div>
-                      <p className="text-sm font-bold text-red-900">
-                        {eq.name}
-                      </p>
-                      <p className="text-xs text-red-700 mt-0.5">
-                        Nằm đắp chiếu quá 7 ngày
-                      </p>
-                    </div>
+            {/* 2. Sắp hết hạn bảo hành trong 30 ngày */}
+            {alerts.warranty_expiring.map((eq: any) => (
+              <div
+                key={`w-${eq._id}`}
+                className="flex items-center justify-between bg-blue-50 p-4 rounded-xl border border-blue-200"
+              >
+                <div className="flex items-start gap-3">
+                  <span className="w-2.5 h-2.5 rounded-full bg-blue-500 mt-1.5"></span>
+                  <div>
+                    <p className="text-sm font-bold text-blue-900">{eq.name}</p>
+                    <p className="text-xs text-blue-700 mt-0.5">
+                      Sắp hết hạn bảo hành trong vòng 30 ngày
+                    </p>
                   </div>
-                  <button
-                    onClick={() => handleOpenReportList(eq)}
-                    className="text-xs px-4 py-2 bg-red-600 text-white hover:bg-red-700 rounded-lg font-semibold transition-colors"
-                  >
-                    Sửa gấp
-                  </button>
                 </div>
-              ))}
-            </div>
+                <button
+                  onClick={() => handleReport(eq)}
+                  className="text-xs px-4 py-2 bg-blue-600 text-white hover:bg-blue-700 rounded-lg font-semibold transition-colors"
+                >
+                  Gửi đi BH
+                </button>
+              </div>
+            ))}
+
+            {/* 3. Hỏng quá N ngày (7 ngày) */}
+            {alerts.broken_long_time.map((eq: any) => (
+              <div
+                key={`b-${eq._id}`}
+                className="flex items-center justify-between bg-red-50 p-4 rounded-xl border border-red-200"
+              >
+                <div className="flex items-start gap-3">
+                  <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse mt-1.5"></span>
+                  <div>
+                    <p className="text-sm font-bold text-red-900">{eq.name}</p>
+                    <p className="text-xs text-red-700 mt-0.5">
+                      Nằm đắp chiếu quá 7 ngày chưa sửa
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => handleOpenReportList(eq)}
+                  className="text-xs px-4 py-2 bg-red-600 text-white hover:bg-red-700 rounded-lg font-semibold transition-colors"
+                >
+                  Sửa gấp
+                </button>
+              </div>
+            ))}
+
+            {/* 4. Phiếu quá hạn */}
+            {alerts.overdue_tickets.map((item: any) => (
+              <div
+                key={`ot-${item.equipment_id}`}
+                className="flex items-center justify-between bg-orange-50 p-4 rounded-xl border border-orange-200"
+              >
+                <div className="flex items-start gap-3">
+                  <span className="w-2.5 h-2.5 rounded-full bg-orange-500 mt-1.5"></span>
+                  <div>
+                    <p className="text-sm font-bold text-orange-900">
+                      {item.name}
+                    </p>
+                    <p className="text-xs text-orange-700 mt-0.5">
+                      Có {item.tickets.length} phiếu yêu cầu quá hạn xử lý
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() =>
+                    handleOpenReportList({
+                      _id: item.equipment_id,
+                      name: item.name,
+                      reports: item.tickets,
+                    })
+                  }
+                  className="text-xs px-4 py-2 bg-orange-600 text-white hover:bg-orange-700 rounded-lg font-semibold transition-colors"
+                >
+                  Xem phiếu
+                </button>
+              </div>
+            ))}
           </div>
-        )}
+        </div>
 
-        {/* Thanh tìm kiếm & Xuất Excel */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
           <div className="flex flex-col md:flex-row gap-4">
             <div className="relative flex-1">
@@ -374,7 +425,6 @@ export function EquipmentList() {
           </div>
         </div>
 
-        {/* Bảng danh sách thiết bị */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
           {loading ? (
             <div className="flex items-center justify-center py-20">
@@ -383,14 +433,16 @@ export function EquipmentList() {
           ) : (
             <table className="w-full" style={{ tableLayout: "fixed" }}>
               <colgroup>
-                <col style={{ width: "15%" }} />
-                <col style={{ width: "10%" }} />
+                <col style={{ width: "16%" }} />
+                <col style={{ width: "9%" }} />
+                <col style={{ width: "7%" }} />
                 <col style={{ width: "8%" }} />
+                <col style={{ width: "10%" }} />
+                <col style={{ width: "11%" }} />
+                <col style={{ width: "11%" }} />
                 <col style={{ width: "8%" }} />
-                <col style={{ width: "10%" }} />
-                <col style={{ width: "10%" }} />
-                <col style={{ width: "10%" }} />
-                <col style={{ width: "12%" }} />
+                <col style={{ width: "9%" }} />
+                <col style={{ width: "11%" }} />
               </colgroup>
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
@@ -401,13 +453,19 @@ export function EquipmentList() {
                     Nguyên giá
                   </th>
                   <th className="px-3 py-4 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">
-                    Số lượng
+                    SL
                   </th>
                   <th className="px-3 py-4 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">
                     Bảo hành
                   </th>
                   <th className="px-3 py-4 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">
-                    Phí bảo trì (Lũy kế)
+                    Thời gian SD
+                  </th>
+                  <th className="px-3 py-4 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">
+                    Phí sửa (Lũy kế)
+                  </th>
+                  <th className="px-3 py-4 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">
+                    TCO (Tổng CF)
                   </th>
                   <th className="px-3 py-4 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">
                     Downtime
@@ -423,6 +481,23 @@ export function EquipmentList() {
               <tbody>
                 {filteredEquipment.map((item: any) => {
                   const statusInfo = getStatusDisplay(item);
+
+                  const purchaseDate = new Date(
+                    item.purchase_date || item.createdAt,
+                  );
+                  const usageDays = Math.max(
+                    1,
+                    Math.floor(
+                      (new Date().getTime() - purchaseDate.getTime()) /
+                        (1000 * 60 * 60 * 24),
+                    ),
+                  );
+                  const tco =
+                    (item.unitPrice || 0) + (item.total_maintenance_cost || 0);
+                  const isHighRisk =
+                    item.total_maintenance_cost > item.unitPrice * 0.5 ||
+                    item.total_downtime_days > 30;
+
                   return (
                     <tr
                       key={item._id}
@@ -433,21 +508,34 @@ export function EquipmentList() {
                         title={item.name}
                       >
                         {item.name}
+                        {isHighRisk && (
+                          <span className="ml-2 bg-red-600 text-white text-[10px] px-2 py-0.5 rounded-full font-bold animate-pulse">
+                            Cần thay mới
+                          </span>
+                        )}
                       </td>
                       <td className="px-3 py-4 text-sm text-slate-600 truncate">
                         {item.unitPrice?.toLocaleString("vi-VN")}đ
                       </td>
                       <td className="px-3 py-4 text-sm text-slate-600 truncate">
-                        {item.quantity} cái
+                        {item.quantity}
                       </td>
                       <td className="px-3 py-4 text-sm text-slate-600 truncate">
                         {item.warranty_period} tháng
+                      </td>
+
+                      <td className="px-3 py-4 text-sm text-slate-600 truncate">
+                        {usageDays} ngày
                       </td>
                       <td className="px-3 py-4 text-sm font-semibold text-red-600 truncate">
                         {item.total_maintenance_cost?.toLocaleString("vi-VN") ||
                           0}
                         đ
                       </td>
+                      <td className="px-3 py-4 text-sm font-bold text-indigo-700 truncate">
+                        {tco.toLocaleString("vi-VN")}đ
+                      </td>
+
                       <td className="px-3 py-4 text-sm text-slate-600 truncate">
                         {item.total_downtime_days || 0} ngày
                       </td>
@@ -500,7 +588,7 @@ export function EquipmentList() {
                 {filteredEquipment.length === 0 && (
                   <tr>
                     <td
-                      colSpan={8}
+                      colSpan={10}
                       className="px-3 py-10 text-center text-slate-500"
                     >
                       Không tìm thấy thiết bị nào
@@ -525,7 +613,6 @@ export function EquipmentList() {
         </div>
       </div>
 
-      {/* Modal Danh sách báo cáo (Giữ nguyên cấu trúc của ông, chỉ tinh chỉnh UI) */}
       {showReportListModal && selectedEquipment && (
         <div
           className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center"
@@ -624,7 +711,6 @@ export function EquipmentList() {
         </div>
       )}
 
-      {/* Modal Cập nhật chi phí & Chốt báo cáo (Đã cập nhật theo yêu cầu Trưởng nhóm) */}
       {showReportDetailModal && selectedEquipment && selectedReport && (
         <div
           className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center"
@@ -664,6 +750,32 @@ export function EquipmentList() {
             </div>
 
             <div className="space-y-4 mb-6">
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-1.5">
+                  Người phụ trách sửa chữa
+                </label>
+                <input
+                  type="text"
+                  value={resolveAssignee}
+                  onChange={(e) => setResolveAssignee(e.target.value)}
+                  className="w-full p-3 bg-white border border-slate-300 rounded-xl focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                  placeholder="Nhập tên nhân viên / kỹ thuật viên..."
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-1.5">
+                  Nội dung / Kết quả xử lý
+                </label>
+                <textarea
+                  value={resolveResult}
+                  onChange={(e) => setResolveResult(e.target.value)}
+                  rows={2}
+                  className="w-full p-3 bg-white border border-slate-300 rounded-xl focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                  placeholder="Ví dụ: Đã thay bo mạch, vệ sinh tra dầu..."
+                />
+              </div>
+
               <div>
                 <label className="block text-sm font-bold text-slate-700 mb-1.5">
                   Chi phí sửa chữa (VNĐ)
@@ -742,7 +854,6 @@ export function EquipmentList() {
         </div>
       )}
 
-      {/* Report Modal */}
       {showReportModal && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center">
           <div className="bg-white rounded-2xl p-6 max-w-md w-full mx-4 shadow-xl">

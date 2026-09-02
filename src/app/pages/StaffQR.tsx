@@ -83,7 +83,17 @@ export function StaffQR() {
 
             <p style={{ color: '#334155', fontSize: '14px', margin: '0 0 35px 0', fontWeight: '600' }}>Tự động làm mới sau mỗi 30 giây</p>
 
-            <div onClick={handleCopy} style={{ position: 'relative', width: '100%', maxHeight: '110px', backgroundColor: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: '16px', cursor: 'pointer', padding: '16px 14px 45px 14px', overflow: 'hidden', cursor: 'pointer' }}>
+          <div
+            onClick={handleCopy}
+            style={{
+              position: 'relative',
+              width: '100%',
+              maxHeight: '110px',
+              backgroundColor: '#f1f5f9',
+              border: '1px solid #e2e8f0',
+              borderRadius: '16px',
+              cursor: 'pointer',
+              padding: '16px 14px 45px 14px',  overflow: 'hidden'}}>              
               <p style={{ color: '#475569', fontSize: '11px', lineHeight: '1.6', margin: 0, wordBreak: 'break-all', textAlign: 'center', userSelect: 'none', fontWeight: '500' }}>{qrToken}</p>
               <div style={{ position: 'absolute', bottom: '8px', right: '50%', transform: 'translateX(50%)', backgroundColor: '#fff', color: '#0f172a', padding: '5px 14px', borderRadius: '8px', fontSize: '11px', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '6px', boxShadow: '0 2px 6px rgba(15, 23, 42, 0.08)', border: '1px solid #cbd5e1' }}>
                 {copied ? <><Check size={14} style={{ color: '#10b981' }} /><span style={{ color: '#10b981' }}>Copied</span></> : <><Copy size={14} /><span>Copy token</span></>}

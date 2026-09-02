@@ -225,9 +225,39 @@ export function MyPackages() {
     setRenewModalOpen(true);
   };
 
+  // Giá gia hạn do server tính theo giá hiện tại + bảng giảm giá
+  const [renewPreviewTotal, setRenewPreviewTotal] = useState<number | null>(
+    null,
+  );
+
+  useEffect(() => {
+    if (!renewModalOpen || !selectedPkg) return;
+    let active = true;
+    setRenewPreviewTotal(null);
+    fetch(`${getApiUrl()}/api/packages/preview-price`, {
+      method: "POST",
+      headers: getAuthHeaders() as any,
+      body: JSON.stringify({
+        package_id: selectedPkg._id,
+        months: renewMonths,
+      }),
+    })
+      .then((r) => r.json())
+      .then((d) => {
+        if (active && d && typeof d.total_price === "number") {
+          setRenewPreviewTotal(d.total_price);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [renewModalOpen, selectedPkg, renewMonths]);
+
   const handleExecuteRenew = async () => {
     if (!selectedPkg) return;
-    const computedPrice = renewMonths * (selectedPkg.unitPrice || 0);
+    const finalPrice =
+      renewPreviewTotal ?? renewMonths * (selectedPkg.unitPrice || 0);
 
     try {
       const response = await fetch(
@@ -240,7 +270,7 @@ export function MyPackages() {
             package_id: selectedPkg._id,
             locationId: customer?.locationId?._id || customer?.locationId,
             duration_months: renewMonths,
-            total_price: computedPrice,
+            total_price: finalPrice,
             current_end_date: selectedPkgEndDate,
           }),
         },
@@ -255,7 +285,7 @@ export function MyPackages() {
           registration: { id: data.registration._id },
           customer: customer,
           durationMonths: renewMonths,
-          totalPrice: computedPrice,
+          totalPrice: finalPrice,
         },
       });
     } catch (err: any) {
@@ -272,36 +302,7 @@ export function MyPackages() {
       </DashboardLayout>
     );
 
-  if (customer && customer.status !== "approved") {
-    return (
-      <DashboardLayout>
-        <div className="max-w-7xl mx-auto space-y-6">
-          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-8 text-center">
-            <AlertTriangle className="w-16 h-16 text-amber-500 mx-auto mb-4" />
-            <h2 className="text-2xl font-bold text-amber-900 mb-2">
-              Chưa được xác nhận
-            </h2>
-            <p className="text-amber-700 mb-6">
-              Bạn cần hoàn thiện thông tin cá nhân và được nhân viên xác nhận
-              trước khi đăng ký gói tập.
-            </p>
-            <Button
-              variant="contained"
-              onClick={() => navigate("/dashboard/settings")}
-              sx={{
-                bgcolor: "#d97706",
-                "&:hover": { bgcolor: "#b45309" },
-                textTransform: "none",
-                borderRadius: 2,
-              }}
-            >
-              Đi đến cài đặt <ArrowRight className="ml-2 w-4 h-4" />
-            </Button>
-          </div>
-        </div>
-      </DashboardLayout>
-    );
-  }
+  const showApprovalWarning = customer && customer.status !== "approved";
 
 
   const activeRegistrations = registrations.filter(r =>
@@ -398,6 +399,23 @@ export function MyPackages() {
           </div>
         )}
 
+        {showApprovalWarning && (
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-amber-600 mt-0.5 shrink-0" />
+            <div className="flex-1">
+              <p className="font-bold text-amber-900">Tài khoản chưa được xác nhận</p>
+              <p className="text-sm text-amber-700 mt-1">Bạn cần hoàn thiện thông tin và được nhân viên xác nhận, nhưng các gói đã đăng ký (kể cả do nhân viên đăng ký hộ) vẫn hiển thị bên dưới.</p>
+            </div>
+            <Button
+              variant="contained"
+              onClick={() => navigate("/dashboard/settings")}
+              sx={{ bgcolor: "#d97706", "&:hover": { bgcolor: "#b45309" }, textTransform: "none", borderRadius: 2, whiteSpace: "nowrap" }}
+            >
+              Đi đến cài đặt
+            </Button>
+          </div>
+        )}
+
         {(() => {
           const validPtSessions = ptSessions.filter(
             (ps: any) => ps.ptSessionsPerMonth > 0 || ps.isFullMonth
@@ -409,22 +427,47 @@ export function MyPackages() {
                 Buổi tập Huấn luyện viên trong tháng
               </h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {validPtSessions.map((ps: any, i: number) => (
-                  <div key={i} className="bg-white/80 rounded-xl p-3 border border-indigo-100">
-                    <p className="text-sm font-medium text-slate-800">{ps.packageName}</p>
-                    <p className="text-lg font-bold text-indigo-600">
-                      {ps.isFullMonth ? 'Không giới hạn' : `${ps.currentMonthRemaining} / ${ps.ptSessionsPerMonth} buổi`}
-                    </p>
-                    <div className="w-full bg-slate-200 rounded-full h-1.5 mt-1">
-                      {!ps.isFullMonth && ps.ptSessionsPerMonth > 0 && (
-                        <div
-                          className="bg-indigo-600 h-1.5 rounded-full transition-all"
-                          style={{ width: `${(ps.currentMonthRemaining / ps.ptSessionsPerMonth) * 100}%` }}
-                        />
+                {validPtSessions.map((ps: any, i: number) => {
+                  const schedule = (ps.monthlySchedule || []).filter(
+                    (m: any) => m.total > 0 && m.total < 999,
+                  );
+                  return (
+                    <div key={i} className="bg-white/80 rounded-xl p-3 border border-indigo-100">
+                      <p className="text-sm font-medium text-slate-800">{ps.packageName}</p>
+                      <p className="text-lg font-bold text-indigo-600">
+                        {ps.isFullMonth ? 'Không giới hạn' : `${ps.currentMonthRemaining} / ${ps.ptSessionsPerMonth} buổi`}
+                      </p>
+                      <div className="w-full bg-slate-200 rounded-full h-1.5 mt-1">
+                        {!ps.isFullMonth && ps.ptSessionsPerMonth > 0 && (
+                          <div
+                            className="bg-indigo-600 h-1.5 rounded-full transition-all"
+                            style={{ width: `${(ps.currentMonthRemaining / ps.ptSessionsPerMonth) * 100}%` }}
+                          />
+                        )}
+                      </div>
+                      {schedule.length > 0 && (
+                        <div className="mt-2 pt-2 border-t border-indigo-50">
+                          <p className="text-[11px] text-slate-400 mb-1">Hệ thống tự cấp theo từng tháng:</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {schedule.map((m: any) => (
+                              <span
+                                key={`${m.month}-${m.year}`}
+                                title={`Đã dùng ${m.used}/${m.total} buổi`}
+                                className={`inline-flex px-2 py-0.5 rounded-md text-[11px] font-medium ${
+                                  m.month === ps.currentMonth && m.year === ps.currentYear
+                                    ? 'bg-indigo-600 text-white'
+                                    : 'bg-indigo-50 text-indigo-700'
+                                }`}
+                              >
+                                T{m.month}/{String(m.year).slice(2)}: còn {m.remaining}/{m.total}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
                       )}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           ) : null;
@@ -615,7 +658,7 @@ export function MyPackages() {
                         )}
                       </div>
                       <div className="text-right">
-                        <p className="text-sm text-slate-600">Giá trị</p>
+                        <p className="text-sm text-slate-600">Giá trị hợp đồng</p>
                         <p className="text-xl font-bold text-indigo-600">{formatPrice(reg.total_price)}</p>
                       </div>
                     </div>
@@ -675,7 +718,7 @@ export function MyPackages() {
                         )}
                       </div>
                       <div className="text-right">
-                        <p className="text-sm text-slate-600">Giá trị</p>
+                        <p className="text-sm text-slate-600">Giá trị hợp đồng</p>
                         <p className="text-xl font-bold text-indigo-600">{formatPrice(reg.total_price)}</p>
                       </div>
                     </div>
@@ -825,11 +868,22 @@ export function MyPackages() {
                     </button>
                   ))}
                 </div>
-                <div className="flex justify-between items-center font-bold text-lg bg-slate-50 p-4 rounded-xl border border-slate-100">
-                  <span>Thành tiền:</span>
-                  <span className="text-indigo-600">
-                    {formatPrice(selectedPkg.unitPrice * renewMonths)}
-                  </span>
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 mb-6">
+                  <div className="flex justify-between items-center font-bold text-lg">
+                    <span>Thành tiền (giá hiện tại):</span>
+                    <span className="text-indigo-600">
+                      {formatPrice(
+                        renewPreviewTotal ??
+                          renewMonths * (selectedPkg.unitPrice || 0),
+                      )}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400 mt-2 leading-relaxed">
+                    Gia hạn tính theo giá gói hiện tại
+                    {" "}
+                    {formatPrice(selectedPkg.unitPrice || 0)}/tháng. Hợp đồng
+                    đã ký trước đó vẫn giữ nguyên giá theo thời điểm đăng ký.
+                  </p>
                 </div>
               </div>
               <div className="p-4 bg-slate-50 border-t flex gap-3">

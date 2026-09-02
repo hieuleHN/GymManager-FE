@@ -14,7 +14,6 @@ const ROLE_OPTIONS = [
 
 interface JobFormData {
   name: string;
-  salary: string;
   description: string;
   isAdmin: boolean;
   permissions: string[];
@@ -35,7 +34,7 @@ export function AddJob() {
       const res = await fetch(`${getApiUrl()}/api/jobs`, {
         method: 'POST',
         headers: getAuthHeaders(),
-        body: JSON.stringify({ ...data, salary: Number(data.salary), permissions: selectedPermission ? [selectedPermission] : [] })
+        body: JSON.stringify({ ...data, permissions: selectedPermission ? [selectedPermission] : [] })
       });
       const resData = await res.json();
       if (!res.ok) throw new Error(resData.error || 'Lỗi thêm công việc!');
@@ -66,18 +65,6 @@ export function AddJob() {
               <input type="text" {...register('name', { required: 'Vui lòng nhập tên công việc' })}
                 className={`w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 ${errors.name ? 'border-red-400' : 'border-slate-200'}`} placeholder="VD: Huấn luyện viên" />
               {errors.name && <span className="text-red-500 text-sm mt-1">{errors.name.message}</span>}
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">
-                Tiền lương <span className="text-red-500">*</span>
-              </label>
-              <input type="number" {...register('salary', {
-                required: 'Vui lòng nhập tiền lương',
-                validate: (value) => Number(value) > 0 || 'Tiền lương phải lớn hơn 0'
-              })}
-                className={`w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 ${errors.salary ? 'border-red-400' : 'border-slate-200'}`} placeholder="VD: 10000000" />
-              {errors.salary && <span className="text-red-500 text-sm mt-1">{errors.salary.message}</span>}
             </div>
 
             <div>

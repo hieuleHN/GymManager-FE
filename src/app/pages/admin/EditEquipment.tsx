@@ -1,12 +1,12 @@
-import { AdminLayout } from '../../components/AdminLayout';
-import { Button } from '@mui/material';
-import { useState, useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router';
-import { useClub } from '../../context/ClubContext';
-import { toast } from 'sonner';
-import { getAuthHeaders } from '../../context/AuthContext';
-import { Loader2 } from 'lucide-react';
-import { useForm } from 'react-hook-form';
+import { AdminLayout } from "../../components/AdminLayout";
+import { Button } from "@mui/material";
+import { useState, useEffect } from "react";
+import { useNavigate, useParams } from "react-router";
+import { useClub } from "../../context/ClubContext";
+import { toast } from "sonner";
+import { getAuthHeaders } from "../../context/AuthContext";
+import { Loader2 } from "lucide-react";
+import { useForm } from "react-hook-form";
 
 interface EquipmentFormData {
   name: string;
@@ -19,6 +19,8 @@ interface EquipmentFormData {
   purchaser: string;
   warranty_period: string;
   total: string;
+  invoice_url: string;
+  warranty_card_url: string;
 }
 
 export function EditEquipment() {
@@ -27,7 +29,7 @@ export function EditEquipment() {
   const { selectedClub } = useClub();
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [priceDisplay, setPriceDisplay] = useState('');
+  const [priceDisplay, setPriceDisplay] = useState("");
 
   const {
     register,
@@ -35,44 +37,64 @@ export function EditEquipment() {
     reset,
     watch,
     setValue,
-    formState: { errors }
+    formState: { errors },
   } = useForm<EquipmentFormData>();
 
-  const unitPrice = Number(watch('unitPrice')) || 0;
-  const quantity = Number(watch('quantity')) || 0;
+  const unitPrice = Number(watch("unitPrice")) || 0;
+  const quantity = Number(watch("quantity")) || 0;
   const calculatedTotal = unitPrice * quantity;
 
   const formatPriceInput = (value: string) => {
-    const raw = value.replace(/[^0-9]/g, '');
-    setPriceDisplay(raw ? Number(raw).toLocaleString('vi-VN') : '');
-    setValue('unitPrice', raw, { shouldValidate: true });
+    const raw = value.replace(/[^0-9]/g, "");
+    setPriceDisplay(raw ? Number(raw).toLocaleString("vi-VN") : "");
+    setValue("unitPrice", raw, { shouldValidate: true });
+  };
+
+  const handleFileUpload = (
+    e: React.ChangeEvent<HTMLInputElement>,
+    fieldName: "invoice_url" | "warranty_card_url",
+  ) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 2 * 1024 * 1024) {
+        toast.error("Vui lòng chọn ảnh có dung lượng nhỏ hơn 2MB!");
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setValue(fieldName, reader.result as string, { shouldValidate: true });
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   useEffect(() => {
     if (!id) return;
     setLoading(true);
     fetch(`/api/equipments/${id}`, { headers: getAuthHeaders() })
-      .then(res => res.json())
-      .then(data => {
+      .then((res) => res.json())
+      .then((data) => {
         const item = data?.data || data;
-        const price = item.unitPrice?.toString() || '';
-        setPriceDisplay(price ? Number(price).toLocaleString('vi-VN') : '');
+        const price = item.unitPrice?.toString() || "";
+        setPriceDisplay(price ? Number(price).toLocaleString("vi-VN") : "");
         reset({
-          name: item.name || '',
-          description: item.description || '',
+          name: item.name || "",
+          description: item.description || "",
           unitPrice: price,
-          quantity: item.quantity?.toString() || '',
-          warranty_period: item.warranty_period?.toString() || '12',
-          total: item.total?.toString() || '',
-          supplier: item.supplier || '',
-          phone: item.phone || '',
-          address: item.address || '',
-          purchaser: item.purchaser || ''
+          quantity: item.quantity?.toString() || "",
+          warranty_period: item.warranty_period?.toString() || "12",
+          total: item.total?.toString() || "",
+          supplier: item.supplier || "",
+          phone: item.phone || "",
+          address: item.address || "",
+          purchaser: item.purchaser || "",
+          invoice_url: item.invoice_url || "",
+          warranty_card_url: item.warranty_card_url || "",
         });
       })
       .catch(() => {
-        toast.error('Tải thông tin thiết bị thất bại!');
-        navigate('/admin/equipment');
+        toast.error("Tải thông tin thiết bị thất bại!");
+        navigate("/admin/equipment");
       })
       .finally(() => setLoading(false));
   }, [id, reset, navigate]);
@@ -87,26 +109,29 @@ export function EditEquipment() {
         quantity: parseInt(data.quantity),
         warranty_period: parseInt(data.warranty_period) || 12,
         total: calculatedTotal,
-        supplier: data.supplier?.trim() || '',
-        phone: data.phone?.trim() || '',
-        address: data.address?.trim() || '',
-        purchaser: data.purchaser?.trim() || ''
+        supplier: data.supplier?.trim() || "",
+        phone: data.phone?.trim() || "",
+        address: data.address?.trim() || "",
+        purchaser: data.purchaser?.trim() || "",
+        invoice_url: data.invoice_url?.trim() || "",
+        warranty_card_url: data.warranty_card_url?.trim() || "",
       };
-      if (selectedClub !== 'all') {
+      if (selectedClub !== "all") {
         body.location_id = selectedClub;
       }
 
       const res = await fetch(`/api/equipments/${id}`, {
-        method: 'PUT',
+        method: "PUT",
         headers: getAuthHeaders(),
-        body: JSON.stringify(body)
+        body: JSON.stringify(body),
       });
 
       const resData = await res.json();
-      if (!res.ok) throw new Error(resData.error || 'Cập nhật thiết bị thất bại!');
+      if (!res.ok)
+        throw new Error(resData.error || "Cập nhật thiết bị thất bại!");
 
-      toast.success('Cập nhật thiết bị thành công!');
-      navigate('/admin/equipment');
+      toast.success("Cập nhật thiết bị thành công!");
+      navigate("/admin/equipment");
     } catch (err: any) {
       toast.error(err.message);
     } finally {
@@ -128,15 +153,18 @@ export function EditEquipment() {
     <AdminLayout>
       <div className="max-w-6xl mx-auto space-y-6">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900 mb-2">Chỉnh sửa thiết bị</h1>
+          <h1 className="text-3xl font-bold text-slate-900 mb-2">
+            Chỉnh sửa thiết bị
+          </h1>
           <p className="text-slate-600">Cập nhật thông tin thiết bị</p>
         </div>
 
         <form onSubmit={formHandleSubmit(handleSubmit)}>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Left Column - Equipment Info */}
             <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-8">
-              <h2 className="text-xl font-bold text-slate-900 mb-6">Thông tin thiết bị</h2>
+              <h2 className="text-xl font-bold text-slate-900 mb-6">
+                Thông tin thiết bị
+              </h2>
               <div className="space-y-6">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">
@@ -144,10 +172,16 @@ export function EditEquipment() {
                   </label>
                   <input
                     type="text"
-                    {...register('name', { required: 'Vui lòng nhập tên thiết bị' })}
-                    className={`w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 ${errors.name ? 'border-red-500' : 'border-slate-200'}`}
+                    {...register("name", {
+                      required: "Vui lòng nhập tên thiết bị",
+                    })}
+                    className={`w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 ${errors.name ? "border-red-500" : "border-slate-200"}`}
                   />
-                  {errors.name && <span className="text-red-500 text-sm mt-1">{errors.name?.message}</span>}
+                  {errors.name && (
+                    <span className="text-red-500 text-sm mt-1">
+                      {errors.name?.message}
+                    </span>
+                  )}
                 </div>
 
                 <div>
@@ -155,7 +189,7 @@ export function EditEquipment() {
                     Mô tả
                   </label>
                   <textarea
-                    {...register('description')}
+                    {...register("description")}
                     rows={3}
                     className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   />
@@ -171,13 +205,21 @@ export function EditEquipment() {
                     placeholder="0"
                     value={priceDisplay}
                     onChange={(e) => formatPriceInput(e.target.value)}
-                    className={`w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 ${errors.unitPrice ? 'border-red-500' : 'border-slate-200'}`}
+                    className={`w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 ${errors.unitPrice ? "border-red-500" : "border-slate-200"}`}
                   />
-                  <input type="hidden" {...register('unitPrice', {
-                    required: 'Vui lòng nhập đơn giá',
-                    validate: (value) => Number(value) > 0 || 'Đơn giá phải lớn hơn 0'
-                  })} />
-                  {errors.unitPrice && <span className="text-red-500 text-sm mt-1">{errors.unitPrice?.message}</span>}
+                  <input
+                    type="hidden"
+                    {...register("unitPrice", {
+                      required: "Vui lòng nhập đơn giá",
+                      validate: (value) =>
+                        Number(value) > 0 || "Đơn giá phải lớn hơn 0",
+                    })}
+                  />
+                  {errors.unitPrice && (
+                    <span className="text-red-500 text-sm mt-1">
+                      {errors.unitPrice?.message}
+                    </span>
+                  )}
                 </div>
 
                 <div>
@@ -186,13 +228,18 @@ export function EditEquipment() {
                   </label>
                   <input
                     type="number"
-                    {...register('quantity', {
-                      required: 'Vui lòng nhập số lượng',
-                      validate: (value) => Number(value) > 0 || 'Số lượng phải lớn hơn 0'
+                    {...register("quantity", {
+                      required: "Vui lòng nhập số lượng",
+                      validate: (value) =>
+                        Number(value) > 0 || "Số lượng phải lớn hơn 0",
                     })}
-                    className={`w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 ${errors.quantity ? 'border-red-500' : 'border-slate-200'}`}
+                    className={`w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 ${errors.quantity ? "border-red-500" : "border-slate-200"}`}
                   />
-                  {errors.quantity && <span className="text-red-500 text-sm mt-1">{errors.quantity?.message}</span>}
+                  {errors.quantity && (
+                    <span className="text-red-500 text-sm mt-1">
+                      {errors.quantity?.message}
+                    </span>
+                  )}
                 </div>
 
                 <div>
@@ -201,16 +248,17 @@ export function EditEquipment() {
                   </label>
                   <input
                     type="number"
-                    {...register('warranty_period')}
+                    {...register("warranty_period")}
                     className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   />
                 </div>
               </div>
             </div>
 
-            {/* Right Column - Supplier Info */}
             <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-8">
-              <h2 className="text-xl font-bold text-slate-900 mb-6">Thông tin nhà cung cấp</h2>
+              <h2 className="text-xl font-bold text-slate-900 mb-6">
+                Thông tin nhà cung cấp & Giấy tờ
+              </h2>
               <div className="space-y-6">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">
@@ -218,7 +266,7 @@ export function EditEquipment() {
                   </label>
                   <input
                     type="text"
-                    {...register('supplier')}
+                    {...register("supplier")}
                     className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   />
                 </div>
@@ -228,7 +276,7 @@ export function EditEquipment() {
                     Địa chỉ
                   </label>
                   <textarea
-                    {...register('address')}
+                    {...register("address")}
                     rows={3}
                     className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   />
@@ -240,7 +288,7 @@ export function EditEquipment() {
                   </label>
                   <input
                     type="tel"
-                    {...register('phone')}
+                    {...register("phone")}
                     className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   />
                 </div>
@@ -251,27 +299,60 @@ export function EditEquipment() {
                   </label>
                   <input
                     type="text"
-                    {...register('purchaser')}
+                    {...register("purchaser")}
                     className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    Ảnh Hóa đơn (Scan từ máy)
+                  </label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => handleFileUpload(e, "invoice_url")}
+                    className="w-full text-sm text-slate-500 file:mr-4 file:py-2.5 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 border border-slate-200 rounded-xl cursor-pointer"
+                  />
+                  {watch("invoice_url") && (
+                    <span className="text-xs text-green-600 font-bold mt-2 inline-block">
+                      ✓ Đã có ảnh hóa đơn
+                    </span>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    Ảnh Phiếu bảo hành (Scan từ máy)
+                  </label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => handleFileUpload(e, "warranty_card_url")}
+                    className="w-full text-sm text-slate-500 file:mr-4 file:py-2.5 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 border border-slate-200 rounded-xl cursor-pointer"
+                  />
+                  {watch("warranty_card_url") && (
+                    <span className="text-xs text-green-600 font-bold mt-2 inline-block">
+                      ✓ Đã có ảnh phiếu bảo hành
+                    </span>
+                  )}
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Action Buttons */}
           <div className="flex justify-end gap-3 mt-6">
             <Button
               type="button"
               variant="outlined"
-              onClick={() => navigate('/admin/equipment')}
+              onClick={() => navigate("/admin/equipment")}
               sx={{
-                borderColor: '#cbd5e1',
-                color: '#475569',
-                '&:hover': { borderColor: '#94a3b8', bgcolor: '#f8fafc' },
-                textTransform: 'none',
+                borderColor: "#cbd5e1",
+                color: "#475569",
+                "&:hover": { borderColor: "#94a3b8", bgcolor: "#f8fafc" },
+                textTransform: "none",
                 borderRadius: 2,
-                px: 4
+                px: 4,
               }}
             >
               Hủy
@@ -281,14 +362,14 @@ export function EditEquipment() {
               variant="contained"
               disabled={submitting}
               sx={{
-                bgcolor: '#4f46e5',
-                '&:hover': { bgcolor: '#4338ca' },
-                textTransform: 'none',
+                bgcolor: "#4f46e5",
+                "&:hover": { bgcolor: "#4338ca" },
+                textTransform: "none",
                 borderRadius: 2,
-                px: 4
+                px: 4,
               }}
             >
-              {submitting ? 'Đang lưu...' : 'Lưu thay đổi'}
+              {submitting ? "Đang lưu..." : "Lưu thay đổi"}
             </Button>
           </div>
         </form>
