@@ -260,7 +260,7 @@ export function StaffDetail() {
             <p className="text-sm text-slate-400">Chưa có lịch sử chấm công</p>
           )}
           <div className="mt-4">
-            <Button variant="outlined" onClick={() => navigate('/admin/staff-attendance')}
+            <Button variant="outlined" onClick={() => navigate('/admin/staff-attendance/history')}
               sx={{ borderColor: '#cbd5e1', color: '#475569', textTransform: 'none', borderRadius: 2 }}>
               Xem tất cả chấm công
             </Button>

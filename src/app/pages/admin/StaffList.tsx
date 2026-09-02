@@ -1,9 +1,9 @@
 import { AdminLayout } from '../../components/AdminLayout';
 import { Pagination } from '../../components/Pagination';
-import { Search, Edit, Lock, Unlock, AlertTriangle, Eye, ScanFace, X, Loader2, Camera, Check } from 'lucide-react';
-import { useState, useEffect, useRef } from 'react';
+import { Search, Edit, Lock, Unlock, AlertTriangle, Eye, ScanFace, X, Loader2, Camera, Check, Download } from 'lucide-react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router';
-import { getAuthHeaders, getApiUrl } from '../../context/AuthContext';
+import { getAuthHeaders, getApiUrl, useAuth } from '../../context/AuthContext';
 import { useClub } from '../../context/ClubContext';
 import { toast } from 'sonner';
 import Webcam from 'react-webcam';
@@ -106,14 +106,16 @@ export function StaffList() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [jobFilter, setJobFilter] = useState('all');
   const [genderFilter, setGenderFilter] = useState('all');
-  const [jobs, setJobs] = useState<{ _id: string; name: string }[]>([]);
+  const [jobs, setJobs] = useState<{ _id: string; name: string; isAdmin?: boolean; permissions?: string[] }[]>([]);
   const { selectedClub } = useClub();
+  const { user } = useAuth();
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
   const [reportCounts, setReportCounts] = useState<Record<string, number>>({});
   const [loadingReports, setLoadingReports] = useState(true);
   const [todayStaffMap, setTodayStaffMap] = useState<Map<string, { count: number; latest: any; sessions: any[] }>>(new Map());
+  const [todayShiftMap, setTodayShiftMap] = useState<Map<string, Set<string>>>(new Map());
   const [faceModal, setFaceModal] = useState<{ open: boolean; staff: Staff | null }>({ open: false, staff: null });
 
   const fetchStaff = async (p = page, opts?: { search?: string; status?: string; job?: string; gender?: string }) => {
@@ -178,21 +180,53 @@ export function StaffList() {
     } catch {}
   };
 
+  const fetchTodayShifts = async () => {
+    try {
+      const now = new Date();
+      const y = now.getFullYear();
+      const m = String(now.getMonth() + 1).padStart(2, '0');
+      const d = String(now.getDate()).padStart(2, '0');
+      const todayStr = `${y}-${m}-${d}`;
+      const locParam = selectedClub !== 'all' ? `&locationId=${selectedClub}` : '';
+      const res = await fetch(`${getApiUrl()}/api/staff-shifts/by-date?date=${todayStr}${locParam}`, { headers: getAuthHeaders() as any });
+      const json = await res.json();
+      const shifts: any[] = json.data || (Array.isArray(json) ? json : []);
+      const map = new Map<string, Set<string>>();
+      shifts.forEach((s: any) => {
+        const sid = String(s.staffId?._id || s.staffId || '');
+        if (!sid) return;
+        if (!map.has(sid)) map.set(sid, new Set());
+        map.get(sid)!.add(s.shift);
+      });
+      setTodayShiftMap(map);
+    } catch {
+      setTodayShiftMap(new Map());
+    }
+  };
+
   useEffect(() => {
     setPage(1);
     fetchStaff(1);
     fetchReportCounts();
     fetchTodayStaffAttendance();
+    fetchTodayShifts();
   }, [selectedClub, statusFilter, jobFilter, genderFilter]);
 
   useEffect(() => {
     fetchTodayStaffAttendance();
-    const id = setInterval(fetchTodayStaffAttendance, 10000);
+    fetchTodayShifts();
+    const id = setInterval(() => {
+      fetchTodayStaffAttendance();
+      fetchTodayShifts();
+    }, 10000);
     let ch: any = null;
     try {
       ch = new BroadcastChannel('GYM_ATTENDANCE_CHANNEL');
       ch.onmessage = (e: any) => {
-        if (e.data?.type === 'CHECKIN_EVENT' || e.data?.type === 'FACE_CHECKIN_TRIGGER') fetchTodayStaffAttendance();
+        if (e.data?.type === 'CHECKIN_EVENT' || e.data?.type === 'FACE_CHECKIN_TRIGGER') {
+          fetchTodayStaffAttendance();
+          fetchTodayShifts();
+        }
       };
     } catch {}
     return () => { clearInterval(id); try { ch?.close(); } catch {} };
@@ -255,12 +289,100 @@ export function StaffList() {
     } catch (e: any) { toast.error(e.message); }
   };
 
+  // Lọc hiển thị theo phân quyền của tài khoản đăng nhập (đồng bộ với BE)
+  const visibleStaff = useMemo(() => {
+    if (!user) return staff;
+    if (user.isAdmin) return staff; // admin xem tất cả
+    const normalize = (s: string) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    const roleNorm = normalize(user.role || '');
+    const isManager = roleNorm.includes('quan ly');
+    const isReception = roleNorm.includes('le tan');
+
+    // Build map jobId -> job info từ danh sách jobs đã fetch (có isAdmin & permissions)
+    const jobMap = new Map<string, { isAdmin?: boolean; permissions?: string[]; name: string }>();
+    jobs.forEach(j => jobMap.set(j._id, { isAdmin: j.isAdmin, permissions: j.permissions, name: j.name }));
+
+    const isAdminJob = (jobId: string) => jobMap.get(jobId)?.isAdmin === true;
+    const isManagerJob = (jobId: string) => {
+      const j = jobMap.get(jobId);
+      if (!j) return false;
+      const nameNorm = normalize(j.name);
+      return nameNorm.includes('quan ly') || (j.permissions || []).includes('quan_ly');
+    };
+
+    return staff.filter(s => {
+      const jobId = (s.job as any)?._id || (s as any).job || '';
+      if (isManager) {
+        // quản lý không phân quyền: ẩn những bản ghi có phân quyền (isAdmin)
+        if (isAdminJob(jobId)) return false;
+      } else if (isReception) {
+        // lễ tân: ẩn những bản ghi có quyền là quản lý
+        if (isManagerJob(jobId)) return false;
+        // cũng ẩn admin để đảm bảo phân cấp (nếu chỉ muốn ẩn quản lý thì bỏ dòng dưới)
+        if (isAdminJob(jobId)) return false;
+      } else {
+        // các role khác mặc định ẩn admin
+        if (isAdminJob(jobId)) return false;
+      }
+      return true;
+    });
+  }, [staff, jobs, user]);
+
+  // Sắp xếp ưu tiên: 1 = có chấm công hôm nay (kể cả HLV không có ca), 2 = có ca hôm nay, 3 = còn lại; nghỉ việc luôn cuối
+  const sortedStaff = useMemo(() => {
+    const rank = (id: string) => {
+      const hasAttendance = todayStaffMap.has(id);
+      const hasShift = todayShiftMap.has(id);
+      if (hasAttendance) return 2; // ưu tiên 1 (cao nhất)
+      if (hasShift) return 1; // ưu tiên 2
+      return 0;
+    };
+    return [...visibleStaff].sort((a, b) => {
+      const aActive = a.status === 'active' ? 1 : 0;
+      const bActive = b.status === 'active' ? 1 : 0;
+      if (aActive !== bActive) return bActive - aActive; // hoạt động trước, nghỉ việc xuống cuối
+      const ra = rank(a._id);
+      const rb = rank(b._id);
+      if (ra !== rb) return rb - ra; // 2 -> 1 -> 0 (trong nhóm hoạt động / nghỉ việc)
+      return 0; // giữ nguyên thứ tự gốc trong cùng nhóm
+    });
+  }, [visibleStaff, todayStaffMap, todayShiftMap]);
+
+  const handleExportDailyDetail = async () => {
+    try {
+      const today = new Date().toISOString().slice(0,10);
+      const locParam = selectedClub && selectedClub !== 'all' ? `&locationId=${selectedClub}` : '';
+      const res = await fetch(`${getApiUrl()}/api/staff-attendance/export/daily-detail?date=${today}${locParam}`, { headers: getAuthHeaders() as any });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.message || data.error || 'Không có dữ liệu để xuất');
+      }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `NhanVien_HoatDong_${today}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success('Đã xuất Excel chi tiết nhân viên hôm nay');
+    } catch (e: any) {
+      toast.error(e.message || 'Xuất Excel thất bại');
+    }
+  };
+
   return (
     <AdminLayout>
       <div className="max-w-7xl mx-auto space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-900 mb-2">Danh sách nhân viên</h1>
-          <p className="text-slate-600">Quản lý thông tin nhân viên</p>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-bold text-slate-900 mb-2">Danh sách nhân viên</h1>
+            <p className="text-slate-600">Quản lý thông tin nhân viên</p>
+          </div>
+          <button onClick={handleExportDailyDetail} className="shrink-0 inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm rounded-xl shadow-sm transition">
+            <Download className="w-4 h-4" /> Xuất Excel chi tiết hôm nay
+          </button>
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 space-y-4">
@@ -307,7 +429,7 @@ export function StaffList() {
                 </tr>
               </thead>
               <tbody>
-                {staff.map((person, index) => {
+                {sortedStaff.map((person, index) => {
                   const hasFace = !!(person.faceDescriptor && person.faceDescriptor.length > 0);
                   return (
                   <tr key={person._id} className="border-b border-slate-100 hover:bg-slate-50">
@@ -326,9 +448,37 @@ export function StaffList() {
                     <td className="px-3 py-3 text-sm text-slate-600 whitespace-nowrap">{person.phone}</td>
                     <td className="px-3 py-3 text-sm text-slate-600 whitespace-nowrap">{person.gender}</td>
                     <td className="px-3 py-3 whitespace-nowrap">
-                      <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-semibold ${person.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-slate-200 text-slate-600'}`}>
-                        {person.status === 'active' ? 'Đang làm' : 'Nghỉ việc'}
-                      </span>
+                      {(() => {
+                        const shiftSet = todayShiftMap.get(person._id);
+                        const hasMorning = shiftSet?.has('morning-noon');
+                        const hasAfternoon = shiftSet?.has('afternoon-evening');
+                        if (hasMorning && hasAfternoon) {
+                          return (
+                            <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-semibold bg-violet-50 text-violet-700 border border-violet-100">
+                              Cả ngày
+                            </span>
+                          );
+                        }
+                        if (hasMorning) {
+                          return (
+                            <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-100">
+                              Sáng
+                            </span>
+                          );
+                        }
+                        if (hasAfternoon) {
+                          return (
+                            <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-semibold bg-sky-50 text-sky-700 border border-sky-100">
+                              Chiều
+                            </span>
+                          );
+                        }
+                        return (
+                          <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-semibold ${person.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-slate-200 text-slate-600'}`}>
+                            {person.status === 'active' ? 'Hoạt động' : 'Nghỉ việc'}
+                          </span>
+                        );
+                      })()}
                     </td>
                     <td className="px-3 py-3 whitespace-nowrap">
                       {(() => {
@@ -378,7 +528,7 @@ export function StaffList() {
                     </td>
                   </tr>
                 )})}
-                {staff.length === 0 && (
+                {sortedStaff.length === 0 && (
                   <tr><td colSpan={10} className="px-6 py-8 text-center text-slate-500">Không tìm thấy nhân viên nào</td></tr>
                 )}
               </tbody>

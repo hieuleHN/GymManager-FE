@@ -106,7 +106,8 @@ export function FaceScannerPopup() {
             if (Array.isArray(custList)) custList.forEach((c: any) => { if (c.faceDescriptor?.length) labeled.push(new faceapi.LabeledFaceDescriptors(`customer:${c._id}`, [new Float32Array(c.faceDescriptor)])); });
             if (Array.isArray(staffList2)) staffList2.forEach((s: any) => { if (s.faceDescriptor?.length) labeled.push(new faceapi.LabeledFaceDescriptors(`staff:${s._id}`, [new Float32Array(s.faceDescriptor)])); });
             if (labeled.length > 0) {
-                setFaceMatcher(new faceapi.FaceMatcher(labeled, 0.62));
+                // Ngưỡng 0.60 cân bằng: đủ chặt để tránh nhầm hội viên<->nhân viên nhưng không quá khắt khe làm mất nhận diện
+                setFaceMatcher(new faceapi.FaceMatcher(labeled, 0.60));
                 setStatusText(`Sẵn sàng nhận diện · Đã nạp ${custList.length} hội viên, ${staffList2.length} nhân viên`);
             } else {
                 setFaceMatcher(null);
@@ -149,8 +150,10 @@ export function FaceScannerPopup() {
 
                 if (detection) {
                     const match = faceMatcher.findBestMatch(detection.descriptor);
+                    // Debug: in ra label và khoảng cách để kiểm tra nhầm hội viên <-> nhân viên
+                    // console.log('[FaceMatch]', match.label, match.distance);
                     if (match.label !== 'unknown') {
-                        setStatusText('Đã nhận diện! Đang xử lý điểm danh...');
+                        setStatusText(`Đã nhận diện! (${match.label.split(':')[0]}) Đang xử lý...`);
                         if (match.label.startsWith('staff:')) {
                             await handleStaffFaceCheckIn(match.label.replace('staff:', ''));
                         } else if (match.label.startsWith('customer:')) {
@@ -198,6 +201,7 @@ export function FaceScannerPopup() {
                 channelRef.current?.postMessage({
                     type: 'FACE_CHECKIN_TRIGGER',
                     payload: {
+                        type: 'member',
                         status: response.data.status,
                         customer,
                         totalMinutes: response.data.totalMinutes,
@@ -227,15 +231,36 @@ export function FaceScannerPopup() {
         setLoading(true);
         try {
             const response = await axios.post(`${backendUrl}/api/staff/face/verify`, { staffId }, { headers: getDirectHeaders() as any });
-            const staffName = response.data.staff?.fullName || 'Nhân viên';
-            const isCheckout = response.data.status === 'checked-out';
-            setFeedback({ success: true, name: staffName, msg: isCheckout ? 'Check-out FaceID thành công!' : 'Điểm danh FaceID thành công!' });
+            const data = response.data;
+            const staffName = data.staff?.fullName || 'Nhân viên';
+            const isCheckout = data.status === 'checked-out';
+            setFeedback({ success: true, name: staffName, msg: isCheckout ? 'Check-out FaceID thành công!' : 'Chấm công FaceID thành công!' });
             try {
-                channelRef.current?.postMessage({ type: 'FACE_CHECKIN_TRIGGER', payload: { status: response.data.status, customer: { fullName: staffName } } });
+                channelRef.current?.postMessage({
+                    type: 'FACE_CHECKIN_TRIGGER',
+                    payload: {
+                        type: 'staff',
+                        status: data.status,
+                        staff: data.staff,
+                        shift: data.shift,
+                        shiftLabel: data.shiftLabel,
+                        shiftsToday: data.shiftsToday,
+                        hasTrainingToday: data.hasTrainingToday,
+                        trainingCount: data.trainingCount,
+                        trainingSummary: data.trainingSummary,
+                        totalMinutes: data.totalMinutes,
+                        minutesLate: data.minutesLate,
+                        minutesEarly: data.minutesEarly,
+                        overtime: data.overtime,
+                        customer: { fullName: staffName } // giữ tương thích cũ
+                    }
+                });
                 channelRef.current?.postMessage({ type: 'CHECKIN_EVENT' });
             } catch {}
         } catch (err: any) {
-            const msg = err.response?.data?.error || err.message || 'Chấm công FaceID nhân viên thất bại';
+            const raw = err.response?.data?.error || err.message || 'Chấm công FaceID nhân viên thất bại';
+            // Nếu quét hội viên mà nhầm sang nhân viên thì báo lỗi sẽ là "trống faceID" -> đổi thành thông báo chung để không gây hiểu nhầm
+            const msg = raw.includes('trống FaceID') || raw.includes('Không tìm thấy nhân viên') ? 'Khuôn mặt này chưa đăng ký cho nhân viên. Vui lòng thử lại hoặc kiểm tra hội viên đã đăng ký FaceID chưa.' : raw;
             setFeedback({ success: false, name: 'Thông báo', msg });
         } finally {
             setLoading(false);

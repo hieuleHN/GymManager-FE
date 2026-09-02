@@ -40,6 +40,7 @@ import { EditEquipment } from './pages/admin/EditEquipment';
 import { Services } from './pages/admin/Services';
 import { ServiceHistory } from './pages/admin/ServiceHistory';
 import { AttendanceHistory } from './pages/admin/AttendanceHistory';
+import { StaffAttendanceHistory } from './pages/admin/StaffAttendanceHistory';
 import { StaffList } from './pages/admin/StaffList';
 import { AddStaff } from './pages/admin/AddStaff';
 import { StaffDetail } from './pages/admin/StaffDetail';
@@ -129,6 +130,8 @@ const routeFeatures: Record<string, string> = {
   '/admin/services/history': 'services',
   '/admin/attendance': 'attendance',
   '/admin/attendance/history': 'attendance',
+  '/admin/staff-attendance/history': 'attendance',
+  '/admin/staff-attendance': 'attendance',
   '/admin/products': 'products',
   '/admin/products/add': 'products',
   '/admin/products/returns': 'products',
@@ -372,6 +375,14 @@ export const router = createBrowserRouter([
   {
     path: '/admin/attendance/history',
     element: <ProtectedRoute role="staff"><AttendanceHistory /></ProtectedRoute>
+  },
+  {
+    path: '/admin/staff-attendance/history',
+    element: <ProtectedRoute role="staff"><StaffAttendanceHistory /></ProtectedRoute>
+  },
+  {
+    path: '/admin/staff-attendance',
+    element: <Navigate to="/admin/staff-attendance/history" replace />
   },
   {
     path: '/admin/products',
