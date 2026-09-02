@@ -225,7 +225,7 @@ export function Statistics() {
         )}
 
         {tab === 'finance' && <FinanceTab data={fd} period={period} customFrom={customFrom} customTo={customTo} onStatClick={handleOpenFormula} onDrilldown={setDrilldown} onExplain={setExplainModal} clubName={selectedClubName} />}
-        {tab === 'operations' && <OperationsTab data={od} period={period} customFrom={customFrom} customTo={customTo} clubName={selectedClubName} />}
+        {tab === 'operations' && <OperationsTab data={od} period={period} customFrom={customFrom} customTo={customTo} clubName={selectedClubName} onDrilldown={setDrilldown} />}
         {tab === 'activity' && <ActivityStats selectedClub={selectedClub} />}
       </div>
 
@@ -955,13 +955,85 @@ function FinanceTab({ data, period, customFrom, customTo, onStatClick, onDrilldo
   );
 }
 
-function OperationsTab({ data, period, customFrom, customTo, clubName }: { data: any; period?: string; customFrom?: string; customTo?: string; clubName?: string }) {
+function OperationsTab({ data, period, customFrom, customTo, clubName, onDrilldown }: { data: any; period?: string; customFrom?: string; customTo?: string; clubName?: string; onDrilldown?: (d: { title: string; subtitle?: string; columns: string[]; rows: any[]; totalLabel?: string; totalValue?: number }) => void }) {
   if (!data) return <div className="text-slate-400 text-sm">Đang tải dữ liệu vận hành...</div>;
+
+  const equipmentByStatus = (statusName: string) => {
+    return (data.equipmentDetails || []).filter((e: any) => {
+      if (statusName === 'Hoạt động') return e.status === 'active' && e.pendingReports === 0;
+      if (statusName === 'Bảo trì') return e.status === 'maintenance' || e.pendingReports > 0;
+      if (statusName === 'Hỏng') return e.status === 'broken';
+      return false;
+    });
+  };
+
   const opStats = [
-    { label: 'Tổng số thiết bị', value: `${data.totalQuantity}`, icon: PackageIcon, color: 'bg-blue-500' },
-    { label: 'Giá trị thiết bị', value: fmtVnd(data.totalValue), icon: DollarSign, color: 'bg-emerald-500' },
-    { label: 'Tổng báo cáo', value: `${data.totalReports}`, icon: AlertTriangle, color: 'bg-orange-500' },
-    { label: 'Chờ xử lý', value: `${data.pendingReports}`, trend: 'up', icon: Wrench, color: 'bg-red-500' },
+    { label: 'Tổng số thiết bị', value: `${data.totalQuantity}`, icon: PackageIcon, color: 'bg-blue-500',
+      onClick: () => onDrilldown?.({
+        title: 'Danh sách thiết bị',
+        subtitle: `${data.equipmentDetails?.length || 0} thiết bị · Tổng ${data.totalQuantity} máy`,
+        columns: ['Tên thiết bị', 'Số lượng', 'Giá trị', 'Trạng thái', 'Báo cáo chờ', 'Báo cáo đã xử lý'],
+        rows: (data.equipmentDetails || []).map((e: any) => ({
+          'Tên thiết bị': e.name,
+          'Số lượng': `${e.quantity} máy`,
+          'Giá trị': fmtVnd(e.total),
+          'Trạng thái': e.pendingReports > 0 ? 'Bảo trì' : e.status === 'broken' ? 'Hỏng' : 'Hoạt động',
+          'Báo cáo chờ': `${e.pendingReports}`,
+          'Báo cáo đã xử lý': `${e.resolvedReports}`,
+        })),
+        totalLabel: 'Tổng giá trị',
+        totalValue: data.totalValue,
+      }),
+    },
+    { label: 'Giá trị thiết bị', value: fmtVnd(data.totalValue), icon: DollarSign, color: 'bg-emerald-500',
+      onClick: () => onDrilldown?.({
+        title: 'Giá trị thiết bị chi tiết',
+        subtitle: `Tổng ${fmtVnd(data.totalValue)}`,
+        columns: ['Tên thiết bị', 'Số lượng', 'Đơn giá', 'Tổng giá trị', 'Tỷ lệ'],
+        rows: (data.equipmentDetails || []).sort((a: any, b: any) => b.total - a.total).map((e: any) => ({
+          'Tên thiết bị': e.name,
+          'Số lượng': `${e.quantity} máy`,
+          'Đơn giá': fmtVnd(Math.round(e.total / (e.quantity || 1))),
+          'Tổng giá trị': fmtVnd(e.total),
+          'Tỷ lệ': `${data.totalValue > 0 ? ((e.total / data.totalValue) * 100).toFixed(1) : 0}%`,
+        })),
+        totalLabel: 'Tổng giá trị',
+        totalValue: data.totalValue,
+      }),
+    },
+    { label: 'Tổng báo cáo', value: `${data.totalReports}`, icon: AlertTriangle, color: 'bg-orange-500',
+      onClick: () => onDrilldown?.({
+        title: 'Tất cả báo cáo sự cố',
+        subtitle: `${data.totalReports} báo cáo · ${data.pendingReports} chờ xử lý`,
+        columns: ['Thiết bị', 'Loại sự cố', 'Số máy', 'Lý do', 'Thời gian', 'Trạng thái'],
+        rows: (data.reportDetails || []).sort((a: any, b: any) => new Date(b.reportedAt || 0) - new Date(a.reportedAt || 0)).map((r: any) => ({
+          'Thiết bị': r.equipmentName,
+          'Loại sự cố': r.statusType,
+          'Số máy': `${r.affectedQuantity}`,
+          'Lý do': r.reason || '—',
+          'Thời gian': r.reportedAt ? new Date(r.reportedAt).toLocaleDateString('vi-VN') : '—',
+          'Trạng thái': r.status === 'pending' ? 'Chờ xử lý' : 'Hoàn thành',
+        })),
+        totalLabel: 'Tổng báo cáo',
+        totalValue: data.totalReports,
+      }),
+    },
+    { label: 'Chờ xử lý', value: `${data.pendingReports}`, trend: 'up', icon: Wrench, color: 'bg-red-500',
+      onClick: () => onDrilldown?.({
+        title: 'Báo cáo chờ xử lý',
+        subtitle: `${data.pendingReports} báo cáo`,
+        columns: ['Thiết bị', 'Loại sự cố', 'Số máy bị ảnh hưởng', 'Lý do', 'Thời gian báo cáo'],
+        rows: (data.reportDetails || []).filter((r: any) => r.status === 'pending').map((r: any) => ({
+          'Thiết bị': r.equipmentName,
+          'Loại sự cố': r.statusType,
+          'Số máy bị ảnh hưởng': `${r.affectedQuantity}`,
+          'Lý do': r.reason || '—',
+          'Thời gian báo cáo': r.reportedAt ? new Date(r.reportedAt).toLocaleDateString('vi-VN') : '—',
+        })),
+        totalLabel: 'Tổng chờ xử lý',
+        totalValue: data.pendingReports,
+      }),
+    },
   ];
 
   const withPct = (arr: any[]) => arr.map((i: any) => ({ ...i, pct: pct(i.value, arr.reduce((s: number, x: any) => s + x.value, 0)) }));
@@ -975,7 +1047,7 @@ function OperationsTab({ data, period, customFrom, customTo, clubName }: { data:
 
   return (
     <>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">{opStats.map((stat, i) => <StatCard key={i} stat={stat} />)}</div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">{opStats.map((stat, i) => <StatCard key={i} stat={stat} onClick={stat.onClick} />)}</div>
       <ExportBtn onClick={handleExport} />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -993,9 +1065,28 @@ function OperationsTab({ data, period, customFrom, customTo, clubName }: { data:
                 innerRadius={55}
                 outerRadius={90}
                 paddingAngle={3}
+                onClick={(entry: any) => {
+                  const statusName = entry?.name;
+                  if (!statusName || !onDrilldown) return;
+                  const items = equipmentByStatus(statusName);
+                  onDrilldown({
+                    title: `Thiết bị — ${statusName}`,
+                    subtitle: `${items.length} thiết bị`,
+                    columns: ['Tên thiết bị', 'Số lượng', 'Giá trị', 'Báo cáo chờ', 'Báo cáo gần nhất'],
+                    rows: items.map((e: any) => ({
+                      'Tên thiết bị': e.name,
+                      'Số lượng': `${e.quantity} máy`,
+                      'Giá trị': fmtVnd(e.total),
+                      'Báo cáo chờ': `${e.pendingReports}`,
+                      'Báo cáo gần nhất': e.latestReportType || '—',
+                    })),
+                    totalLabel: 'Tổng số máy',
+                    totalValue: items.reduce((s: number, e: any) => s + (e.quantity || 0), 0),
+                  });
+                }}
               >
                 {data.equipmentStatus.map((entry, i) => (
-                  <Cell key={i} fill={entry.color} />
+                  <Cell key={i} fill={entry.color} className="cursor-pointer" />
                 ))}
               </Pie>
               <Tooltip formatter={(v: number) => [`${v} máy`, '']} />
@@ -1003,7 +1094,25 @@ function OperationsTab({ data, period, customFrom, customTo, clubName }: { data:
           </ResponsiveContainer>
           <div className="grid grid-cols-2 gap-2 mt-2">
             {data.equipmentStatus.map((item, i) => (
-              <div key={i} className="flex items-center justify-between text-xs">
+              <div key={i} className="flex items-center justify-between text-xs cursor-pointer hover:bg-slate-50 rounded-lg p-1.5 transition-colors"
+                onClick={() => {
+                  if (!onDrilldown) return;
+                  const items = equipmentByStatus(item.name);
+                  onDrilldown({
+                    title: `Thiết bị — ${item.name}`,
+                    subtitle: `${items.length} thiết bị`,
+                    columns: ['Tên thiết bị', 'Số lượng', 'Giá trị', 'Báo cáo chờ', 'Báo cáo gần nhất'],
+                    rows: items.map((e: any) => ({
+                      'Tên thiết bị': e.name,
+                      'Số lượng': `${e.quantity} máy`,
+                      'Giá trị': fmtVnd(e.total),
+                      'Báo cáo chờ': `${e.pendingReports}`,
+                      'Báo cáo gần nhất': e.latestReportType || '—',
+                    })),
+                    totalLabel: 'Tổng số máy',
+                    totalValue: items.reduce((s: number, e: any) => s + (e.quantity || 0), 0),
+                  });
+                }}>
                 <div className="flex items-center gap-2">
                   <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: item.color }} />
                   <span className="text-slate-600">{item.name}</span>
@@ -1023,8 +1132,29 @@ function OperationsTab({ data, period, customFrom, customTo, clubName }: { data:
               <XAxis dataKey="name" tick={{ fontSize: 11 }} />
               <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
               <Tooltip formatter={(v: number) => [`${v} báo cáo`, '']} />
-              <Bar dataKey="value" name="Số báo cáo" radius={[6, 6, 0, 0]}>
-                {data.equipmentReports.map((_, i) => (
+              <Bar dataKey="value" name="Số báo cáo" radius={[6, 6, 0, 0]} cursor="pointer"
+                onClick={(barData: any) => {
+                  const typeName = barData?.name;
+                  if (!typeName || !onDrilldown) return;
+                  const typeMap: Record<string, string> = { 'Bảo trì': 'bảo trì', 'Hỏng hóc': 'hỏng hóc', 'Thiếu linh kiện': 'thiếu linh kiện', 'Hoạt động': 'hoạt động', 'Khác': 'other' };
+                  const apiType = typeMap[typeName] || typeName;
+                  const items = (data.reportDetails || []).filter((r: any) => r.statusType === apiType);
+                  onDrilldown({
+                    title: `Sự cố — ${typeName}`,
+                    subtitle: `${items.length} báo cáo`,
+                    columns: ['Thiết bị', 'Số máy', 'Lý do', 'Thời gian', 'Trạng thái'],
+                    rows: items.map((r: any) => ({
+                      'Thiết bị': r.equipmentName,
+                      'Số máy': `${r.affectedQuantity}`,
+                      'Lý do': r.reason || '—',
+                      'Thời gian': r.reportedAt ? new Date(r.reportedAt).toLocaleDateString('vi-VN') : '—',
+                      'Trạng thái': r.status === 'pending' ? 'Chờ xử lý' : 'Hoàn thành',
+                    })),
+                    totalLabel: 'Tổng',
+                    totalValue: items.length,
+                  });
+                }}>
+                {data.equipmentReports.map((_: any, i: number) => (
                   <Cell key={i} fill={COLORS[i % COLORS.length]} />
                 ))}
               </Bar>
@@ -1494,11 +1624,14 @@ function FormulaDetailModal({ metric, data, periodData, loading, onClose }: {
                             else if (col === 'Phân loại') val = row.category || '';
                             else if (col === 'Ghi chú') val = row.note || '';
                             else if (col === 'Số tiền') val = row.amount != null ? fmtVnd(row.amount) : '';
+                            else if (col === 'Số tiền (+)') val = row[col] || '';
+                            else if (col === 'Số tiền (-)') val = row[col] || '';
                             else if (col === 'Tổng ghi nhận') val = row.amount != null ? fmtVnd(row.amount) : '';
                             else if (col === 'Chỉ số') val = row.label || '';
                             else if (col === 'Giá trị') val = row.amount != null ? fmtVnd(Math.abs(row.amount)) : '';
+                            else val = row[col] ?? '';
 
-                            const isMoney = ['Số tiền', 'Tổng giá', 'Ghi nhận/tháng', 'Tổng ghi nhận', 'Giá trị'].includes(col);
+                            const isMoney = ['Số tiền', 'Số tiền (+)', 'Số tiền (-)', 'Tổng giá', 'Ghi nhận/tháng', 'Tổng ghi nhận', 'Giá trị', 'Giá trị TB'].includes(col);
                             return (
                               <td key={col} className={`py-2.5 px-3 ${isMoney ? 'text-right font-medium text-slate-800' : 'text-slate-700'}`}>
                                 {val}
