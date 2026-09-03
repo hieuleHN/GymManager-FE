@@ -225,7 +225,7 @@ export function Statistics() {
         )}
 
         {tab === 'finance' && <FinanceTab data={fd} period={period} customFrom={customFrom} customTo={customTo} onStatClick={handleOpenFormula} onDrilldown={setDrilldown} onExplain={setExplainModal} clubName={selectedClubName} />}
-        {tab === 'operations' && <OperationsTab data={od} period={period} customFrom={customFrom} customTo={customTo} clubName={selectedClubName} />}
+        {tab === 'operations' && <OperationsTab data={od} period={period} customFrom={customFrom} customTo={customTo} clubName={selectedClubName} onDrilldown={setDrilldown} />}
         {tab === 'activity' && <ActivityStats selectedClub={selectedClub} />}
       </div>
 
@@ -331,51 +331,105 @@ function FinanceTab({ data, period, customFrom, customTo, onStatClick, onDrilldo
   const s = data.summary;
   const c = s.change || {};
 
-  const MONTH_NUM: Record<string, number> = { T1: 1, T2: 2, T3: 3, T4: 4, T5: 5, T6: 6, T7: 7, T8: 8, T9: 9, T10: 10, T11: 11, T12: 12 };
   const [expSearch, setExpSearch] = useState('');
   const filteredExpenses = (data.expenseStructure || []).filter((item: any) =>
     !expSearch.trim() || item.name.toLowerCase().includes(expSearch.toLowerCase())
   );
-  const filterByMonth = (items: any[], monthLabel: string) => {
-    const m = MONTH_NUM[monthLabel];
-    if (!m) return [];
-    const year = new Date().getFullYear();
-    const mStart = new Date(year, m - 1, 1);
-    const isCurrent = m === new Date().getMonth() + 1;
-    const mEnd = isCurrent ? new Date() : new Date(year, m, 0, 23, 59, 59, 999);
-    return items.filter((r: any) => { const d = new Date(r.date); return d >= mStart && d <= mEnd; });
+  const filterByBucket = (items: any[], bucketLabel: string) => {
+    const bucket = (data.timeBuckets || []).find((b: any) => b.label === bucketLabel);
+    if (!bucket) return [];
+    const bStart = new Date(bucket.start);
+    const bEnd = new Date(bucket.end);
+    return items.filter((r: any) => { const d = new Date(r.date); return d >= bStart && d <= bEnd; });
   };
-  const drillRevenue = (monthLabel: string, metric: 'cash' | 'revenue') => {
+  const drillRevenue = (bucketLabel: string, metric: 'cash' | 'revenue') => {
     if (!onDrilldown) return;
-    const items = filterByMonth(data.revenueDetails || [], monthLabel);
-    const label = metric === 'cash' ? 'Tiền thực thu' : 'Doanh thu ghi nhận';
-    onDrilldown({
-      title: `${label} — ${monthLabel}`,
-      subtitle: `${items.length} giao dịch`,
-      columns: ['Ngày', 'Loại', 'Khách hàng', 'Nội dung', 'Số tiền'],
-      rows: items.map((r: any) => ({ 'Ngày': new Date(r.date).toLocaleDateString('vi-VN'), 'Loại': r.type, 'Khách hàng': r.customerName, 'Nội dung': r.name, 'Số tiền': fmtVnd(r.amount) })),
-      totalLabel: `Tổng ${label}`,
-      totalValue: items.reduce((sum: number, r: any) => sum + (r.amount || 0), 0),
-    });
+    const bucket = (data.timeBuckets || []).find((b: any) => b.label === bucketLabel);
+    const bStart = bucket ? new Date(bucket.start) : new Date(0);
+    const bEnd = bucket ? new Date(bucket.end) : new Date();
+    const isDetailed = period === 'week' || period === 'month';
+    const fmtRange = (s: Date, e: Date) => {
+      if (!isDetailed) return new Date(s).toLocaleDateString('vi-VN');
+      return `${new Date(s).toLocaleDateString('vi-VN')} – ${new Date(e).toLocaleDateString('vi-VN')}`;
+    };
+    if (metric === 'cash') {
+      const items = filterByBucket(data.revenueDetails || [], bucketLabel);
+      onDrilldown({
+        title: `Tiền thực thu — ${bucketLabel}`,
+        subtitle: `${items.length} giao dịch`,
+        columns: isDetailed ? ['Ngày', 'Loại', 'Khách hàng', 'Nội dung', 'Số tiền'] : ['Loại', 'Khách hàng', 'Nội dung', 'Số tiền'],
+        rows: items.map((r: any) => {
+          const row: any = {};
+          if (isDetailed) row['Ngày'] = new Date(r.date).toLocaleDateString('vi-VN');
+          row['Loại'] = r.type;
+          row['Khách hàng'] = r.customerName;
+          row['Nội dung'] = r.name;
+          row['Số tiền'] = fmtVnd(r.amount);
+          return row;
+        }),
+        totalLabel: 'Tổng tiền thực thu',
+        totalValue: items.reduce((sum: number, r: any) => sum + (r.amount || 0), 0),
+      });
+    } else {
+      const items = (data.accrualDetails || []).filter((a: any) => {
+        const aStart = new Date(a.startDate);
+        const aEnd = new Date(a.endDate);
+        return aStart <= bEnd && aEnd >= bStart;
+      }).map((a: any) => {
+        const pkgStart = new Date(a.startDate);
+        const pkgEnd = new Date(a.endDate);
+        const totalDays = Math.max(1, Math.round((pkgEnd - pkgStart) / 86400000) + 1);
+        const dailyRev = (a.totalPrice || 0) / totalDays;
+        const overlapStart = pkgStart > bStart ? pkgStart : bStart;
+        const overlapEnd = pkgEnd < bEnd ? pkgEnd : bEnd;
+        const overlapDays = Math.max(1, Math.round((overlapEnd - overlapStart) / 86400000) + 1);
+        const bucketAmount = Math.round(dailyRev * overlapDays);
+        return { ...a, bucketAmount, overlapStart, overlapEnd };
+      });
+      onDrilldown({
+        title: `Doanh thu ghi nhận — ${bucketLabel}`,
+        subtitle: `${items.length} gói / sản phẩm`,
+        columns: isDetailed ? ['Ngày', 'Gói / Sản phẩm', 'Khách hàng', 'Giá trị', 'Thời hạn', 'Ghi nhận trong kỳ'] : ['Gói / Sản phẩm', 'Khách hàng', 'Giá trị', 'Thời hạn', 'Ghi nhận trong kỳ'],
+        rows: items.map((a: any) => {
+          const row: any = {};
+          if (isDetailed) row['Ngày'] = fmtRange(a.overlapStart, a.overlapEnd);
+          row['Gói / Sản phẩm'] = a.packageName;
+          row['Khách hàng'] = a.customerName;
+          row['Giá trị'] = fmtVnd(a.totalPrice);
+          row['Thời hạn'] = `${a.duration} tháng`;
+          row['Ghi nhận trong kỳ'] = fmtVnd(a.bucketAmount);
+          return row;
+        }),
+        totalLabel: 'Tổng doanh thu ghi nhận',
+        totalValue: items.reduce((sum: number, a: any) => sum + (a.bucketAmount || 0), 0),
+      });
+    }
   };
-  const drillExpense = (monthLabel: string) => {
+  const drillExpense = (bucketLabel: string) => {
     if (!onDrilldown) return;
-    const items = filterByMonth(data.expenseDetails || [], monthLabel);
+    const items = filterByBucket(data.expenseDetails || [], bucketLabel);
+    const isDetailed = period === 'week' || period === 'month';
     onDrilldown({
-      title: `Chi phí — ${monthLabel}`,
+      title: `Chi phí — ${bucketLabel}`,
       subtitle: `${items.length} khoản chi`,
-      columns: ['Ngày', 'Tên khoản chi', 'Phân loại', 'Ghi chú', 'Số tiền'],
-      rows: items.map((e: any) => ({ 'Ngày': new Date(e.date).toLocaleDateString('vi-VN'), 'Tên khoản chi': e.name, 'Phân loại': e.category || 'Khác', 'Ghi chú': e.note || '', 'Số tiền': fmtVnd(e.amount) })),
-      totalLabel: `Tổng chi phí ${monthLabel}`,
+      columns: isDetailed ? ['Ngày', 'Tên khoản chi', 'Phân loại', 'Loại', 'Ghi chú', 'Số tiền'] : ['Ngày', 'Tên khoản chi', 'Phân loại', 'Ghi chú', 'Số tiền'],
+      rows: items.map((e: any) => {
+        const row: any = { 'Ngày': new Date(e.date).toLocaleDateString('vi-VN'), 'Tên khoản chi': e.name, 'Phân loại': e.category || 'Khác' };
+        if (isDetailed) row['Loại'] = e.type === 'cogs' ? 'COGS' : e.type === 'depreciation' ? 'Khấu hao' : 'Chi phí';
+        row['Ghi chú'] = e.note || '';
+        row['Số tiền'] = fmtVnd(e.amount);
+        return row;
+      }),
+      totalLabel: `Tổng chi phí ${bucketLabel}`,
       totalValue: items.reduce((sum: number, e: any) => sum + (e.amount || 0), 0),
     });
   };
-  const drillProfit = (monthLabel: string) => {
+  const drillProfit = (bucketLabel: string) => {
     if (!onDrilldown) return;
-    const row = (data.profitData || []).find((r: any) => r.month === monthLabel);
+    const row = (data.profitData || []).find((r: any) => r.month === bucketLabel);
     if (!row) return;
     onDrilldown({
-      title: `Lợi nhuận — ${monthLabel}`,
+      title: `Lợi nhuận — ${bucketLabel}`,
       columns: ['Chỉ số', 'Giá trị'],
       rows: [
         { 'Chỉ số': 'Doanh thu ghi nhận', 'Giá trị': fmtVnd(row.revenue) },
@@ -447,56 +501,105 @@ function FinanceTab({ data, period, customFrom, customTo, onStatClick, onDrilldo
         </ResponsiveContainer>
       </div>
 
-      {/* 1b. Chi tiết theo tháng (khi chọn tùy chỉnh hoặc có monthlyBreakdown) */}
-      {data.monthlyBreakdown && data.monthlyBreakdown.length > 0 && (
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
-          <div className="flex items-center justify-between mb-1">
-            <h2 className="text-lg font-bold text-slate-900">Chi tiết theo tháng</h2>
-            <span className="text-xs bg-purple-50 text-purple-600 px-2.5 py-1 rounded-full font-medium">Breakdown</span>
-          </div>
-          <p className="text-xs text-slate-500 mb-4">Doanh thu, chi phí và lợi nhuận từng tháng trong kỳ đã chọn</p>
-          <ResponsiveContainer width="100%" height={300}>
-            <ComposedChart data={data.monthlyBreakdown}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-              <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-              <YAxis tickFormatter={fmt} tick={{ fontSize: 11 }} />
-              <Tooltip formatter={(v: number) => fmtVnd(v)} />
-              <Legend />
-              <Bar dataKey="cash" fill="#10b981" name="Tiền thực thu" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="revenue" fill="#6366f1" name="DT ghi nhận" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="expense" fill="#f59e0b" name="Chi phí" radius={[4, 4, 0, 0]} />
-              <Line type="monotone" dataKey="profit" stroke="#ef4444" strokeWidth={2.5} dot={{ r: 3 }} name="Lợi nhuận" />
-            </ComposedChart>
-          </ResponsiveContainer>
+      {/* 2. Biểu đồ Chi phí & Lợi nhuận theo kỳ */}
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="text-lg font-bold text-slate-900">Chi phí & Lợi nhuận theo kỳ</h2>
+          <span className="text-xs bg-green-50 text-green-600 px-2.5 py-1 rounded-full font-medium">Biên lãi {s.profitMargin}%</span>
         </div>
-      )}
-      {/* 2. Chi phí & Lãi */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 lg:col-span-2">
-          <div className="flex items-center justify-between mb-1">
-            <h2 className="text-lg font-bold text-slate-900">Chi phí & Lợi nhuận theo tháng</h2>
-            <span className="text-xs bg-green-50 text-green-600 px-2.5 py-1 rounded-full font-medium">Biên lãi {s.profitMargin}%</span>
-          </div>
-          <p className="text-xs text-slate-500 mb-4">Theo dõi phòng gym có vận hành hiệu quả không</p>
-          <ResponsiveContainer width="100%" height={280}>
-            <ComposedChart data={data.profitData}
-              onClick={(e: any) => {
-                const payload = e?.activePayload?.[0]?.payload;
-                if (!payload?.month) return;
-                drillExpense(payload.month);
-              }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-              <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-              <YAxis tickFormatter={fmt} tick={{ fontSize: 11 }} />
-              <Tooltip formatter={(v: number) => fmtVnd(v)} />
-              <Legend />
-              <Bar dataKey="revenue" fill="#6366f1" name="Doanh thu" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="expense" fill="#f59e0b" name="Chi phí" radius={[4, 4, 0, 0]} />
-              <Line type="monotone" dataKey="profit" stroke="#10b981" strokeWidth={2.5} dot={{ r: 3 }} name="Lợi nhuận" />
-            </ComposedChart>
-          </ResponsiveContainer>
-        </div>
+        <p className="text-xs text-slate-500 mb-4">So sánh chi phí và lợi nhuận theo từng kỳ — click vào biểu đồ để xem chi tiết</p>
+        <ResponsiveContainer width="100%" height={320}>
+          <ComposedChart data={data.cashFlowData}
+            onClick={(e: any) => {
+              const payload = e?.activePayload?.[0]?.payload;
+              if (!payload?.month) return;
+              const bucket = (data.timeBuckets || []).find((b: any) => b.label === payload.month);
+              const bStart = bucket ? new Date(bucket.start) : new Date(0);
+              const bEnd = bucket ? new Date(bucket.end) : new Date();
+              const isDetailed = period === 'week' || period === 'month';
+              const dateRange = isDetailed && bucket ? ` (${new Date(bStart).toLocaleDateString('vi-VN')} – ${new Date(bEnd).toLocaleDateString('vi-VN')})` : '';
+              const expItems = (data.expenseDetails || []).filter((r: any) => { const d = new Date(r.date); return d >= bStart && d <= bEnd; });
+              const accrItems = (data.accrualDetails || []).filter((a: any) => { const aS = new Date(a.startDate); const aE = new Date(a.endDate); return aS <= bEnd && aE >= bStart; }).map((a: any) => {
+                const pkgStart = new Date(a.startDate); const pkgEnd = new Date(a.endDate);
+                const totalDays = Math.max(1, Math.round((pkgEnd - pkgStart) / 86400000) + 1);
+                const dailyRev = (a.totalPrice || 0) / totalDays;
+                const oStart = pkgStart > bStart ? pkgStart : bStart;
+                const oEnd = pkgEnd < bEnd ? pkgEnd : bEnd;
+                const overlapDays = Math.max(1, Math.round((oEnd - oStart) / 86400000) + 1);
+                return { ...a, bucketAmount: Math.round(dailyRev * overlapDays) };
+              });
+              const cashItems = (data.revenueDetails || []).filter((r: any) => { const d = new Date(r.date); return d >= bStart && d <= bEnd; });
+              const rows: any[] = [];
+              if (cashItems.length > 0) {
+                cashItems.forEach((r: any) => {
+                  const row: any = {};
+                  if (isDetailed) row['Ngày'] = new Date(r.date).toLocaleDateString('vi-VN');
+                  row['Loại'] = 'Tiền thực thu';
+                  row['Nội dung'] = `${r.type}: ${r.name}`;
+                  row['Khách hàng'] = r.customerName;
+                  row['Số tiền (+)'] = fmtVnd(r.amount);
+                  row['Số tiền (-)'] = '';
+                  rows.push(row);
+                });
+              }
+              if (accrItems.length > 0) {
+                accrItems.forEach((a: any) => {
+                  const row: any = {};
+                  if (isDetailed) {
+                    const oS = new Date(a.startDate) > bStart ? new Date(a.startDate) : bStart;
+                    const oE = new Date(a.endDate) < bEnd ? new Date(a.endDate) : bEnd;
+                    row['Ngày'] = `${new Date(oS).toLocaleDateString('vi-VN')} – ${new Date(oE).toLocaleDateString('vi-VN')}`;
+                  }
+                  row['Loại'] = 'Doanh thu ghi nhận';
+                  row['Nội dung'] = a.packageName;
+                  row['Khách hàng'] = a.customerName;
+                  row['Số tiền (+)'] = fmtVnd(a.bucketAmount);
+                  row['Số tiền (-)'] = '';
+                  rows.push(row);
+                });
+              }
+              if (expItems.length > 0) {
+                expItems.forEach((ex: any) => {
+                  const row: any = {};
+                  if (isDetailed) row['Ngày'] = new Date(ex.date).toLocaleDateString('vi-VN');
+                  row['Loại'] = ex.type === 'cogs' ? 'COGS' : ex.type === 'depreciation' ? 'Khấu hao' : 'Chi phí';
+                  row['Nội dung'] = ex.name;
+                  row['Khách hàng'] = ex.category || '';
+                  row['Số tiền (+)'] = '';
+                  row['Số tiền (-)'] = fmtVnd(ex.amount);
+                  rows.push(row);
+                });
+              }
+              rows.sort((a, b) => {
+                const dateA = a['Ngày'] || '';
+                const dateB = b['Ngày'] || '';
+                return dateA.localeCompare(dateB);
+              });
+              const totalIncome = accrItems.reduce((s: number, a: any) => s + (a.bucketAmount || 0), 0);
+              const totalExpense = expItems.reduce((s: number, e: any) => s + (e.amount || 0), 0);
+              const profit = totalIncome - totalExpense;
+              onDrilldown?.({
+                title: `Chi phí & Lợi nhuận — ${payload.month}${dateRange}`,
+                subtitle: `${rows.length} dòng · Thu nhập: ${fmtVnd(totalIncome)} · Chi phí: ${fmtVnd(totalExpense)} · Lợi nhuận: ${fmtVnd(profit)}`,
+                columns: isDetailed ? ['Ngày', 'Loại', 'Nội dung', 'Khách hàng', 'Số tiền (+)', 'Số tiền (-)'] : ['Loại', 'Nội dung', 'Khách hàng', 'Số tiền (+)', 'Số tiền (-)'],
+                rows,
+                totalLabel: 'Lợi nhuận',
+                totalValue: profit,
+              });
+            }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+            <XAxis dataKey="month" tick={{ fontSize: 12 }} />
+            <YAxis tickFormatter={fmt} tick={{ fontSize: 11 }} />
+            <Tooltip formatter={(v: number) => fmtVnd(v)} />
+            <Legend />
+            <Bar dataKey="expense" fill="#f59e0b" name="Chi phí" radius={[4, 4, 0, 0]} />
+            <Bar dataKey="profit" fill="#ef4444" name="Lợi nhuận" radius={[4, 4, 0, 0]} />
+          </ComposedChart>
+        </ResponsiveContainer>
+      </div>
 
+      {/* 3. Cơ cấu chi phí & Doanh số theo gói */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
           <h2 className="text-lg font-bold text-slate-900 mb-4">Cơ cấu chi phí</h2>
           {data.expenseStructure.length > 0 ? (
@@ -852,13 +955,85 @@ function FinanceTab({ data, period, customFrom, customTo, onStatClick, onDrilldo
   );
 }
 
-function OperationsTab({ data, period, customFrom, customTo, clubName }: { data: any; period?: string; customFrom?: string; customTo?: string; clubName?: string }) {
+function OperationsTab({ data, period, customFrom, customTo, clubName, onDrilldown }: { data: any; period?: string; customFrom?: string; customTo?: string; clubName?: string; onDrilldown?: (d: { title: string; subtitle?: string; columns: string[]; rows: any[]; totalLabel?: string; totalValue?: number }) => void }) {
   if (!data) return <div className="text-slate-400 text-sm">Đang tải dữ liệu vận hành...</div>;
+
+  const equipmentByStatus = (statusName: string) => {
+    return (data.equipmentDetails || []).filter((e: any) => {
+      if (statusName === 'Hoạt động') return e.status === 'active' && e.pendingReports === 0;
+      if (statusName === 'Bảo trì') return e.status === 'maintenance' || e.pendingReports > 0;
+      if (statusName === 'Hỏng') return e.status === 'broken';
+      return false;
+    });
+  };
+
   const opStats = [
-    { label: 'Tổng số thiết bị', value: `${data.totalQuantity}`, icon: PackageIcon, color: 'bg-blue-500' },
-    { label: 'Giá trị thiết bị', value: fmtVnd(data.totalValue), icon: DollarSign, color: 'bg-emerald-500' },
-    { label: 'Tổng báo cáo', value: `${data.totalReports}`, icon: AlertTriangle, color: 'bg-orange-500' },
-    { label: 'Chờ xử lý', value: `${data.pendingReports}`, trend: 'up', icon: Wrench, color: 'bg-red-500' },
+    { label: 'Tổng số thiết bị', value: `${data.totalQuantity}`, icon: PackageIcon, color: 'bg-blue-500',
+      onClick: () => onDrilldown?.({
+        title: 'Danh sách thiết bị',
+        subtitle: `${data.equipmentDetails?.length || 0} thiết bị · Tổng ${data.totalQuantity} máy`,
+        columns: ['Tên thiết bị', 'Số lượng', 'Giá trị', 'Trạng thái', 'Báo cáo chờ', 'Báo cáo đã xử lý'],
+        rows: (data.equipmentDetails || []).map((e: any) => ({
+          'Tên thiết bị': e.name,
+          'Số lượng': `${e.quantity} máy`,
+          'Giá trị': fmtVnd(e.total),
+          'Trạng thái': e.pendingReports > 0 ? 'Bảo trì' : e.status === 'broken' ? 'Hỏng' : 'Hoạt động',
+          'Báo cáo chờ': `${e.pendingReports}`,
+          'Báo cáo đã xử lý': `${e.resolvedReports}`,
+        })),
+        totalLabel: 'Tổng giá trị',
+        totalValue: data.totalValue,
+      }),
+    },
+    { label: 'Giá trị thiết bị', value: fmtVnd(data.totalValue), icon: DollarSign, color: 'bg-emerald-500',
+      onClick: () => onDrilldown?.({
+        title: 'Giá trị thiết bị chi tiết',
+        subtitle: `Tổng ${fmtVnd(data.totalValue)}`,
+        columns: ['Tên thiết bị', 'Số lượng', 'Đơn giá', 'Tổng giá trị', 'Tỷ lệ'],
+        rows: (data.equipmentDetails || []).sort((a: any, b: any) => b.total - a.total).map((e: any) => ({
+          'Tên thiết bị': e.name,
+          'Số lượng': `${e.quantity} máy`,
+          'Đơn giá': fmtVnd(Math.round(e.total / (e.quantity || 1))),
+          'Tổng giá trị': fmtVnd(e.total),
+          'Tỷ lệ': `${data.totalValue > 0 ? ((e.total / data.totalValue) * 100).toFixed(1) : 0}%`,
+        })),
+        totalLabel: 'Tổng giá trị',
+        totalValue: data.totalValue,
+      }),
+    },
+    { label: 'Tổng báo cáo', value: `${data.totalReports}`, icon: AlertTriangle, color: 'bg-orange-500',
+      onClick: () => onDrilldown?.({
+        title: 'Tất cả báo cáo sự cố',
+        subtitle: `${data.totalReports} báo cáo · ${data.pendingReports} chờ xử lý`,
+        columns: ['Thiết bị', 'Loại sự cố', 'Số máy', 'Lý do', 'Thời gian', 'Trạng thái'],
+        rows: (data.reportDetails || []).sort((a: any, b: any) => new Date(b.reportedAt || 0) - new Date(a.reportedAt || 0)).map((r: any) => ({
+          'Thiết bị': r.equipmentName,
+          'Loại sự cố': r.statusType,
+          'Số máy': `${r.affectedQuantity}`,
+          'Lý do': r.reason || '—',
+          'Thời gian': r.reportedAt ? new Date(r.reportedAt).toLocaleDateString('vi-VN') : '—',
+          'Trạng thái': r.status === 'pending' ? 'Chờ xử lý' : 'Hoàn thành',
+        })),
+        totalLabel: 'Tổng báo cáo',
+        totalValue: data.totalReports,
+      }),
+    },
+    { label: 'Chờ xử lý', value: `${data.pendingReports}`, trend: 'up', icon: Wrench, color: 'bg-red-500',
+      onClick: () => onDrilldown?.({
+        title: 'Báo cáo chờ xử lý',
+        subtitle: `${data.pendingReports} báo cáo`,
+        columns: ['Thiết bị', 'Loại sự cố', 'Số máy bị ảnh hưởng', 'Lý do', 'Thời gian báo cáo'],
+        rows: (data.reportDetails || []).filter((r: any) => r.status === 'pending').map((r: any) => ({
+          'Thiết bị': r.equipmentName,
+          'Loại sự cố': r.statusType,
+          'Số máy bị ảnh hưởng': `${r.affectedQuantity}`,
+          'Lý do': r.reason || '—',
+          'Thời gian báo cáo': r.reportedAt ? new Date(r.reportedAt).toLocaleDateString('vi-VN') : '—',
+        })),
+        totalLabel: 'Tổng chờ xử lý',
+        totalValue: data.pendingReports,
+      }),
+    },
   ];
 
   const withPct = (arr: any[]) => arr.map((i: any) => ({ ...i, pct: pct(i.value, arr.reduce((s: number, x: any) => s + x.value, 0)) }));
@@ -872,7 +1047,7 @@ function OperationsTab({ data, period, customFrom, customTo, clubName }: { data:
 
   return (
     <>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">{opStats.map((stat, i) => <StatCard key={i} stat={stat} />)}</div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">{opStats.map((stat, i) => <StatCard key={i} stat={stat} onClick={stat.onClick} />)}</div>
       <ExportBtn onClick={handleExport} />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -890,9 +1065,28 @@ function OperationsTab({ data, period, customFrom, customTo, clubName }: { data:
                 innerRadius={55}
                 outerRadius={90}
                 paddingAngle={3}
+                onClick={(entry: any) => {
+                  const statusName = entry?.name;
+                  if (!statusName || !onDrilldown) return;
+                  const items = equipmentByStatus(statusName);
+                  onDrilldown({
+                    title: `Thiết bị — ${statusName}`,
+                    subtitle: `${items.length} thiết bị`,
+                    columns: ['Tên thiết bị', 'Số lượng', 'Giá trị', 'Báo cáo chờ', 'Báo cáo gần nhất'],
+                    rows: items.map((e: any) => ({
+                      'Tên thiết bị': e.name,
+                      'Số lượng': `${e.quantity} máy`,
+                      'Giá trị': fmtVnd(e.total),
+                      'Báo cáo chờ': `${e.pendingReports}`,
+                      'Báo cáo gần nhất': e.latestReportType || '—',
+                    })),
+                    totalLabel: 'Tổng số máy',
+                    totalValue: items.reduce((s: number, e: any) => s + (e.quantity || 0), 0),
+                  });
+                }}
               >
                 {data.equipmentStatus.map((entry, i) => (
-                  <Cell key={i} fill={entry.color} />
+                  <Cell key={i} fill={entry.color} className="cursor-pointer" />
                 ))}
               </Pie>
               <Tooltip formatter={(v: number) => [`${v} máy`, '']} />
@@ -900,7 +1094,25 @@ function OperationsTab({ data, period, customFrom, customTo, clubName }: { data:
           </ResponsiveContainer>
           <div className="grid grid-cols-2 gap-2 mt-2">
             {data.equipmentStatus.map((item, i) => (
-              <div key={i} className="flex items-center justify-between text-xs">
+              <div key={i} className="flex items-center justify-between text-xs cursor-pointer hover:bg-slate-50 rounded-lg p-1.5 transition-colors"
+                onClick={() => {
+                  if (!onDrilldown) return;
+                  const items = equipmentByStatus(item.name);
+                  onDrilldown({
+                    title: `Thiết bị — ${item.name}`,
+                    subtitle: `${items.length} thiết bị`,
+                    columns: ['Tên thiết bị', 'Số lượng', 'Giá trị', 'Báo cáo chờ', 'Báo cáo gần nhất'],
+                    rows: items.map((e: any) => ({
+                      'Tên thiết bị': e.name,
+                      'Số lượng': `${e.quantity} máy`,
+                      'Giá trị': fmtVnd(e.total),
+                      'Báo cáo chờ': `${e.pendingReports}`,
+                      'Báo cáo gần nhất': e.latestReportType || '—',
+                    })),
+                    totalLabel: 'Tổng số máy',
+                    totalValue: items.reduce((s: number, e: any) => s + (e.quantity || 0), 0),
+                  });
+                }}>
                 <div className="flex items-center gap-2">
                   <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: item.color }} />
                   <span className="text-slate-600">{item.name}</span>
@@ -920,8 +1132,29 @@ function OperationsTab({ data, period, customFrom, customTo, clubName }: { data:
               <XAxis dataKey="name" tick={{ fontSize: 11 }} />
               <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
               <Tooltip formatter={(v: number) => [`${v} báo cáo`, '']} />
-              <Bar dataKey="value" name="Số báo cáo" radius={[6, 6, 0, 0]}>
-                {data.equipmentReports.map((_, i) => (
+              <Bar dataKey="value" name="Số báo cáo" radius={[6, 6, 0, 0]} cursor="pointer"
+                onClick={(barData: any) => {
+                  const typeName = barData?.name;
+                  if (!typeName || !onDrilldown) return;
+                  const typeMap: Record<string, string> = { 'Bảo trì': 'bảo trì', 'Hỏng hóc': 'hỏng hóc', 'Thiếu linh kiện': 'thiếu linh kiện', 'Hoạt động': 'hoạt động', 'Khác': 'other' };
+                  const apiType = typeMap[typeName] || typeName;
+                  const items = (data.reportDetails || []).filter((r: any) => r.statusType === apiType);
+                  onDrilldown({
+                    title: `Sự cố — ${typeName}`,
+                    subtitle: `${items.length} báo cáo`,
+                    columns: ['Thiết bị', 'Số máy', 'Lý do', 'Thời gian', 'Trạng thái'],
+                    rows: items.map((r: any) => ({
+                      'Thiết bị': r.equipmentName,
+                      'Số máy': `${r.affectedQuantity}`,
+                      'Lý do': r.reason || '—',
+                      'Thời gian': r.reportedAt ? new Date(r.reportedAt).toLocaleDateString('vi-VN') : '—',
+                      'Trạng thái': r.status === 'pending' ? 'Chờ xử lý' : 'Hoàn thành',
+                    })),
+                    totalLabel: 'Tổng',
+                    totalValue: items.length,
+                  });
+                }}>
+                {data.equipmentReports.map((_: any, i: number) => (
                   <Cell key={i} fill={COLORS[i % COLORS.length]} />
                 ))}
               </Bar>
@@ -1391,11 +1624,14 @@ function FormulaDetailModal({ metric, data, periodData, loading, onClose }: {
                             else if (col === 'Phân loại') val = row.category || '';
                             else if (col === 'Ghi chú') val = row.note || '';
                             else if (col === 'Số tiền') val = row.amount != null ? fmtVnd(row.amount) : '';
+                            else if (col === 'Số tiền (+)') val = row[col] || '';
+                            else if (col === 'Số tiền (-)') val = row[col] || '';
                             else if (col === 'Tổng ghi nhận') val = row.amount != null ? fmtVnd(row.amount) : '';
                             else if (col === 'Chỉ số') val = row.label || '';
                             else if (col === 'Giá trị') val = row.amount != null ? fmtVnd(Math.abs(row.amount)) : '';
+                            else val = row[col] ?? '';
 
-                            const isMoney = ['Số tiền', 'Tổng giá', 'Ghi nhận/tháng', 'Tổng ghi nhận', 'Giá trị'].includes(col);
+                            const isMoney = ['Số tiền', 'Số tiền (+)', 'Số tiền (-)', 'Tổng giá', 'Ghi nhận/tháng', 'Tổng ghi nhận', 'Giá trị', 'Giá trị TB'].includes(col);
                             return (
                               <td key={col} className={`py-2.5 px-3 ${isMoney ? 'text-right font-medium text-slate-800' : 'text-slate-700'}`}>
                                 {val}

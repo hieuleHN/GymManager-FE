@@ -264,7 +264,92 @@ export async function exportFinanceExcel(
     setColWidths(ws5, [20, 16, 16, 15, 16, 16]);
   }
 
-  // ── Sheet 7: Biểu đồ (nhúng hình PNG) ──
+  // ── Sheet 6: Phân tích hội viên ──
+  const ma = data?.memberAnalytics;
+  if (ma) {
+    const ws6 = wb.addWorksheet('Phân tích hội viên');
+    ws6.mergeCells('A1:H1');
+    ws6.getCell('A1').value = 'PHÂN TÍCH HỘI VIÊN';
+    ws6.getCell('A1').font = { bold: true, size: 14, color: { argb: 'FF1E293B' } };
+    ws6.getCell('A1').alignment = { horizontal: 'center' };
+
+    // KPI summary
+    addTableHeader(ws6, 3, ['Chỉ số', 'Giá trị']);
+    const maRows = [
+      ['Hội viên đang hoạt động', ma.activeMembers || 0],
+      ['Tổng hội viên', ma.totalMembers || 0],
+      ['Tỷ lệ giữ chân', `${ma.retentionRate || 0}%`],
+      ['Tỷ lệ rời đi', `${ma.churnRate || 0}%`],
+      ['Gói tập gia hạn', ma.renewedPackages || 0],
+      ['Gói tập hết hạn', ma.expiredPackages || 0],
+      ['ARPU (DT TB/hội viên)', ma.arpu || 0],
+      ['Thời gian TB sử dụng (tháng)', ma.avgLifetime || 0],
+      ['Lượt checkin kỳ này', ma.checkinsThisPeriod || 0],
+      ['Hội viên mới kỳ này', ma.newMembers || 0],
+    ];
+    maRows.forEach((r, i) => {
+      addDataRow(ws6, 4 + i, r, [1]);
+    });
+
+    // Danh sách hội viên hoạt động
+    const activeList = ma.activeList || [];
+    if (activeList.length > 0) {
+      const startRow = 16;
+      ws6.getCell(startRow, 1).value = 'DANH SÁCH HỘI VIÊN HOẠT ĐỘNG';
+      ws6.getCell(startRow, 1).font = { bold: true, size: 12 };
+      addTableHeader(ws6, startRow + 1, ['Tên', 'SĐT', 'Gói tập', 'Ngày bắt đầu', 'Ngày kết thúc', 'Giá trị']);
+      activeList.forEach((m: any, i: number) => {
+        addDataRow(ws6, startRow + 2 + i, [
+          m.name, m.phone || '', m.package || '',
+          m.startDate ? new Date(m.startDate).toLocaleDateString('vi-VN') : '',
+          m.endDate ? new Date(m.endDate).toLocaleDateString('vi-VN') : '',
+          m.totalPrice || 0,
+        ], [5]);
+      });
+    }
+
+    // Danh sách hội viên mới
+    const newList = ma.newList || [];
+    if (newList.length > 0) {
+      const startRow = 18 + (activeList.length || 0);
+      ws6.getCell(startRow, 1).value = 'HỘI VIÊN MỚI';
+      ws6.getCell(startRow, 1).font = { bold: true, size: 12 };
+      addTableHeader(ws6, startRow + 1, ['Tên', 'SĐT', 'Giới tính', 'Ngày đăng ký']);
+      newList.forEach((m: any, i: number) => {
+        addDataRow(ws6, startRow + 2 + i, [
+          m.name, m.phone || '', m.gender || '',
+          m.registerDate ? new Date(m.registerDate).toLocaleDateString('vi-VN') : '',
+        ]);
+      });
+    }
+
+    setColWidths(ws6, [22, 20, 18, 16, 16, 16, 14, 14]);
+  }
+
+  // ── Sheet 7: So sánh CLB ──
+  const clubComp = data?.clubComparison || [];
+  if (clubComp.length > 0) {
+    const ws7 = wb.addWorksheet('So sánh CLB');
+    ws7.mergeCells('A1:G1');
+    ws7.getCell('A1').value = 'SO SÁNH CÂU LẠC BỘ';
+    ws7.getCell('A1').font = { bold: true, size: 14, color: { argb: 'FF1E293B' } };
+    ws7.getCell('A1').alignment = { horizontal: 'center' };
+
+    addTableHeader(ws7, 3, ['Câu lạc bộ', 'Doanh thu', 'Chi phí', 'Lợi nhuận', 'Margin', 'Hội viên', 'HLV']);
+    clubComp.forEach((c: any, i: number) => {
+      addDataRow(ws7, 4 + i, [c.name, c.revenue, c.expense, c.profit, `${c.margin || 0}%`, c.memberCount, c.trainerCount], [1, 2]);
+    });
+    const tRow = 4 + clubComp.length;
+    const totals = clubComp.reduce((a: any, c: any) => ({
+      r: a.r + (c.revenue || 0), e: a.e + (c.expense || 0), p: a.p + (c.profit || 0),
+      m: a.m + (c.memberCount || 0), t: a.t + (c.trainerCount || 0),
+    }), { r: 0, e: 0, p: 0, m: 0, t: 0 });
+    const avgMargin = totals.r > 0 ? Math.round((totals.p / totals.r) * 100) : 0;
+    addTotalRow(ws7, tRow, ['TỔNG CỘNG', totals.r, totals.e, totals.p, `${avgMargin}%`, totals.m, totals.t], [1, 2]);
+    setColWidths(ws7, [20, 18, 18, 18, 12, 12, 10]);
+  }
+
+  // ── Sheet 8: Biểu đồ (nhúng hình PNG) ──
   if (chartImages && chartImages.length > 0) {
     const wsChart = wb.addWorksheet('Biểu đồ');
     wsChart.mergeCells('A1:N1');
