@@ -68,7 +68,7 @@ export function FaceScannerPopup() {
     const [faceMatcher, setFaceMatcher] = useState<faceapi.FaceMatcher | null>(null);
     const [statusText, setStatusText] = useState('Đang khởi tạo AI nhận diện...');
     const [loading, setLoading] = useState(false);
-    const [feedback, setFeedback] = useState<{ success: boolean; name: string; msg: string } | null>(null);
+    const [feedback, setFeedback] = useState<{ success: boolean; name: string; msg: string; code?: string } | null>(null);
     const [isFullscreen, setIsFullscreen] = useState(false);
 
     const webcamRef = useRef<Webcam>(null);
@@ -179,6 +179,7 @@ export function FaceScannerPopup() {
     const handleFaceCheckIn = async (customerId: string) => {
         if (loading) return;
         setLoading(true);
+        let lockCode = '';
 
         try {
             const response = await axios.post(`${backendUrl}/api/checkin/face/verify`, {
@@ -212,17 +213,42 @@ export function FaceScannerPopup() {
             } catch {}
         } catch (err: any) {
             const msg = err.response?.data?.error || err.response?.data?.message || 'Điểm danh FaceID thất bại';
+            const code = err.response?.data?.code || '';
+            lockCode = code;
+            if (code === 'FACE_LOCKED_LOCKER_OVERDUE') {
+                speak('FaceID đang bị khóa do quá hạn thuê tủ. Vui lòng thanh toán hoặc gia hạn tủ để mở lại.');
+                // Bắn cửa sổ toàn hệ thống kèm thông tin tủ (hiện dù đang ở trang nào)
+                try {
+                    const cust = err.response?.data?.customer;
+                    const lockers = err.response?.data?.lockers || [];
+                    channelRef.current?.postMessage({
+                        type: 'FACE_LOCKED_ALERT',
+                        payload: { customerName: cust?.fullName || 'Hội viên', message: msg, lockers },
+                    });
+                    // Dự phòng tab khác origin: broadcast trực tiếp
+                    try {
+                        const ch = new BroadcastChannel('GYM_ATTENDANCE_CHANNEL');
+                        ch.postMessage({
+                            type: 'FACE_LOCKED_ALERT',
+                            payload: { customerName: cust?.fullName || 'Hội viên', message: msg, lockers },
+                        });
+                        ch.close();
+                    } catch {}
+                } catch {}
+            }
             setFeedback({
                 success: false,
-                name: 'Thông báo',
-                msg
+                name: code === 'FACE_LOCKED_LOCKER_OVERDUE' ? 'FaceID BỊ KHÓA' : 'Thông báo',
+                msg,
+                code,
             });
         } finally {
             setLoading(false);
+            const delay = lockCode === 'FACE_LOCKED_LOCKER_OVERDUE' ? 6000 : 3000;
             setTimeout(() => {
                 setFeedback(null);
                 setStatusText('Sẵn sàng nhận diện...');
-            }, 3000);
+            }, delay);
         }
     };
 
@@ -319,14 +345,19 @@ export function FaceScannerPopup() {
             {/* Popup Thông Báo Kết Quả */}
             {feedback && (
                 <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center z-30 p-4">
-                    <div className={`bg-white rounded-3xl p-8 max-w-sm w-full text-center shadow-2xl border-t-8 ${feedback.success ? 'border-t-emerald-500' : 'border-t-red-500'}`}>
-                        <div className={`w-20 h-20 mx-auto rounded-full flex items-center justify-center mb-4 ${feedback.success ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-600'}`}>
+                    <div className={`bg-white rounded-3xl p-8 max-w-sm w-full text-center shadow-2xl border-t-8 ${feedback.success ? 'border-t-emerald-500' : feedback.code === 'FACE_LOCKED_LOCKER_OVERDUE' ? 'border-t-red-600' : 'border-t-red-500'}`}>
+                        <div className={`w-20 h-20 mx-auto rounded-full flex items-center justify-center mb-4 ${feedback.success ? 'bg-emerald-100 text-emerald-600' : feedback.code === 'FACE_LOCKED_LOCKER_OVERDUE' ? 'bg-red-600 text-white' : 'bg-red-100 text-red-600'}`}>
                             {feedback.success ? <Check className="w-10 h-10 stroke-[3]" /> : <X className="w-10 h-10 stroke-[3]" />}
                         </div>
                         <h3 className="text-2xl font-black text-slate-900 mb-1">{feedback.name}</h3>
                         <p className={`text-sm font-bold ${feedback.success ? 'text-emerald-600' : 'text-red-600'}`}>
                             {feedback.msg}
                         </p>
+                        {!feedback.success && feedback.code === 'FACE_LOCKED_LOCKER_OVERDUE' && (
+                            <p className="mt-3 text-xs font-bold text-white bg-red-600 rounded-xl px-3 py-2">
+                                Thanh toán/gia hạn tủ ở Quản lý tủ đồ để FaceID hoạt động trở lại
+                            </p>
+                        )}
                     </div>
                 </div>
             )}

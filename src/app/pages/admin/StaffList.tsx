@@ -120,7 +120,7 @@ export function StaffList() {
   const [todayShiftMap, setTodayShiftMap] = useState<Map<string, Set<string>>>(new Map());
   const [trainerSessionMap, setTrainerSessionMap] = useState<Map<string, { count: number; sessions: any[] }>>(new Map());
   const [faceModal, setFaceModal] = useState<{ open: boolean; staff: Staff | null }>({ open: false, staff: null });
-  const [feeModal, setFeeModal] = useState<{ open: boolean; staff: Staff | null; value: string; commissionValue: string }>({ open: false, staff: null, value: '', commissionValue: '' });
+  const [feeModal, setFeeModal] = useState<{ open: boolean; staff: Staff | null; value: string }>({ open: false, staff: null, value: '' });
   const [feeSaving, setFeeSaving] = useState(false);
 
   const fetchStaff = async (p = page, opts?: { search?: string; status?: string; job?: string; gender?: string }) => {
@@ -244,25 +244,23 @@ export function StaffList() {
   };
 
   const openFeeModal = (person: Staff) => {
-    setFeeModal({ open: true, staff: person, value: String(person.pricePerSession ?? 500000), commissionValue: String(person.commissionPT ?? 0) });
+    setFeeModal({ open: true, staff: person, value: String(person.pricePerSession ?? 500000) });
   };
   const handleSaveFee = async () => {
     if (!feeModal.staff) return;
     const n = Number(feeModal.value);
-    const c = Number(feeModal.commissionValue);
     if (isNaN(n) || n < 0) { toast.error('Phí không hợp lệ'); return; }
-    if (isNaN(c) || c < 0 || c > 100) { toast.error('Hoa hồng phải từ 0-100%'); return; }
     setFeeSaving(true);
     try {
       const res = await fetch(`${getApiUrl()}/api/staff/${feeModal.staff._id}`, {
         method: 'PUT',
         headers: getAuthHeaders() as any,
-        body: JSON.stringify({ pricePerSession: n, commissionPT: c })
+        body: JSON.stringify({ pricePerSession: n })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Lưu thất bại');
-      toast.success(`Đã cập nhật phí ${n.toLocaleString('vi-VN')}đ, hoa hồng ${c}% cho ${feeModal.staff.fullName}`);
-      setFeeModal({ open: false, staff: null, value: '', commissionValue: '' });
+      toast.success(`Đã cập nhật phí ${n.toLocaleString('vi-VN')}đ cho ${feeModal.staff.fullName}`);
+      setFeeModal({ open: false, staff: null, value: '' });
       fetchStaff(page);
     } catch (e: any) {
       toast.error(e.message);
@@ -496,7 +494,7 @@ export function StaffList() {
                   <th className="px-3 py-3 text-left text-xs font-bold text-slate-700 whitespace-nowrap">Trạng thái</th>
                   <th className="px-3 py-3 text-left text-xs font-bold text-slate-700 whitespace-nowrap">Chấm công</th>
                   <th className="px-3 py-3 text-left text-xs font-bold text-slate-700 whitespace-nowrap">Phí/buổi</th>
-                  <th className="px-3 py-3 text-left text-xs font-bold text-slate-700 whitespace-nowrap">Hoa hồng hôm nay</th>
+                  <th className="px-3 py-3 text-left text-xs font-bold text-slate-700 whitespace-nowrap">Buổi dạy hôm nay</th>
                   <th className="px-3 py-3 text-center text-xs font-bold text-slate-700 whitespace-nowrap w-[72px]">Báo cáo</th>
                   <th className="px-3 py-3 text-left text-xs font-bold text-slate-700 whitespace-nowrap w-[160px]">Thao tác</th>
                 </tr>
@@ -585,21 +583,10 @@ export function StaffList() {
                       {(() => {
                         const jobId = (person.job as any)?._id || (person as any).job || '';
                         if (!isTrainerJob(jobId)) return <span className="text-xs text-slate-400">—</span>;
-                        const price = person.pricePerSession ?? 500000;
                         const sessInfo = trainerSessionMap.get(person._id);
                         const cnt = sessInfo?.count || 0;
-                        const commissionRate = (person as any).commissionPT ?? 0;
-                        const commission = commissionRate > 0 ? Math.round(price * cnt * commissionRate / 100) : price * cnt;
                         return (
-                          <div className="flex items-center gap-1">
-                            <div className="text-xs">
-                              <p className="font-semibold text-emerald-600">{cnt ? commission.toLocaleString('vi-VN') + 'đ' : '0đ'}</p>
-                              <p className="text-[11px] text-slate-500">{cnt} buổi{commissionRate ? ` × ${commissionRate}%` : ''}</p>
-                            </div>
-                            <button onClick={() => openFeeModal(person)} className="p-1 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded" title="Sửa hoa hồng">
-                              <Edit className="w-3 h-3" />
-                            </button>
-                          </div>
+                          <span className="text-sm font-semibold text-slate-900">{cnt} buổi</span>
                         );
                       })()}
                     </td>
@@ -652,29 +639,22 @@ export function StaffList() {
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-bold text-slate-900 text-lg">Chỉnh phí & hoa hồng</h3>
-              <button onClick={() => setFeeModal({ open: false, staff: null, value: '', commissionValue: '' })} className="p-1 text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+              <h3 className="font-bold text-slate-900 text-lg">Chỉnh phí buổi dạy</h3>
+              <button onClick={() => setFeeModal({ open: false, staff: null, value: '' })} className="p-1 text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
             </div>
             <p className="text-sm text-slate-600 mb-1">Nhân viên: <b className="text-indigo-600">{feeModal.staff.fullName}</b> · {feeModal.staff.job?.name}</p>
             {(() => {
               const sess = trainerSessionMap.get(feeModal.staff!._id)?.count || 0;
-              const commissionRate = Number(feeModal.commissionValue) || 0;
-              const price = Number(feeModal.value) || 0;
-              const commission = commissionRate > 0 ? Math.round(price * sess * commissionRate / 100) : price * sess;
               return (
                 <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 mb-4 text-sm">
                   <p className="text-slate-600">Số buổi dạy hôm nay: <b className="text-slate-900">{sess}</b> buổi</p>
-                  <p className="text-slate-600 mt-1">Hoa hồng hôm nay: <b className="text-emerald-600">{sess ? commission.toLocaleString('vi-VN') + 'đ' : '0đ'}</b> {commissionRate ? `(${commissionRate}%)` : '(theo phí × số buổi)'}</p>
                 </div>
               );
             })()}
             <label className="block text-sm font-medium text-slate-700 mb-2">Phí / buổi (VNĐ)</label>
             <input type="number" value={feeModal.value} onChange={e => setFeeModal(prev => ({ ...prev, value: e.target.value }))} placeholder="500000" className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent" />
-            <label className="block text-sm font-medium text-slate-700 mb-2 mt-4">Hoa hồng (%)</label>
-            <input type="number" min={0} max={100} value={feeModal.commissionValue} onChange={e => setFeeModal(prev => ({ ...prev, commissionValue: e.target.value }))} placeholder="0" className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent" />
-            <p className="text-xs text-slate-500 mt-1">Nhập 0-100, ví dụ 20 = 20% trên mỗi buổi</p>
             <div className="flex gap-3 mt-6">
-              <button onClick={() => setFeeModal({ open: false, staff: null, value: '', commissionValue: '' })} className="flex-1 py-2.5 bg-slate-100 text-slate-700 rounded-xl font-semibold hover:bg-slate-200">Hủy</button>
+              <button onClick={() => setFeeModal({ open: false, staff: null, value: '' })} className="flex-1 py-2.5 bg-slate-100 text-slate-700 rounded-xl font-semibold hover:bg-slate-200">Hủy</button>
               <button onClick={handleSaveFee} disabled={feeSaving} className="flex-1 py-2.5 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 disabled:opacity-50 flex items-center justify-center gap-2">
                 {feeSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : null} Lưu
               </button>

@@ -205,7 +205,14 @@ export function CustomerList() {
   const [transferCustomer, setTransferCustomer] = useState<Customer | null>(null);
   const [transferPackageId, setTransferPackageId] = useState('');
   const [transferRecipient, setTransferRecipient] = useState('');
-  const [transferReason, setTransferReason] = useState('');
+  const [transferRecipientId, setTransferRecipientId] = useState('');
+  const [transferRecipientName, setTransferRecipientName] = useState('');
+  const [transferRecipientAccount, setTransferRecipientAccount] = useState('');
+  const [transferRecipientAvatar, setTransferRecipientAvatar] = useState('');
+  const [transferResults, setTransferResults] = useState<any[]>([]);
+  const [transferSearching, setTransferSearching] = useState(false);
+  const [transferOpen, setTransferOpen] = useState(false);
+  const transferSearchTimer = useRef<any>(null);
   const [transferSubmitting, setTransferSubmitting] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancelCustomer, setCancelCustomer] = useState<Customer | null>(null);
@@ -369,16 +376,58 @@ export function CustomerList() {
   };
 
   const openTransferModal = async (customer: Customer, pkgId?: string) => {
-    setTransferCustomer(customer); setTransferPackageId(pkgId||''); setTransferRecipient(''); setTransferReason(''); setShowTransferModal(true);
+    setTransferCustomer(customer); setTransferPackageId(pkgId||''); setTransferRecipient(''); setTransferRecipientId(''); setTransferRecipientName(''); setTransferRecipientAccount(''); setTransferRecipientAvatar(''); setTransferResults([]); setTransferOpen(false); setShowTransferModal(true);
     if (!detail360 || detail360.customer?._id !== customer._id) await fetchDetail360(customer._id);
   };
+  const searchTransferRecipients = async (keyword: string) => {
+    const q = keyword.trim();
+    if (!q) {
+      setTransferResults([]);
+      setTransferSearching(false);
+      return;
+    }
+    setTransferSearching(true);
+    setTransferOpen(true);
+    try {
+      const locParam = selectedClub && selectedClub !== 'all' ? `&locationId=${encodeURIComponent(selectedClub)}` : '';
+      const res = await fetch(`${backendUrl}/api/customers/search?q=${encodeURIComponent(q)}${locParam}`, { headers: getAuthHeaders() as any });
+      if (res.ok) {
+        const data = await res.json();
+        setTransferResults(Array.isArray(data) ? data : []);
+      }
+    } catch {
+      setTransferResults([]);
+    } finally {
+      setTransferSearching(false);
+    }
+  };
+  const handleTransferRecipientChange = (value: string) => {
+    setTransferRecipient(value);
+    if (value !== transferRecipientId && value !== transferRecipientName) {
+      setTransferRecipientId('');
+      setTransferRecipientName('');
+      setTransferRecipientAccount('');
+      setTransferRecipientAvatar('');
+    }
+    if (transferSearchTimer.current) clearTimeout(transferSearchTimer.current);
+    transferSearchTimer.current = setTimeout(() => searchTransferRecipients(value), 350);
+  };
+  const selectTransferRecipient = (m: any) => {
+    setTransferRecipientId(m._id);
+    setTransferRecipientName(m.fullName || m.account || '');
+    setTransferRecipientAccount(m.account || '');
+    setTransferRecipientAvatar(m.avatar || '');
+    setTransferRecipient(m.phone || '');
+    setTransferOpen(false);
+    setTransferResults([]);
+  };
   const handleTransferSubmit = async () => {
-    if (!transferCustomer || !transferPackageId || !transferRecipient.trim()) { toast.error('Chọn gói và nhập người nhận (SĐT/tài khoản)'); return; }
+    if (!transferCustomer || !transferPackageId || !transferRecipientId) { toast.error('Chọn gói và chọn người nhận (nhập SĐT rồi chọn từ danh sách)'); return; }
     setTransferSubmitting(true);
     try {
       const res = await fetch(`${backendUrl}/api/customers/${transferCustomer._id}/transfer-request`, {
         method: 'POST', headers: { ...getAuthHeaders() as any, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ packageId: transferPackageId, recipient: transferRecipient.trim(), reason: transferReason })
+        body: JSON.stringify({ packageId: transferPackageId, recipient: transferRecipient.trim(), reason: '' })
       });
       const d = await res.json(); if (!res.ok) throw new Error(d.error);
       toast.success(d.message || 'Đã chuyển nhượng thành công (Thành công - do nhân viên tạo)'); setShowTransferModal(false); fetchDetail360(transferCustomer._id); fetchCustomers(page);
@@ -437,7 +486,7 @@ export function CustomerList() {
         method: 'POST', headers: { ...getAuthHeaders() as any, 'Content-Type': 'application/json' },
         body: JSON.stringify({ lockerId: selectedLocker, lockerNumber: locker?.lockerNumber||'', durationDays: lockerDays, reason: lockerReason })
       }).catch(()=>{});
-      toast.success(`Đã cho thuê tủ ${locker?.lockerNumber} cho ${lockerCustomer.fullName} ${lockerDays} ngày (Thành công - do nhân viên tạo)`); setShowLockerModal(false);
+      toast.success(`Đã cho thuê tủ ${locker?.lockerNumber} cho ${lockerCustomer.fullName} ${lockerDays >= 30 ? `${lockerDays / 30} tháng` : `${lockerDays} ngày`} (Thành công - do nhân viên tạo)`); setShowLockerModal(false);
       // Refresh chi tiết để tab Thanh toán hiển thị ngay lịch sử thuê tủ mới
       fetchCustomers(page);
       if (lockerCustomer) {
@@ -449,7 +498,7 @@ export function CustomerList() {
   };
 
   const handleFreeze = async (pkgId: string, months: number) => {
-    if (!months || months < 1 || months > 10) { toast.error('Vui lòng chọn 1-10 tháng'); return; }
+    if (!months || months < 1 || months > 3) { toast.error('Vui lòng chọn 1-3 tháng (mỗi lần đóng băng tối đa 3 tháng, tối đa 2 lần/năm)'); return; }
     try {
       const res = await fetch(`${backendUrl}/api/customers/${selectedCustomer?._id}/packages/${pkgId}/freeze`, {
         method: 'POST', headers: { ...getAuthHeaders() as any, 'Content-Type': 'application/json' },
@@ -469,7 +518,7 @@ export function CustomerList() {
     } catch (e:any) { toast.error(e.message); }
   };
   const handleFreezeAll = async () => {
-    if (!freezeMonthsAll || freezeMonthsAll<1 || freezeMonthsAll>10) { toast.error('Chọn 1-10 tháng'); return; }
+    if (!freezeMonthsAll || freezeMonthsAll<1 || freezeMonthsAll>3) { toast.error('Chọn 1-3 tháng (mỗi lần tối đa 3 tháng, tối đa 2 lần/năm)'); return; }
     try {
       const res = await fetch(`${backendUrl}/api/customers/${selectedCustomer?._id}/freeze-all`, {
         method: 'POST', headers: { ...getAuthHeaders() as any, 'Content-Type': 'application/json' },
@@ -563,12 +612,12 @@ export function CustomerList() {
           return currentIds.has(p.disciplineId?._id || p.disciplineId);
         });
       }
-      // Chỉ gói có giá cao hơn (theo đơn giá) mới là nâng cấp
+      // Chỉ gói có giá cao hơn hoặc bằng (theo đơn giá) mới là nâng cấp - chặn hạ cấp để không phải hoàn tiền
       const currentUnit = detail?.unitPrice || (pkg.total_price ? Math.round(pkg.total_price / (pkg.duration_months ||1)) : 0);
-      candidates = candidates.filter((p:any)=> Number(p.unitPrice||0) > currentUnit);
+      candidates = candidates.filter((p:any)=> Number(p.unitPrice||0) >= currentUnit);
       if (!candidates.length) {
-        // fallback: gói giá cao hơn bất kỳ
-        const allHigher = (listData?.data||[]).filter((p:any)=> p.is_active && Number(p.unitPrice||0) > currentUnit && String(p._id)!==String(pid));
+        // fallback: gói giá cao hơn hoặc bằng bất kỳ
+        const allHigher = (listData?.data||[]).filter((p:any)=> p.is_active && Number(p.unitPrice||0) >= currentUnit && String(p._id)!==String(pid));
         candidates = allHigher.slice(0,12);
       }
       setUpgradeList(candidates);
@@ -594,7 +643,7 @@ export function CustomerList() {
         body: JSON.stringify({ customerId: selectedCustomer._id, currentRegistrationId: upgradeTarget._id, newPackageId: selectedUpgradePkg._id })
       });
       const d = await res.json(); if (!res.ok) throw new Error(d.error || 'Nâng cấp thất bại');
-      toast.success('Đã nâng cấp gói thành công');
+      toast.success(d.message || 'Đã nâng cấp gói thành công');
       setUpgradeTarget(null); setSelectedUpgradePkg(null); setUpgradeCalc(null);
       fetchDetail360(selectedCustomer._id); fetchCustomers(page); fetchExpiring();
     } catch (e:any) { toast.error(e.message); } finally { setUpgradeSubmitting(false); }
@@ -862,7 +911,7 @@ export function CustomerList() {
           <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-4 flex flex-wrap items-center gap-2 w-full max-w-full min-w-0 overflow-hidden">
             <span className="text-sm font-bold text-indigo-700">Đã chọn {selectedIds.size}</span>
             <select value={bulkMonths} onChange={(e)=>setBulkMonths(parseInt(e.target.value))} className="px-2 py-1.5 border border-slate-200 rounded-lg text-xs bg-white">
-              {[1,2,3,4,5,6,7,8,9,10].map(n=><option key={n} value={n}>{n} tháng</option>)}
+              {[1,2,3].map(n=><option key={n} value={n}>{n} tháng</option>)}
             </select>
             <button onClick={handleBulkFreeze} className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-bold">Đóng băng</button>
             <button onClick={handleBulkUnfreeze} className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold">Kích hoạt</button>
@@ -1005,7 +1054,7 @@ export function CustomerList() {
                 <div className="mx-6 mt-3 p-3 bg-slate-50 border border-slate-200 rounded-xl flex flex-wrap items-center gap-2">
                   <span className="text-xs font-bold text-slate-700">Dịch vụ:</span>
                   <select value={freezeMonthsAll} onChange={(e)=>setFreezeMonthsAll(parseInt(e.target.value))} disabled={detail360.customer.status === 'locked'} className={`px-2 py-1.5 border border-slate-200 rounded-lg text-xs bg-white ${detail360.customer.status === 'locked' ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                    {[1,2,3,4,5,6,7,8,9,10].map(n=><option key={n} value={n}>{n} tháng</option>)}
+                    {[1,2,3].map(n=><option key={n} value={n}>{n} tháng</option>)}
                   </select>
                   <button onClick={handleFreezeAll} disabled={detail360.customer.status === 'locked'} className={`px-3 py-1.5 text-white rounded-lg text-xs font-bold ${detail360.customer.status === 'locked' ? 'bg-slate-300 cursor-not-allowed' : 'bg-amber-500 hover:bg-amber-600'}`}>Đóng băng toàn bộ</button>
                   <button onClick={handleUnfreezeAll} disabled={detail360.customer.status === 'locked'} className={`px-3 py-1.5 text-white rounded-lg text-xs font-bold ${detail360.customer.status === 'locked' ? 'bg-slate-300 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700'}`}>Kích hoạt toàn bộ</button>
@@ -1117,7 +1166,13 @@ export function CustomerList() {
                         })()}
 <p className="text-xs text-slate-500">Lịch sử: {detail360.packages.length} gói (đang tập + đã tập + gia hạn) • Mỗi gói hiển thị trạng thái / còn lại / ngày kết thúc</p>
                         {detail360.packages.map((p:any)=>{
-                          const statusColor = p.status==='đang hoạt động'?'bg-emerald-100 text-emerald-700': p.status==='còn 10 ngày'?'bg-amber-100 text-amber-700': p.status==='đang tạm ngưng'?'bg-slate-200 text-slate-700': p.status==='hết hạn'?'bg-red-100 text-red-700':'bg-slate-100 text-slate-500';
+                          // Hiển thị trạng thái theo hạn thực tế (status trong DB có thể cũ)
+                          const derivedStatus = p.status==='đã hủy' ? 'đã hủy'
+                            : (p.isFrozen || p.status==='đang tạm ngưng') ? 'đang tạm ngưng'
+                            : (p.daysLeft !== undefined
+                              ? (p.daysLeft>10 ? 'đang hoạt động' : p.daysLeft>0 ? 'còn 10 ngày' : 'hết hạn')
+                              : (p.end_date && new Date(p.end_date) < new Date() ? 'hết hạn' : p.status));
+                          const statusColor = derivedStatus==='đang hoạt động'?'bg-emerald-100 text-emerald-700': derivedStatus==='còn 10 ngày'?'bg-amber-100 text-amber-700': derivedStatus==='đang tạm ngưng'?'bg-slate-200 text-slate-700': derivedStatus==='hết hạn'?'bg-red-100 text-red-700':'bg-slate-100 text-slate-500';
                           return (
                           <div key={p._id} className="p-4 border border-slate-200 rounded-xl">
                             <div className="flex justify-between items-start gap-4">
@@ -1125,7 +1180,7 @@ export function CustomerList() {
                                 <p className="font-semibold text-slate-900">{p.packageName} {p.isFrozen && <span className="ml-2 px-2 py-0.5 rounded-full bg-slate-800 text-white text-xs">Đang đóng băng</span>}</p>
                                 <p className="text-xs text-slate-500 mt-1">Từ {new Date(p.start_date).toLocaleDateString('vi-VN')} đến <b className="text-slate-700">{new Date(p.end_date).toLocaleDateString('vi-VN')}</b> {p.location?`• ${p.location}`:''}</p>
                                 <div className="flex flex-wrap items-center gap-2 mt-2">
-                                  <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${statusColor}`}>{p.status}</span>
+                                  <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${statusColor}`}>{derivedStatus}</span>
                                   {p.daysLeft !== undefined && (
                                     <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${p.daysLeft>10?'bg-emerald-50 text-emerald-700 border border-emerald-200': p.daysLeft>0?'bg-amber-50 text-amber-700 border border-amber-200':'bg-red-50 text-red-700 border border-red-200'}`}>
                                       {p.daysLeft>0?`Còn ${p.daysLeft} ngày`:`Quá hạn ${Math.abs(p.daysLeft)} ngày`}
@@ -1172,7 +1227,7 @@ export function CustomerList() {
                                   if (freezingPkgId === p._id) return (
                                   <div className="mt-2 flex items-center gap-1">
                                     <select value={freezeMonthsSingle} onChange={(e)=>setFreezeMonthsSingle(parseInt(e.target.value))} disabled={detail360.customer.status === 'locked'} className={`px-2 py-1.5 border border-slate-200 rounded-lg text-xs bg-white ${detail360.customer.status === 'locked' ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                                      {[1,2,3,4,5,6,7,8,9,10].map(n=><option key={n} value={n}>{n} tháng</option>)}
+                                      {[1,2,3].map(n=><option key={n} value={n}>{n} tháng</option>)}
                                     </select>
                                     <button onClick={()=>handleFreeze(p._id, freezeMonthsSingle)} disabled={detail360.customer.status === 'locked'} className={`px-2 py-1.5 text-white rounded-lg text-xs font-bold ${detail360.customer.status === 'locked' ? 'bg-slate-300 cursor-not-allowed' : 'bg-amber-500 hover:bg-amber-600'}`}>OK</button>
                                     <button onClick={()=>setFreezingPkgId(null)} className="px-2 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-xs">Hủy</button>
@@ -1354,19 +1409,101 @@ export function CustomerList() {
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowTransferModal(false)}>
             <div className="bg-white rounded-2xl max-w-lg w-full p-6" onClick={(e)=>e.stopPropagation()}>
               <h2 className="text-xl font-bold text-slate-900 mb-1">Chuyển nhượng gói tập</h2>
-              <p className="text-sm text-slate-500 mb-4">Khách: <b className="text-indigo-600">{transferCustomer.fullName}</b> - sẽ duyệt thẳng, hiển thị ở <b>Tất cả</b> (Thành công)</p>
+              <p className="text-sm text-slate-500 mb-2">Khách: <b className="text-indigo-600">{transferCustomer.fullName}</b> - sẽ duyệt thẳng, hiển thị ở <b>Tất cả</b> (Thành công)</p>
+              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4">Mỗi gói chỉ được chuyển nhượng tối đa 2 lần/năm.</p>
               <div className="space-y-4">
                 <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
                   <p className="text-xs text-slate-500">Gói sẽ chuyển</p>
                   <p className="font-semibold text-slate-900">{(detail360?.packages||[]).find((p:any)=>p._id===transferPackageId)?.packageName || '—'} {transferPackageId ? `• ${new Date((detail360?.packages||[]).find((p:any)=>p._id===transferPackageId)?.end_date).toLocaleDateString('vi-VN')} (còn ${(detail360?.packages||[]).find((p:any)=>p._id===transferPackageId)?.daysLeft} ngày)` : ''}</p>
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-1">Người nhận (SĐT hoặc tài khoản)</label>
-                  <input value={transferRecipient} onChange={(e)=>setTransferRecipient(e.target.value)} placeholder="0901234567 hoặc taikhoan" className="w-full px-3 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-1">Lý do</label>
-                  <textarea value={transferReason} onChange={(e)=>setTransferReason(e.target.value)} rows={2} placeholder="Lý do chuyển nhượng..." className="w-full px-3 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                  <label className="block text-sm font-semibold text-slate-700 mb-1">Người được chuyển nhượng</label>
+                  <div className="relative">
+                    <input value={transferRecipient} onChange={(e)=>handleTransferRecipientChange(e.target.value)} onFocus={() => transferRecipient && !transferRecipientId && setTransferOpen(true)} placeholder="Nhập tên, số điện thoại hoặc tài khoản để tìm kiếm..." className="w-full px-3 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                    {transferRecipientId && transferRecipientName && (
+                      <div className="mt-2 flex items-center gap-3 p-3 bg-green-50 border border-green-200 rounded-xl">
+                        {transferRecipientAvatar ? (
+                          <img
+                            src={
+                              transferRecipientAvatar.startsWith('http') || transferRecipientAvatar.startsWith('data:')
+                                ? transferRecipientAvatar
+                                : `${backendUrl}/uploads/customers/${transferRecipientAvatar}`
+                            }
+                            alt={transferRecipientName}
+                            className="w-10 h-10 rounded-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center font-bold text-green-700">
+                            {(transferRecipientName || '?').charAt(0).toUpperCase()}
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-slate-900 truncate">{transferRecipientName}</p>
+                          <p className="text-xs text-slate-500 truncate">
+                            {transferRecipient ? `SĐT: ${transferRecipient}` : ''}{transferRecipient && transferRecipientAccount ? ' • ' : ''}{transferRecipientAccount ? `Tài khoản: ${transferRecipientAccount}` : ''}
+                          </p>
+                          <p className="text-xs text-green-700">Đã xác minh - gói sẽ chuyển đến hội viên này</p>
+                        </div>
+                        <button
+                          onClick={() => {
+                            setTransferRecipient('');
+                            setTransferRecipientId('');
+                            setTransferRecipientName('');
+                            setTransferRecipientAccount('');
+                            setTransferRecipientAvatar('');
+                          }}
+                          className="text-slate-400 hover:text-red-500 transition-colors"
+                          aria-label="Bỏ chọn"
+                        >
+                          <X className="w-5 h-5" />
+                        </button>
+                      </div>
+                    )}
+                    {transferOpen && !transferRecipientId && (
+                      <div className="absolute z-10 mt-2 w-full bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden">
+                        {transferSearching ? (
+                          <div className="flex items-center justify-center py-6 text-slate-500">
+                            <Loader2 className="w-5 h-5 animate-spin mr-2" />
+                            <span>Đang tìm kiếm...</span>
+                          </div>
+                        ) : transferResults.length > 0 ? (
+                          transferResults.map(m => (
+                            <button
+                              key={m._id}
+                              onClick={() => selectTransferRecipient(m)}
+                              className="w-full flex items-center gap-3 px-4 py-3 hover:bg-indigo-50 transition-colors border-b border-slate-100 last:border-b-0"
+                            >
+                              {m.avatar ? (
+                                <img
+                                  src={
+                                    m.avatar.startsWith('http') || m.avatar.startsWith('data:')
+                                      ? m.avatar
+                                      : `${backendUrl}/uploads/customers/${m.avatar}`
+                                  }
+                                  alt={m.fullName || m.account}
+                                  className="w-10 h-10 rounded-full object-cover"
+                                />
+                              ) : (
+                                <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center font-bold text-indigo-600">
+                                  {(m.fullName || m.account || '?').charAt(0).toUpperCase()}
+                                </div>
+                              )}
+                              <div className="flex-1 min-w-0 text-left">
+                                <p className="font-semibold text-slate-900 truncate">{m.fullName || m.account}</p>
+                                <p className="text-xs text-slate-500 truncate">
+                                  {m.phone ? `SĐT: ${m.phone}` : ''}{m.phone && m.account ? ' • ' : ''}{m.account ? `Tài khoản: ${m.account}` : ''}
+                                </p>
+                              </div>
+                            </button>
+                          ))
+                        ) : (
+                          <div className="px-4 py-6 text-sm text-slate-500 text-center">
+                            Không tìm thấy hội viên phù hợp. Vui lòng kiểm tra lại thông tin.
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
               <div className="flex gap-3 mt-6">
@@ -1437,14 +1574,14 @@ export function CustomerList() {
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 mb-2">Thời gian thuê</label>
                   <select value={lockerDays} onChange={(e)=>setLockerDays(parseInt(e.target.value))} className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
-                    {Array.from({length:19},(_,i)=>i+2).map(d=><option key={d} value={d}>{d} ngày</option>)}
+                    {[{v:7,l:'7 ngày'},{v:10,l:'10 ngày'},{v:15,l:'15 ngày'},{v:20,l:'20 ngày'},{v:30,l:'1 tháng'},{v:60,l:'2 tháng'}].map(o=><option key={o.v} value={o.v}>{o.l}</option>)}
                   </select>
                 </div>
                 {lockerFee > 0 && (
                   <div className="flex items-center justify-between bg-cyan-50 border border-cyan-200 p-4 rounded-xl">
                     <div>
                       <p className="text-sm text-cyan-800"><strong>{lockerFee.toLocaleString('vi-VN')}₫</strong> / ngày</p>
-                      <p className="text-xs text-cyan-700 mt-0.5">Tổng cho {lockerDays} ngày</p>
+                      <p className="text-xs text-cyan-700 mt-0.5">Tổng cho {lockerDays >= 30 ? `${lockerDays / 30} tháng` : `${lockerDays} ngày`}</p>
                     </div>
                     <p className="text-lg font-bold text-cyan-800">{(lockerFee * lockerDays).toLocaleString('vi-VN')}₫</p>
                   </div>
@@ -1558,14 +1695,23 @@ export function CustomerList() {
                       <div className="flex justify-between"><span className="text-slate-500">Giá trị còn lại gói cũ</span><b className="text-emerald-600">-{upgradeCalc.remainingValue?.toLocaleString('vi-VN')}đ</b></div>
                       <div className="flex justify-between"><span className="text-slate-500">Chi phí gói mới (cùng kỳ hạn)</span><b>+{upgradeCalc.newPackageCost?.toLocaleString('vi-VN')}đ</b></div>
                       <div className="border-t border-slate-200 pt-2 flex justify-between items-center">
-                        {upgradeCalc.refundAmount>0 ? (
-                          <><span className="font-bold text-emerald-700">Được hoàn lại</span><span className="text-lg font-extrabold text-emerald-600">{upgradeCalc.refundAmount.toLocaleString('vi-VN')}đ</span></>
-                        ) : (
-                          <><span className="font-bold text-amber-700">Cần thanh toán thêm</span><span className="text-lg font-extrabold text-amber-600">{upgradeCalc.amountToPay?.toLocaleString('vi-VN')}đ</span></>
-                        )}
+                        <><span className="font-bold text-amber-700">Cần thanh toán thêm</span><span className="text-lg font-extrabold text-amber-600">{upgradeCalc.amountToPay?.toLocaleString('vi-VN')}đ</span></>
                       </div>
                     </div>
-                    <p className="text-xs text-slate-500">Nâng cấp giữ nguyên ngày hết hạn còn lại ({upgradeCalc.remainingDays} ngày), gói cũ sẽ được hủy và gói mới có hiệu lực ngay.</p>
+                    {upgradeCalc.pt && !upgradeCalc.pt.isUnlimited && (upgradeCalc.pt.newPerMonth > 0 || upgradeCalc.pt.oldPerMonth > 0) && (
+                      <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 space-y-1.5 text-sm">
+                        <p className="font-bold text-emerald-800 text-xs uppercase tracking-wide">Buổi tập HLV</p>
+                        <div className="flex justify-between"><span className="text-slate-500">Đã dùng ở gói cũ</span><b>{upgradeCalc.pt.oldUsed} buổi</b></div>
+                        <div className="flex justify-between"><span className="text-slate-500">Tổng buổi mới ({upgradeCalc.pt.remainingMonths} tháng còn lại × {upgradeCalc.pt.newPerMonth}/tháng)</span><b>{upgradeCalc.pt.newTotal} buổi</b></div>
+                        <div className="flex justify-between"><span className="text-slate-500">Còn lại sau nâng cấp (mới − đã dùng)</span><b className="text-emerald-700">{upgradeCalc.pt.newRemaining} buổi</b></div>
+                      </div>
+                    )}
+                    {upgradeCalc.pt?.isUnlimited && (
+                      <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-sm text-emerald-800">
+                        Gói mới không giới hạn buổi HLV. Số buổi đã dùng ở gói cũ ({upgradeCalc.pt.oldUsed} buổi) sẽ không bị trừ.
+                      </div>
+                    )}
+                    <p className="text-xs text-slate-500">Nâng cấp giữ nguyên ngày hết hạn còn lại ({upgradeCalc.remainingDays} ngày), gói cũ sẽ được hủy và gói mới có hiệu lực ngay. Chỉ cho nâng cấp lên gói giá cao hơn hoặc bằng để không phải hoàn tiền.</p>
                   </div>
                 )}
                 {upgradeCalc?.error && <div className="flex items-center gap-2 text-sm bg-red-50 border border-red-200 px-3 py-2 rounded-lg text-red-700"><AlertTriangle className="w-4 h-4"/> {upgradeCalc.error}</div>}
@@ -1903,12 +2049,12 @@ export function CustomerList() {
                       if (owned) return;
                       setRegStep(2);
                     }}
-                    disabled={
-                      !regSelectedPkg ||
-                      (detail360?.packages || []).some(
-                        (p: any) => String(p.packageId) === String(regSelectedPkg._id) && ['đang hoạt động', 'còn 10 ngày', 'đang tạm ngưng'].includes(p.status)
-                      )
-                    }
+                      disabled={
+                        !regSelectedPkg ||
+                        (detail360?.packages || []).some(
+                          (p: any) => String(p.packageId) === String(regSelectedPkg._id) && ['đang hoạt động', 'còn 10 ngày', 'đang tạm ngưng'].includes(p.status)
+                        )
+                      }
                     className="flex-1 py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Tiếp tục

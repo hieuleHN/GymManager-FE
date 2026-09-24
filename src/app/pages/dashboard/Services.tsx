@@ -6,8 +6,6 @@ import {
   Users,
   FileText,
   HelpCircle,
-  Undo2,
-  Lock,
   MessageSquareWarning,
   Loader2,
   Download,
@@ -45,8 +43,6 @@ const SERVICE_CATALOG: ServiceMeta[] = [
   { ...serviceMeta('transfer', Users, 'bg-purple-50', 'text-purple-600') },
   { ...serviceMeta('contract', FileText, 'bg-slate-50', 'text-slate-600') },
   { ...serviceMeta('support', HelpCircle, 'bg-indigo-50', 'text-indigo-600') },
-  { ...serviceMeta('cancel-refund', Undo2, 'bg-rose-50', 'text-rose-600') },
-  { ...serviceMeta('locker', Lock, 'bg-cyan-50', 'text-cyan-600') },
   { ...serviceMeta('complaint', MessageSquareWarning, 'bg-orange-50', 'text-orange-600') }
 ];
 
@@ -277,21 +273,6 @@ export function Services() {
     }
   };
 
-  const dedupeByPackage = (list: MyPackage[]): MyPackage[] => {
-    const map = new Map<string, MyPackage>();
-    list.forEach(p => {
-      const key = p.package_id?._id || p._id;
-      const existing = map.get(key);
-      if (
-        !existing ||
-        (p.end_date && (!existing.end_date || new Date(p.end_date) > new Date(existing.end_date)))
-      ) {
-        map.set(key, p);
-      }
-    });
-    return Array.from(map.values());
-  };
-
   const pendingFreezeRegIds = new Set(
     myRequests
       .filter(
@@ -302,29 +283,18 @@ export function Services() {
       .map(r => r.data?.packageId)
       .filter(Boolean)
   );
-  const blockedFreezePackageIds = new Set(
-    packages
-      .filter(
-        p =>
-          p.status === 'đang tạm ngưng' ||
-          pendingFreezeRegIds.has(p._id)
-      )
-      .map(p => p.package_id?._id)
-      .filter(Boolean)
-  );
 
-  const activePackages = dedupeByPackage(
-    packages.filter(
-      p =>
-        (p.status === 'đang hoạt động' || p.status === 'còn 10 ngày') &&
-        p.payment_status === 'đã thanh toán' &&
-        (!p.end_date || new Date(p.end_date) > new Date()) &&
-        !blockedFreezePackageIds.has(p.package_id?._id)
-    )
+  // Gói đang hoạt động đủ điều kiện tạm ngưng: lọc theo từng hợp đồng (registration _id),
+  // KHÔNG gộp theo mẫu gói và KHÔNG chặn theo mẫu gói để tránh ẩn nhầm gói đang hoạt động
+  // khi khách có 2 hợp đồng cùng mẫu (1 cái đang tạm ngưng / chờ duyệt, 1 cái đang hoạt động).
+  const activePackages = packages.filter(
+    p =>
+      (p.status === 'đang hoạt động' || p.status === 'còn 10 ngày') &&
+      p.payment_status === 'đã thanh toán' &&
+      (!p.end_date || new Date(p.end_date) > new Date()) &&
+      !pendingFreezeRegIds.has(p._id)
   );
-  const frozenPackages = dedupeByPackage(
-    packages.filter(p => p.status === 'đang tạm ngưng')
-  );
+  const frozenPackages = packages.filter(p => p.status === 'đang tạm ngưng');
   const cancelablePackages = packages.filter(p => p.status !== 'đã hủy');
   const contractList = (() => {
     const map = new Map<string, MyPackage>();
@@ -341,6 +311,18 @@ export function Services() {
   })();
 
   const visibleServices = SERVICE_CATALOG.filter(s => enabledServices.includes(s.key));
+
+  const countUsedInYear = (serviceType: string, packageId: string) => {
+    if (!packageId) return 0;
+    const year = new Date().getFullYear();
+    return myRequests.filter(r => {
+      if (r.service_type !== serviceType) return false;
+      if (['rejected', 'cancelled'].includes(r.status)) return false;
+      if ((r.data?.packageId || '') !== packageId) return false;
+      const d = new Date(r.createdAt);
+      return d.getFullYear() === year;
+    }).length;
+  };
 
   const getServiceFee = (key: ServiceKey) => {
     const cfg = serviceFees.find(f => f.service_type === key);
@@ -408,7 +390,7 @@ export function Services() {
     setSearchingRecipient(true);
     setRecipientOpen(true);
     try {
-      const res = await fetch(`${getApiUrl()}/api/customers/search?q=${encodeURIComponent(q)}${memberLocationId ? `&locationId=${encodeURIComponent(memberLocationId)}` : ''}`, { headers: headers as any });
+      const res = await fetch(`${getApiUrl()}/api/customers/search?q=${encodeURIComponent(q)}&hidePhone=1${memberLocationId ? `&locationId=${encodeURIComponent(memberLocationId)}` : ''}`, { headers: headers as any });
       if (res.ok) {
         const data = await res.json();
         setRecipientResults(Array.isArray(data) ? data : []);
@@ -435,7 +417,7 @@ export function Services() {
     setField('recipientId', m._id);
     setField('recipientName', m.fullName || m.account || '');
     setField('recipientAvatar', m.avatar || '');
-    setField('recipient', m.phone || m.account || m.fullName || '');
+    setField('recipient', m.account || m.fullName || '');
     setRecipientOpen(false);
     setRecipientResults([]);
   };
@@ -509,6 +491,14 @@ export function Services() {
 
   const doSubmitRequest = async () => {
     if (!selectedService) return;
+    if (selectedService === 'freeze' && countUsedInYear('freeze', form.packageId) >= 2) {
+      toast.error('Gói này đã dùng hết 2 lượt tạm ngưng trong năm.');
+      return;
+    }
+    if (selectedService === 'transfer' && countUsedInYear('transfer', form.packageId) >= 2) {
+      toast.error('Gói này đã dùng hết 2 lượt chuyển nhượng trong năm.');
+      return;
+    }
     setSubmitting(true);
     try {
       const payload = buildPayload();
@@ -546,11 +536,15 @@ export function Services() {
     if (!selectedService) return false;
     switch (selectedService) {
       case 'freeze':
-        return !!form.packageId && form.description.trim().length > 0;
+        if (!form.packageId || form.description.trim().length === 0) return false;
+        if (countUsedInYear('freeze', form.packageId) >= 2) return false;
+        return true;
       case 'activate':
         return !!form.packageId;
       case 'transfer':
-        return !!form.packageId && !!form.recipientId && form.description.trim().length > 0;
+        if (!form.packageId || !form.recipientId || form.description.trim().length === 0) return false;
+        if (countUsedInYear('transfer', form.packageId) >= 2) return false;
+        return true;
       case 'cancel-refund':
         return !!form.packageId && form.description.trim().length > 0;
       case 'locker':
@@ -570,9 +564,20 @@ export function Services() {
     switch (selectedService) {
       case 'freeze':
         if (activePackages.length === 0) {
+          const now = new Date();
+          const total = packages.length;
+          const unpaid = packages.filter(p => p.payment_status !== 'đã thanh toán').length;
+          const expired = packages.filter(p => p.end_date && new Date(p.end_date) <= now).length;
+          const frozen = packages.filter(p => p.status === 'đang tạm ngưng').length;
+          const pending = packages.filter(p => pendingFreezeRegIds.has(p._id)).length;
+          const wrongStatus = packages.filter(p => !['đang hoạt động', 'còn 10 ngày'].includes(p.status) && p.status !== 'đang tạm ngưng').length;
           return (
-            <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl text-sm text-slate-600">
-              Bạn hiện không có gói tập nào đang hoạt động để tạm ngưng.
+            <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl text-sm text-slate-600 space-y-1">
+              <p className="font-semibold text-slate-700">Bạn hiện không có gói tập nào đủ điều kiện tạm ngưng.</p>
+              <p className="text-xs">
+                Tổng {total} gói: {unpaid} chưa thanh toán • {expired} đã hết hạn • {frozen} đang tạm ngưng • {pending} đang chờ duyệt tạm ngưng • {wrongStatus} trạng thái khác.
+              </p>
+              <p className="text-xs">Chỉ gói <b>đang hoạt động / còn 10 ngày</b> + <b>đã thanh toán</b> + <b>còn hạn</b> mới tạm ngưng được. Liên hệ lễ tân nếu cần hỗ trợ.</p>
             </div>
           );
         }
@@ -597,7 +602,7 @@ export function Services() {
               >
                 <option value="">Chọn gói tập</option>
                 {activePackages.map(pkg => (
-                  <option key={pkg._id} value={pkg._id}>{pkg.name}</option>
+                  <option key={pkg._id} value={pkg._id}>{pkg.name}{pkg.end_date ? ` • hết hạn ${formatDate(pkg.end_date)}` : ''}</option>
                 ))}
               </select>
             </div>
@@ -612,6 +617,16 @@ export function Services() {
                 <option value="2">2 tháng</option>
                 <option value="3">3 tháng</option>
               </select>
+              <p className="text-xs text-slate-500 mt-1">Mỗi lần tối đa 3 tháng.</p>
+              {form.packageId && (() => {
+                const used = countUsedInYear('freeze', form.packageId);
+                return (
+                  <p className={`text-xs mt-1 font-medium ${used >= 2 ? 'text-red-600' : 'text-slate-500'}`}>
+                    Gói này đã dùng {used}/2 lượt tạm ngưng trong năm {new Date().getFullYear()}
+                    {used >= 2 ? ' — đã hết lượt, không thể gửi thêm.' : `. Còn lại ${2 - used} lượt.`}
+                  </p>
+                );
+              })()}
             </div>
           </>
         );
@@ -633,12 +648,19 @@ export function Services() {
             >
               <option value="">Chọn gói cần kích hoạt lại</option>
               {frozenPackages.map(pkg => (
-                <option key={pkg._id} value={pkg._id}>{pkg.name}</option>
+                <option key={pkg._id} value={pkg._id}>{pkg.name}{pkg.end_date ? ` • hết hạn ${formatDate(pkg.end_date)}` : ''}</option>
               ))}
             </select>
           </div>
         );
       case 'transfer':
+        if (activePackages.length === 0) {
+          return (
+            <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl text-sm text-slate-600">
+              Bạn hiện không có gói tập nào đủ điều kiện chuyển nhượng (cần gói đang hoạt động + đã thanh toán + còn hạn).
+            </div>
+          );
+        }
         return (
           <>
             <div>
@@ -660,9 +682,18 @@ export function Services() {
               >
                 <option value="">Chọn gói tập</option>
                 {activePackages.map(pkg => (
-                  <option key={pkg._id} value={pkg._id}>{pkg.name}</option>
+                  <option key={pkg._id} value={pkg._id}>{pkg.name}{pkg.end_date ? ` • hết hạn ${formatDate(pkg.end_date)}` : ''}</option>
                 ))}
               </select>
+              {form.packageId && (() => {
+                const used = countUsedInYear('transfer', form.packageId);
+                return (
+                  <p className={`text-xs mt-1 font-medium ${used >= 2 ? 'text-red-600' : 'text-slate-500'}`}>
+                    Gói này đã dùng {used}/2 lượt chuyển nhượng trong năm {new Date().getFullYear()}
+                    {used >= 2 ? ' — đã hết lượt, không thể gửi thêm.' : `. Còn lại ${2 - used} lượt.`}
+                  </p>
+                );
+              })()}
             </div>
             <div>
               <label className={labelCls}>Người được chuyển nhượng</label>
@@ -672,7 +703,7 @@ export function Services() {
                   value={form.recipient}
                   onChange={e => handleRecipientChange(e.target.value)}
                   onFocus={() => form.recipient && setRecipientOpen(true)}
-                  placeholder="Nhập tên, số điện thoại hoặc tài khoản để tìm kiếm..."
+                  placeholder="Nhập họ tên hoặc tài khoản để tìm kiếm..."
                   className={inputCls}
                 />
                 {form.recipientId && form.recipientName && (
@@ -694,6 +725,9 @@ export function Services() {
                     )}
                     <div className="flex-1 min-w-0">
                       <p className="font-semibold text-slate-900 truncate">{form.recipientName}</p>
+                      <p className="text-xs text-slate-500 truncate">
+                        {form.recipient ? `Tài khoản: ${form.recipient}` : ''}
+                      </p>
                       <p className="text-xs text-green-700">Đã xác minh - gói sẽ chuyển đến hội viên này</p>
                     </div>
                     <button
@@ -742,7 +776,7 @@ export function Services() {
                           <div className="flex-1 min-w-0 text-left">
                             <p className="font-semibold text-slate-900 truncate">{m.fullName || m.account}</p>
                             <p className="text-xs text-slate-500 truncate">
-                              {m.phone ? `SDT: ${m.phone}` : ''}{m.phone && m.account ? ' • ' : ''}{m.account ? `Tài khoản: ${m.account}` : ''}
+                              {m.account ? `Tài khoản: ${m.account}` : ''}
                             </p>
                           </div>
                         </button>
@@ -1062,7 +1096,7 @@ export function Services() {
               {selectedService === 'freeze' && (
                 <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl mb-6">
                   <p className="text-sm text-amber-800">
-                    <strong>Lưu ý:</strong> Gói sẽ được tạm ngưng trong {form.duration || '1'} tháng và tự động kích hoạt lại khi hết thời gian. Thời gian tạm ngưng sẽ được cộng thêm vào hạn sử dụng.
+                    <strong>Lưu ý:</strong> Mỗi gói chỉ được tạm ngưng tối đa 2 lần/năm, mỗi lần 1–3 tháng. Gói sẽ tự động kích hoạt lại khi hết thời gian. Thời gian tạm ngưng sẽ được cộng thêm vào hạn sử dụng.
                   </p>
                 </div>
               )}
@@ -1086,7 +1120,7 @@ export function Services() {
               {selectedService === 'transfer' && (
                 <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl mb-6">
                   <p className="text-sm text-amber-800">
-                    <strong>Lưu ý:</strong> Sau khi chuyển nhượng, bạn sẽ không thể sử dụng gói tập này.
+                    <strong>Lưu ý:</strong> Mỗi gói chỉ được chuyển nhượng tối đa 2 lần/năm. Sau khi chuyển nhượng, bạn sẽ không thể sử dụng gói tập này.
                   </p>
                 </div>
               )}

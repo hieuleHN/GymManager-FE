@@ -11,6 +11,7 @@ import {
   AreaChart, Area, ComposedChart, Line
 } from 'recharts';
 import { api } from '../../../lib/api';
+import { Pagination } from '../../components/Pagination';
 import { useClub } from '../../context/ClubContext';
 import { exportFinanceExcel, exportOperationsExcel } from '../../../lib/exportExcelWithChart';
 import { generateChartImages } from '../../../lib/ChartCapture';
@@ -32,6 +33,28 @@ const fmtVnd = (v: number) => new Intl.NumberFormat('vi-VN').format(v) + '₫';
 
 const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#14b8a6'];
 const MONTHS = ["T1", "T2", "T3", "T4", "T5", "T6", "T7", "T8", "T9", "T10", "T11", "T12"];
+
+// Biên kỳ hiện tại (khớp BE getPeriodRange) để modal thẻ lọc chi tiết đúng kỳ
+// dù API trả chi tiết cả năm phục vụ click từng tháng trên biểu đồ.
+function getPeriodBounds(period: string): { start: Date; end: Date } {
+  const now = new Date();
+  const start = new Date();
+  if (period === 'week') {
+    start.setDate(now.getDate() - 6);
+    start.setHours(0, 0, 0, 0);
+  } else if (period === 'quarter') {
+    const q = Math.floor(now.getMonth() / 3) * 3;
+    start.setMonth(q, 1);
+    start.setHours(0, 0, 0, 0);
+  } else if (period === 'year') {
+    start.setMonth(0, 1);
+    start.setHours(0, 0, 0, 0);
+  } else {
+    start.setDate(1);
+    start.setHours(0, 0, 0, 0);
+  }
+  return { start, end: now };
+}
 
 // ---------- Fallback data (khi BE chưa có dữ liệu) ----------
 const fallbackFinance = {
@@ -235,6 +258,8 @@ export function Statistics() {
           data={finance}
           periodData={periodData}
           loading={loadingPeriodData}
+          periodStart={getPeriodBounds(period).start}
+          periodEnd={getPeriodBounds(period).end}
           onClose={() => { setShowFormulaModal(false); setSelectedMetric(null); setPeriodData({}); }}
         />
       )}
@@ -333,6 +358,11 @@ function FinanceTab({ data, period, customFrom, customTo, onStatClick, onDrilldo
 
   const MONTH_NUM: Record<string, number> = { T1: 1, T2: 2, T3: 3, T4: 4, T5: 5, T6: 6, T7: 7, T8: 8, T9: 9, T10: 10, T11: 11, T12: 12 };
   const [expSearch, setExpSearch] = useState('');
+  const [trainerPage, setTrainerPage] = useState(1);
+  const TRAINER_LIMIT = 10;
+  const trainerTotalPages = Math.max(1, Math.ceil(((data.trainerPerformance || []).length) / TRAINER_LIMIT));
+  const trainerSafePage = Math.min(Math.max(1, trainerPage), trainerTotalPages);
+  const trainerPageItems = (data.trainerPerformance || []).slice((trainerSafePage - 1) * TRAINER_LIMIT, trainerSafePage * TRAINER_LIMIT);
   const filteredExpenses = (data.expenseStructure || []).filter((item: any) =>
     !expSearch.trim() || item.name.toLowerCase().includes(expSearch.toLowerCase())
   );
@@ -347,8 +377,30 @@ function FinanceTab({ data, period, customFrom, customTo, onStatClick, onDrilldo
   };
   const drillRevenue = (monthLabel: string, metric: 'cash' | 'revenue') => {
     if (!onDrilldown) return;
-    const items = filterByMonth(data.revenueDetails || [], monthLabel);
     const label = metric === 'cash' ? 'Tiền thực thu' : 'Doanh thu ghi nhận';
+    if (metric === 'revenue') {
+      // Ghi nhận theo tháng = các gói còn hiệu lực trong tháng đó (+ SP bán trong tháng).
+      // Dùng accrualDetails (cả năm) nên tháng tương lai như T10-T12 vẫn có dữ liệu.
+      const m = MONTH_NUM[monthLabel];
+      const year = new Date().getFullYear();
+      const mStart = new Date(year, (m || 1) - 1, 1);
+      const mEnd = m === new Date().getMonth() + 1 ? new Date() : new Date(year, m || 1, 0, 23, 59, 59, 999);
+      const matched = (data.accrualDetails || [])
+        .filter((r: any) => r?.startDate && r?.endDate && new Date(r.startDate) <= mEnd && new Date(r.endDate) >= mStart);
+      const rows = matched
+        .map((r: any) => ({ 'Gói/Hàng': r.packageName, 'Khách hàng': r.customerName, 'Ghi nhận trong tháng': fmtVnd(r.monthlyRevenue || 0) }));
+      const chartRow = (data.profitData || []).find((x: any) => x.month === monthLabel);
+      onDrilldown({
+        title: `${label} — ${monthLabel}`,
+        subtitle: `${rows.length} gói/hàng đang ghi nhận`,
+        columns: ['Gói/Hàng', 'Khách hàng', 'Ghi nhận trong tháng'],
+        rows,
+        totalLabel: `Tổng ${label}`,
+        totalValue: chartRow ? chartRow.revenue : matched.reduce((sum: number, r: any) => sum + (r.monthlyRevenue || 0), 0),
+      });
+      return;
+    }
+    const items = filterByMonth(data.revenueDetails || [], monthLabel);
     onDrilldown({
       title: `${label} — ${monthLabel}`,
       subtitle: `${items.length} giao dịch`,
@@ -479,20 +531,18 @@ function FinanceTab({ data, period, customFrom, customTo, onStatClick, onDrilldo
           </div>
           <p className="text-xs text-slate-500 mb-4">Theo dõi phòng gym có vận hành hiệu quả không</p>
           <ResponsiveContainer width="100%" height={280}>
-            <ComposedChart data={data.profitData}
-              onClick={(e: any) => {
-                const payload = e?.activePayload?.[0]?.payload;
-                if (!payload?.month) return;
-                drillExpense(payload.month);
-              }}>
+            <ComposedChart data={data.profitData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
               <XAxis dataKey="month" tick={{ fontSize: 12 }} />
               <YAxis tickFormatter={fmt} tick={{ fontSize: 11 }} />
               <Tooltip formatter={(v: number) => fmtVnd(v)} />
               <Legend />
-              <Bar dataKey="revenue" fill="#6366f1" name="Doanh thu" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="expense" fill="#f59e0b" name="Chi phí" radius={[4, 4, 0, 0]} />
-              <Line type="monotone" dataKey="profit" stroke="#10b981" strokeWidth={2.5} dot={{ r: 3 }} name="Lợi nhuận" />
+              <Bar dataKey="revenue" fill="#6366f1" name="Doanh thu" radius={[4, 4, 0, 0]} style={{ cursor: 'pointer' }}
+                onClick={(d: any) => { if (d?.month) drillRevenue(d.month, 'revenue'); }} />
+              <Bar dataKey="expense" fill="#f59e0b" name="Chi phí" radius={[4, 4, 0, 0]} style={{ cursor: 'pointer' }}
+                onClick={(d: any) => { if (d?.month) drillExpense(d.month); }} />
+              <Line type="monotone" dataKey="profit" stroke="#10b981" strokeWidth={2.5} dot={{ r: 3 }} name="Lợi nhuận" style={{ cursor: 'pointer' }}
+                onClick={(d: any) => { if (d?.month) drillProfit(d.month); }} />
             </ComposedChart>
           </ResponsiveContainer>
         </div>
@@ -766,11 +816,13 @@ function FinanceTab({ data, period, customFrom, customTo, onStatClick, onDrilldo
                 </tr>
               </thead>
               <tbody>
-                {data.trainerPerformance.map((t: any, i: number) => (
-                  <tr key={i} className="border-b border-slate-50 hover:bg-slate-50">
+                {trainerPageItems.map((t: any, i: number) => {
+                  const rank = (trainerSafePage - 1) * TRAINER_LIMIT + i;
+                  return (
+                  <tr key={rank} className="border-b border-slate-50 hover:bg-slate-50">
                     <td className="py-3 px-3">
-                      <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${i === 0 ? 'bg-yellow-100 text-yellow-700' : i === 1 ? 'bg-slate-200 text-slate-600' : i === 2 ? 'bg-orange-100 text-orange-700' : 'bg-slate-50 text-slate-500'}`}>
-                        {i + 1}
+                      <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${rank === 0 ? 'bg-yellow-100 text-yellow-700' : rank === 1 ? 'bg-slate-200 text-slate-600' : rank === 2 ? 'bg-orange-100 text-orange-700' : 'bg-slate-50 text-slate-500'}`}>
+                        {rank + 1}
                       </span>
                     </td>
                     <td className="py-3 px-3 font-medium text-slate-800">{t.name}</td>
@@ -784,10 +836,22 @@ function FinanceTab({ data, period, customFrom, customTo, onStatClick, onDrilldo
                     </td>
                     <td className="py-3 px-3 text-right text-slate-700">{fmtVnd(t.estimatedCommission)}</td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
+          {trainerTotalPages > 1 && (
+            <div className="mt-2">
+              <Pagination
+                page={trainerSafePage}
+                totalPages={trainerTotalPages}
+                total={(data.trainerPerformance || []).length}
+                limit={TRAINER_LIMIT}
+                onPageChange={setTrainerPage}
+              />
+            </div>
+          )}
         </div>
       )}
 
@@ -1081,11 +1145,13 @@ const PERIOD_LABELS: Record<string, string> = {
   year: 'Năm nay',
 };
 
-function FormulaDetailModal({ metric, data, periodData, loading, onClose }: {
+function FormulaDetailModal({ metric, data, periodData, loading, periodStart, periodEnd, onClose }: {
   metric: string;
   data: any;
   periodData: Record<string, any>;
   loading: boolean;
+  periodStart: Date;
+  periodEnd: Date;
   onClose: () => void;
 }) {
   if (!metric || !METRIC_INFO[metric]) return null;
@@ -1103,10 +1169,21 @@ function FormulaDetailModal({ metric, data, periodData, loading, onClose }: {
     return { key: p, label: PERIOD_LABELS[p], value: val };
   });
 
+  // API trả chi tiết cả năm (để click từng tháng trên biểu đồ); modal thẻ chỉ hiện phần thuộc kỳ đang xem
+  const inPeriod = (d: any) => {
+    if (!d) return false;
+    const t = new Date(d).getTime();
+    return t >= new Date(periodStart).getTime() && t <= new Date(periodEnd).getTime();
+  };
+  const overlapsPeriod = (r: any) => {
+    if (!r?.startDate || !r?.endDate) return inPeriod(r?.startDate);
+    return new Date(r.startDate) <= new Date(periodEnd) && new Date(r.endDate) >= new Date(periodStart);
+  };
+
   const getTransactionData = () => {
     switch (metric) {
       case 'realCashIn': {
-        const items = data?.revenueDetails || [];
+        const items = (data?.revenueDetails || []).filter((r: any) => inPeriod(r.date));
         return {
           columns: ['Ngày', 'Loại giao dịch', 'Khách hàng', 'Nội dung', 'Số tiền'],
           rows: items.map((r: any) => ({
@@ -1123,7 +1200,7 @@ function FormulaDetailModal({ metric, data, periodData, loading, onClose }: {
         };
       }
       case 'accrualRevenue': {
-        const items = data?.accrualDetails || [];
+        const items = (data?.accrualDetails || []).filter(overlapsPeriod);
         return {
           columns: ['Gói tập', 'Khách hàng', 'Tổng giá', 'Thời hạn', 'Ghi nhận/tháng', 'Tháng đã qua', 'Tổng ghi nhận'],
           rows: items.map((r: any) => ({
@@ -1142,7 +1219,7 @@ function FormulaDetailModal({ metric, data, periodData, loading, onClose }: {
         };
       }
       case 'totalExpense': {
-        const items = data?.expenseDetails || [];
+        const items = (data?.expenseDetails || []).filter((r: any) => inPeriod(r.date));
         return {
           columns: ['Ngày', 'Tên khoản chi', 'Phân loại', 'Ghi chú', 'Số tiền'],
           rows: items.map((r: any) => ({
