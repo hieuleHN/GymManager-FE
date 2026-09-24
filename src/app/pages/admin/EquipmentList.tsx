@@ -72,7 +72,8 @@ export function EquipmentList() {
 
   const fetchAlerts = async () => {
     try {
-      const res = await fetch("http://localhost:5000/api/equipments/alerts", {
+      const params = selectedClub !== "all" ? `?locationId=${selectedClub}` : "";
+      const res = await fetch(`${getApiUrl()}/api/equipments/alerts${params}`, {
         headers: getAuthHeaders(),
       });
       const data = await res.json();

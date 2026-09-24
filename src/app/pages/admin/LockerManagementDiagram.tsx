@@ -20,6 +20,9 @@ interface LockerItem {
     assignedAt?: string;
     rentalDays?: number;
     rentedAt?: string;
+    isOverdue?: boolean;
+    faceLocked?: boolean;
+    expiryDate?: string;
     maintenanceType?: string;
     maintenanceDescription?: string;
     maintenanceImage?: string;
@@ -47,6 +50,9 @@ interface LockerApiItem {
     assignedAt: string | null;
     rentalDays?: number;
     rentedAt?: string | null;
+    isOverdue?: boolean;
+    faceLocked?: boolean;
+    expiryDate?: string | null;
     maintenanceType: string;
     maintenanceDescription: string;
     maintenanceImage: string;
@@ -57,6 +63,7 @@ interface Stats {
     total: number;
     occupied: number;
     maintenance: number;
+    overdue?: number;
     available: number;
     usageRate: string;
 }
@@ -96,6 +103,14 @@ const formatRentalDays = (locker: LockerItem): string => {
     if (Number.isNaN(start)) return '';
     const used = Math.max(0, Math.floor((Date.now() - start) / 86400000));
     return `Thuê ${used}/${locker.rentalDays} ngày`;
+};
+
+const getOverdueDays = (locker: LockerItem): number => {
+    if (!locker.rentedAt || !locker.rentalDays) return 0;
+    const start = new Date(locker.rentedAt).getTime();
+    if (Number.isNaN(start)) return 0;
+    const end = start + (locker.rentalDays || 0) * 86400000;
+    return Math.max(0, Math.floor((Date.now() - end) / 86400000));
 };
 
 const STATUS_OPTIONS: { key: LockerStatus; label: string; desc: string; card: string; active: string }[] = [
@@ -484,18 +499,30 @@ interface LockerDetailModalProps {
     onClose: () => void;
     onRelease: () => void;
     onEdit: () => void;
+    onExtend?: (extraDays: number) => void;
 }
 
-function LockerDetailModal({ locker, onClose, onRelease, onEdit }: LockerDetailModalProps) {
+function LockerDetailModal({ locker, onClose, onRelease, onEdit, onExtend }: LockerDetailModalProps) {
     const isRented = locker.rentalDays && locker.rentalDays > 0 && locker.rentedAt;
+    const isOverdue = locker.status === 'AWAIT_KEY_RETURN' || locker.isOverdue;
+    const [extraDays, setExtraDays] = useState(7);
     return (
         <Modal
             title={`Tủ ${locker.code}`}
-            subtitle={locker.status === 'AWAIT_KEY_RETURN' ? 'Đã hết hạn thuê - chờ trả chìa khoá' : 'Thông tin người đang sử dụng tủ'}
+            subtitle={isOverdue ? 'Đã hết hạn thuê - FaceID đang bị KHÓA' : 'Thông tin người đang sử dụng tủ'}
             icon={<Lock className="w-6 h-6" />}
             onClose={onClose}
         >
             <div className="space-y-4">
+                {isOverdue && (
+                    <div className="bg-red-600 text-white p-3 rounded-xl flex items-center gap-2">
+                        <Lock className="w-4 h-4 shrink-0" />
+                        <div className="text-xs">
+                            <p className="font-black">FaceID của {locker.customerName || 'người thuê'} đang bị KHÓA</p>
+                            <p className="mt-0.5 opacity-90">Do quá hạn thuê tủ {locker.code}. Trả tủ/gia hạn để tự động mở lại FaceID.</p>
+                        </div>
+                    </div>
+                )}
                 <div className={`${locker.status === 'AWAIT_KEY_RETURN' ? 'bg-rose-50 border-rose-200 text-rose-800' : 'bg-indigo-50 border-indigo-200 text-indigo-800'} border p-3 rounded-xl flex items-center gap-2`}>
                     <Clock className="w-4 h-4 shrink-0" />
                     <span className="text-xs font-bold">
@@ -510,6 +537,9 @@ function LockerDetailModal({ locker, onClose, onRelease, onEdit }: LockerDetailM
                         <div className="text-xs">
                             <p className="font-bold">Đang thuê · {formatRentalDays(locker)}</p>
                             <p className="mt-0.5 opacity-80">Hết hạn: {formatDateTime(new Date(new Date(locker.rentedAt as string).getTime() + (locker.rentalDays || 0) * 86400000).toISOString())}</p>
+                            {isOverdue && (
+                                <p className="mt-0.5 font-black text-rose-700">Quá hạn {getOverdueDays(locker)} ngày — FaceID đang bị khóa</p>
+                            )}
                         </div>
                     </div>
                 )}
@@ -547,6 +577,30 @@ function LockerDetailModal({ locker, onClose, onRelease, onEdit }: LockerDetailM
                         </button>
                     </div>
                 </div>
+                {isOverdue && onExtend && (
+                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-center gap-2">
+                        <KeyRound className="w-4 h-4 text-amber-600 shrink-0" />
+                        <div className="flex-1 flex items-center gap-2">
+                            <span className="text-xs font-bold text-amber-800">Gia hạn sau khi thu tiền:</span>
+                            <input
+                                type="number"
+                                min={1}
+                                max={60}
+                                value={extraDays}
+                                onChange={(e) => setExtraDays(Math.max(1, Math.min(60, parseInt(e.target.value) || 1)))}
+                                className="w-16 px-2 py-1 border border-amber-300 rounded-lg text-xs font-bold text-center"
+                            />
+                            <span className="text-xs text-amber-700">ngày</span>
+                            <button
+                                type="button"
+                                onClick={() => onExtend(extraDays)}
+                                className="px-3 py-1.5 bg-amber-500 text-white rounded-lg text-xs font-black hover:bg-amber-600"
+                            >
+                                Thu tiền & mở FaceID
+                            </button>
+                        </div>
+                    </div>
+                )}
             </div>
         </Modal>
     );
@@ -671,6 +725,9 @@ export function LockerManagementDiagram() {
                     assignedAt: l.assignedAt || undefined,
                     rentalDays: l.rentalDays || undefined,
                     rentedAt: l.rentedAt || undefined,
+                    isOverdue: l.isOverdue || l.status === 'AWAIT_KEY_RETURN' || undefined,
+                    faceLocked: l.faceLocked || l.status === 'AWAIT_KEY_RETURN' || undefined,
+                    expiryDate: (l.expiryDate as string) || undefined,
                     maintenanceType: l.maintenanceType || undefined,
                     maintenanceDescription: l.maintenanceDescription || undefined,
                     maintenanceImage: l.maintenanceImage || undefined,
@@ -779,6 +836,32 @@ export function LockerManagementDiagram() {
         }
     };
 
+    const handleExtendLocker = async (extraDays: number) => {
+        if (!viewing) return;
+        if (!window.confirm(`Đã thu tiền gia hạn tủ ${viewing.code} thêm ${extraDays} ngày? FaceID sẽ được mở lại nếu hết quá hạn.`)) return;
+        const json = await runRequest(`/api/v2/lockers/${viewing.id}/extend`, {
+            method: 'POST',
+            body: JSON.stringify({ extraDays })
+        });
+        if (json) {
+            showBanner(json.message || 'Đã gia hạn tủ');
+            // Cập nhật modal đang xem để thấy ngay hết quá hạn/mở khóa
+            if (json.data) {
+                const d = json.data;
+                setViewing({
+                    ...viewing,
+                    status: d.status,
+                    rentalDays: d.rentalDays,
+                    rentedAt: d.rentedAt,
+                    isOverdue: d.isOverdue,
+                    faceLocked: d.faceLocked,
+                    expiryDate: d.expiryDate,
+                });
+            }
+            fetchLockers();
+        }
+    };
+
     const handleCompleteMaintenance = async () => {
         if (!viewingMaintenance) return;
         if (!window.confirm(`Hoàn tất bảo trì cho tủ ${viewingMaintenance.code}? Tủ sẽ quay về trạng thái trước khi bảo trì (đang sử dụng / trống).`)) return;
@@ -815,6 +898,7 @@ export function LockerManagementDiagram() {
         { label: 'Tổng số tủ', value: stats.total, icon: Boxes, cls: 'bg-slate-50 text-slate-600' },
         { label: 'Đang trống', value: stats.available, icon: Unlock, cls: 'bg-emerald-50 text-emerald-600' },
         { label: 'Đang sử dụng', value: stats.occupied, icon: Lock, cls: 'bg-indigo-50 text-indigo-600' },
+        { label: 'Quá hạn (khóa FaceID)', value: stats.overdue ?? 0, icon: KeyRound, cls: 'bg-rose-50 text-rose-600' },
         { label: 'Bảo trì', value: stats.maintenance, icon: AlertTriangle, cls: 'bg-amber-50 text-amber-600' },
         { label: 'Tỉ lệ sử dụng', value: `${usageRate}%`, icon: Gauge, cls: 'bg-violet-50 text-violet-600', progress: usageRate },
     ];
@@ -857,7 +941,7 @@ export function LockerManagementDiagram() {
                 )}
 
                 {/* Thống kê nhanh */}
-                <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
+                <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
                     {statCards.map(card => (
                         <div key={card.label} className="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm">
                             <div className="flex items-center gap-3">
@@ -956,7 +1040,8 @@ export function LockerManagementDiagram() {
                                     {row.lockers.map(locker => {
                                         const meta = STATUS_META[locker.status];
                                         const isRented = locker.rentalDays && locker.rentalDays > 0 && locker.rentedAt;
-                                        const label = isRented && locker.status === 'OCCUPIED' ? 'Đang thuê' : meta.label;
+                                        const isOverdue = locker.status === 'AWAIT_KEY_RETURN' || locker.isOverdue;
+                                        const label = isOverdue ? 'Quá hạn - khóa FaceID' : (isRented && locker.status === 'OCCUPIED' ? 'Đang thuê' : meta.label);
                                         return (
                                             <button
                                                 key={locker.id}
@@ -981,12 +1066,24 @@ export function LockerManagementDiagram() {
                                                         <>
                                                             <p className="text-xs font-semibold truncate mt-0.5">{locker.customerName || 'Đang sử dụng'}</p>
                                                             {isRented ? (
-                                                                <p className="text-[10px] font-semibold opacity-70 mt-0.5 inline-flex items-center gap-1">
-                                                                    <Clock className="w-3 h-3" /> {formatRentalDays(locker)}
-                                                                </p>
+                                                                <>
+                                                                    <p className="text-[10px] font-semibold opacity-70 mt-0.5 inline-flex items-center gap-1">
+                                                                        <Clock className="w-3 h-3" /> {formatRentalDays(locker)}
+                                                                    </p>
+                                                                    {isOverdue && (
+                                                                        <p className="text-[10px] font-bold mt-0.5 text-rose-700 inline-flex items-center gap-1">
+                                                                            <Clock className="w-3 h-3" /> Quá hạn {getOverdueDays(locker)} ngày
+                                                                        </p>
+                                                                    )}
+                                                                </>
                                                             ) : (
                                                                 <p className="text-[10px] font-semibold opacity-70 mt-0.5 inline-flex items-center gap-1">
                                                                     <Clock className="w-3 h-3" /> {formatDuration(locker.assignedAt)}
+                                                                </p>
+                                                            )}
+                                                            {isOverdue && (
+                                                                <p className="text-[10px] font-black mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 bg-red-600 text-white rounded-md">
+                                                                    <Lock className="w-3 h-3" /> FaceID bị khóa
                                                                 </p>
                                                             )}
                                                         </>
@@ -1011,9 +1108,9 @@ export function LockerManagementDiagram() {
                     <span className="inline-flex items-center gap-1.5 text-xs text-slate-600"><Unlock className="w-3.5 h-3.5 text-emerald-500" /> Trống</span>
                     <span className="inline-flex items-center gap-1.5 text-xs text-slate-600"><Lock className="w-3.5 h-3.5 text-indigo-500" /> Đang sử dụng</span>
                     <span className="inline-flex items-center gap-1.5 text-xs text-slate-600"><Lock className="w-3.5 h-3.5 text-cyan-600" /> Đang thuê</span>
-                    <span className="inline-flex items-center gap-1.5 text-xs text-slate-600"><KeyRound className="w-3.5 h-3.5 text-rose-500" /> Chờ trả chìa khoá</span>
+                    <span className="inline-flex items-center gap-1.5 text-xs text-rose-700 font-bold"><KeyRound className="w-3.5 h-3.5 text-rose-500" /> Chờ trả chìa khoá = quá hạn, FaceID bị khóa</span>
                     <span className="inline-flex items-center gap-1.5 text-xs text-slate-600"><AlertTriangle className="w-3.5 h-3.5 text-amber-500" /> Bảo trì</span>
-                    <span className="inline-flex items-center gap-1.5 text-xs text-slate-400 ml-auto">Bấm vào tủ trống để gán khách · tủ đang dùng để trả tủ · tủ bảo trì để xem báo cáo</span>
+                    <span className="inline-flex items-center gap-1.5 text-xs text-slate-400 ml-auto">Bấm vào tủ trống để gán khách · tủ đang dùng để trả tủ · tủ bảo trì để xem báo cáo · trả tủ quá hạn để mở lại FaceID</span>
                 </div>
             </div>
 
@@ -1037,6 +1134,7 @@ export function LockerManagementDiagram() {
                     onClose={() => setViewing(null)}
                     onRelease={handleReleaseLocker}
                     onEdit={() => { setEditing(viewing); setViewing(null); }}
+                    onExtend={handleExtendLocker}
                 />
             )}
             {viewingMaintenance && (

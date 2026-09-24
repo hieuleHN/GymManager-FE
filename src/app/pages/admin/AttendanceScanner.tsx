@@ -130,7 +130,7 @@ export function AttendanceScanner() {
     const { selectedClub } = useClub();
     const [loading, setLoading] = useState<boolean>(false);
     const [currentClubName, setCurrentClubName] = useState<string>('');
-    const [scanResult, setScanResult] = useState<{ success: boolean; message: string } | null>(null);
+    const [scanResult, setScanResult] = useState<{ success: boolean; message: string; code?: string; lockers?: { lockerNumber: string; overdueDays?: number }[] } | null>(null);
     const [history, setHistory] = useState<CheckInRecord[]>([]);
     const [isCameraActive, setIsCameraActive] = useState<boolean>(false);
     const [staffResult, setStaffResult] = useState<PendingStaffResult | null>(null);
@@ -474,7 +474,22 @@ export function AttendanceScanner() {
             }
         } catch (err: any) {
             const msg = err.response?.data?.error || err.response?.data?.message || 'Điểm danh FaceID thất bại';
-            setScanResult({ success: false, message: msg });
+            const code = err.response?.data?.code || '';
+            const lockers = err.response?.data?.lockers || [];
+            // Người quá hạn thuê tủ: đọc to + hiện hộp đỏ + bắn cửa sổ toàn hệ thống kèm thông tin tủ
+            if (code === 'FACE_LOCKED_LOCKER_OVERDUE') {
+                speak('FaceID đang bị khóa do quá hạn thuê tủ. Vui lòng thanh toán hoặc gia hạn tủ để mở lại.');
+                try {
+                    const ch = new BroadcastChannel('GYM_ATTENDANCE_CHANNEL');
+                    const cust = err.response?.data?.customer;
+                    ch.postMessage({
+                        type: 'FACE_LOCKED_ALERT',
+                        payload: { customerName: cust?.fullName || 'Hội viên', message: msg, lockers },
+                    });
+                    ch.close();
+                } catch {}
+            }
+            setScanResult({ success: false, message: msg, code, lockers });
         } finally {
             setLoading(false);
         }
@@ -918,10 +933,28 @@ export function AttendanceScanner() {
                 </div>
 
                 {scanResult && !scanResult.success && (
-                    <div className="p-4 rounded-xl border bg-red-50 border-red-200 text-red-900 text-sm font-bold animate-pulse shadow-sm flex items-center gap-2">
-                        <X className="w-5 h-5 text-red-600 shrink-0" />
-                        <span>{scanResult.message}</span>
-                    </div>
+                    scanResult.code === 'FACE_LOCKED_LOCKER_OVERDUE' ? (
+                        <div className="p-4 rounded-xl border bg-red-600 border-red-700 text-white text-sm shadow-md flex items-start gap-3">
+                            <Lock className="w-6 h-6 shrink-0 mt-0.5" />
+                            <div>
+                                <p className="font-black text-base">FaceID BỊ KHÓA — Quá hạn thuê tủ</p>
+                                <p className="mt-1 font-semibold opacity-95">{scanResult.message}</p>
+                                {scanResult.lockers && scanResult.lockers.length > 0 && (
+                                    <p className="mt-1 text-xs opacity-90">
+                                        Tủ vi phạm: {scanResult.lockers.map((l: any) => `${l.lockerNumber}${l.overdueDays ? ` (quá ${l.overdueDays} ngày)` : ''}`).join(', ')}
+                                    </p>
+                                )}
+                                <p className="mt-2 text-xs bg-white/15 rounded-lg px-2.5 py-1.5 font-bold">
+                                    Hướng dẫn: thu tiền gia hạn/trả tủ ở trang Quản lý tủ đồ — FaceID sẽ tự động mở lại ngay khi tủ hết quá hạn.
+                                </p>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="p-4 rounded-xl border bg-red-50 border-red-200 text-red-900 text-sm font-bold animate-pulse shadow-sm flex items-center gap-2">
+                            <X className="w-5 h-5 text-red-600 shrink-0" />
+                            <span>{scanResult.message}</span>
+                        </div>
+                    )
                 )}
 
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
