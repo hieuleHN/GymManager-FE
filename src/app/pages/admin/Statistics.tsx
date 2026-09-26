@@ -504,7 +504,7 @@ function FinanceTab({ data, period, customFrom, customTo, onStatClick, onDrilldo
       </div>
 
       {/* 1b. Chi tiết theo tháng (khi chọn tùy chỉnh hoặc có monthlyBreakdown) */}
-      {data.monthlyBreakdown && data.monthlyBreakdown.length > 0 && (
+      {/* {data.monthlyBreakdown && data.monthlyBreakdown.length > 0 && (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
           <div className="flex items-center justify-between mb-1">
             <h2 className="text-lg font-bold text-slate-900">Chi tiết theo tháng</h2>
@@ -525,7 +525,7 @@ function FinanceTab({ data, period, customFrom, customTo, onStatClick, onDrilldo
             </ComposedChart>
           </ResponsiveContainer>
         </div>
-      )}
+      )} */}
       {/* 2. Chi phí & Lãi */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 lg:col-span-2">
@@ -550,99 +550,6 @@ function FinanceTab({ data, period, customFrom, customTo, onStatClick, onDrilldo
             </ComposedChart>
           </ResponsiveContainer>
         </div>
-        <p className="text-xs text-slate-500 mb-4">So sánh chi phí và lợi nhuận theo từng kỳ — click vào biểu đồ để xem chi tiết</p>
-        <ResponsiveContainer width="100%" height={320}>
-          <ComposedChart data={data.cashFlowData}
-            onClick={(e: any) => {
-              const payload = e?.activePayload?.[0]?.payload;
-              if (!payload?.month) return;
-              const bucket = (data.timeBuckets || []).find((b: any) => b.label === payload.month);
-              const bStart = bucket ? new Date(bucket.start) : new Date(0);
-              const bEnd = bucket ? new Date(bucket.end) : new Date();
-              const isDetailed = period === 'week' || period === 'month';
-              const dateRange = isDetailed && bucket ? ` (${new Date(bStart).toLocaleDateString('vi-VN')} – ${new Date(bEnd).toLocaleDateString('vi-VN')})` : '';
-              const expItems = (data.expenseDetails || []).filter((r: any) => { const d = new Date(r.date); return d >= bStart && d <= bEnd; });
-              const accrItems = (data.accrualDetails || []).filter((a: any) => { const aS = new Date(a.startDate); const aE = new Date(a.endDate); return aS <= bEnd && aE >= bStart; }).map((a: any) => {
-                const pkgStart = new Date(a.startDate); const pkgEnd = new Date(a.endDate);
-                const totalDays = Math.max(1, Math.round((pkgEnd - pkgStart) / 86400000) + 1);
-                const dailyRev = (a.totalPrice || 0) / totalDays;
-                const oStart = pkgStart > bStart ? pkgStart : bStart;
-                const oEnd = pkgEnd < bEnd ? pkgEnd : bEnd;
-                const overlapDays = Math.max(1, Math.round((oEnd - oStart) / 86400000) + 1);
-                return { ...a, bucketAmount: Math.round(dailyRev * overlapDays) };
-              });
-              const cashItems = (data.revenueDetails || []).filter((r: any) => { const d = new Date(r.date); return d >= bStart && d <= bEnd; });
-              const rows: any[] = [];
-              if (cashItems.length > 0) {
-                cashItems.forEach((r: any) => {
-                  const row: any = {};
-                  if (isDetailed) row['Ngày'] = new Date(r.date).toLocaleDateString('vi-VN');
-                  row['Loại'] = 'Tiền thực thu';
-                  row['Nội dung'] = `${r.type}: ${r.name}`;
-                  row['Khách hàng'] = r.customerName;
-                  row['Số tiền (+)'] = fmtVnd(r.amount);
-                  row['Số tiền (-)'] = '';
-                  rows.push(row);
-                });
-              }
-              if (accrItems.length > 0) {
-                accrItems.forEach((a: any) => {
-                  const row: any = {};
-                  if (isDetailed) {
-                    const oS = new Date(a.startDate) > bStart ? new Date(a.startDate) : bStart;
-                    const oE = new Date(a.endDate) < bEnd ? new Date(a.endDate) : bEnd;
-                    row['Ngày'] = `${new Date(oS).toLocaleDateString('vi-VN')} – ${new Date(oE).toLocaleDateString('vi-VN')}`;
-                  }
-                  row['Loại'] = 'Doanh thu ghi nhận';
-                  row['Nội dung'] = a.packageName;
-                  row['Khách hàng'] = a.customerName;
-                  row['Số tiền (+)'] = fmtVnd(a.bucketAmount);
-                  row['Số tiền (-)'] = '';
-                  rows.push(row);
-                });
-              }
-              if (expItems.length > 0) {
-                expItems.forEach((ex: any) => {
-                  const row: any = {};
-                  if (isDetailed) row['Ngày'] = new Date(ex.date).toLocaleDateString('vi-VN');
-                  row['Loại'] = ex.type === 'cogs' ? 'COGS' : ex.type === 'depreciation' ? 'Khấu hao' : 'Chi phí';
-                  row['Nội dung'] = ex.name;
-                  row['Khách hàng'] = ex.category || '';
-                  row['Số tiền (+)'] = '';
-                  row['Số tiền (-)'] = fmtVnd(ex.amount);
-                  rows.push(row);
-                });
-              }
-              rows.sort((a, b) => {
-                const dateA = a['Ngày'] || '';
-                const dateB = b['Ngày'] || '';
-                return dateA.localeCompare(dateB);
-              });
-              const totalIncome = accrItems.reduce((s: number, a: any) => s + (a.bucketAmount || 0), 0);
-              const totalExpense = expItems.reduce((s: number, e: any) => s + (e.amount || 0), 0);
-              const profit = totalIncome - totalExpense;
-              onDrilldown?.({
-                title: `Chi phí & Lợi nhuận — ${payload.month}${dateRange}`,
-                subtitle: `${rows.length} dòng · Thu nhập: ${fmtVnd(totalIncome)} · Chi phí: ${fmtVnd(totalExpense)} · Lợi nhuận: ${fmtVnd(profit)}`,
-                columns: isDetailed ? ['Ngày', 'Loại', 'Nội dung', 'Khách hàng', 'Số tiền (+)', 'Số tiền (-)'] : ['Loại', 'Nội dung', 'Khách hàng', 'Số tiền (+)', 'Số tiền (-)'],
-                rows,
-                totalLabel: 'Lợi nhuận',
-                totalValue: profit,
-              });
-            }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-            <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-            <YAxis tickFormatter={fmt} tick={{ fontSize: 11 }} />
-            <Tooltip formatter={(v: number) => fmtVnd(v)} />
-            <Legend />
-            <Bar dataKey="expense" fill="#f59e0b" name="Chi phí" radius={[4, 4, 0, 0]} />
-            <Bar dataKey="profit" fill="#ef4444" name="Lợi nhuận" radius={[4, 4, 0, 0]} />
-          </ComposedChart>
-        </ResponsiveContainer>
-      </div>
-
-      {/* 3. Cơ cấu chi phí & Doanh số theo gói */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
           <h2 className="text-lg font-bold text-slate-900 mb-4">Cơ cấu chi phí</h2>
           {data.expenseStructure.length > 0 ? (
@@ -793,49 +700,49 @@ function FinanceTab({ data, period, customFrom, customTo, onStatClick, onDrilldo
                 <thead>
                   <tr className="border-b border-slate-100">
                     <th className="text-left py-3 px-2 text-slate-500 font-medium">Sản phẩm</th>
-                  <th className="text-right py-3 px-2 text-slate-500 font-medium">SL</th>
-                  <th className="text-right py-3 px-2 text-slate-500 font-medium">Doanh thu</th>
-                  <th className="text-right py-3 px-2 text-slate-500 font-medium">Lợi nhuận</th>
-                  <th className="text-left py-3 px-2 text-slate-500 font-medium">Tỷ trọng</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.topProducts.map((item, i) => {
-                  const total = data.topProducts.reduce((s, d) => s + d.revenue, 0) || 1;
-                  const pct = Math.round((item.revenue / total) * 100);
-                  return (
-                    <tr key={i} className="border-b border-slate-50 hover:bg-slate-50 cursor-pointer"
-                      onClick={() => {
-                        if (!onDrilldown) return;
-                        onDrilldown({
-                          title: `Sản phẩm: ${item.name}`,
-                          subtitle: `${item.quantity} đã bán · Đơn giá: ${fmtVnd(item.price)}`,
-                          columns: ['Sản phẩm', 'Đơn giá', 'Giá vốn', 'SL bán', 'Doanh thu', 'Lợi nhuận'],
-                          rows: [{ 'Sản phẩm': item.name, 'Đơn giá': fmtVnd(item.price), 'Giá vốn': fmtVnd(item.costPrice), 'SL bán': String(item.quantity), 'Doanh thu': fmtVnd(item.revenue), 'Lợi nhuận': fmtVnd(item.profit) }],
-                          totalLabel: 'Tổng doanh thu',
-                          totalValue: item.revenue,
-                        });
-                      }}
-                    >
-                      <td className="py-2.5 px-2 font-medium text-slate-800">{item.name}</td>
-                      <td className="py-2.5 px-2 text-right text-slate-700">{item.quantity}</td>
-                      <td className="py-2.5 px-2 text-right text-slate-700">{fmtVnd(item.revenue)}</td>
-                      <td className="py-2.5 px-2 text-right text-slate-700">{fmtVnd(item.profit)}</td>
-                      <td className="py-2.5 px-2">
-                        <div className="flex items-center gap-2">
-                          <div className="flex-1 bg-slate-100 rounded-full h-2">
-                            <div className="bg-indigo-500 h-2 rounded-full" style={{ width: `${pct}%` }} />
+                    <th className="text-right py-3 px-2 text-slate-500 font-medium">SL</th>
+                    <th className="text-right py-3 px-2 text-slate-500 font-medium">Doanh thu</th>
+                    <th className="text-right py-3 px-2 text-slate-500 font-medium">Lợi nhuận</th>
+                    <th className="text-left py-3 px-2 text-slate-500 font-medium">Tỷ trọng</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.topProducts.map((item, i) => {
+                    const total = data.topProducts.reduce((s, d) => s + d.revenue, 0) || 1;
+                    const pct = Math.round((item.revenue / total) * 100);
+                    return (
+                      <tr key={i} className="border-b border-slate-50 hover:bg-slate-50 cursor-pointer"
+                        onClick={() => {
+                          if (!onDrilldown) return;
+                          onDrilldown({
+                            title: `Sản phẩm: ${item.name}`,
+                            subtitle: `${item.quantity} đã bán · Đơn giá: ${fmtVnd(item.price)}`,
+                            columns: ['Sản phẩm', 'Đơn giá', 'Giá vốn', 'SL bán', 'Doanh thu', 'Lợi nhuận'],
+                            rows: [{ 'Sản phẩm': item.name, 'Đơn giá': fmtVnd(item.price), 'Giá vốn': fmtVnd(item.costPrice), 'SL bán': String(item.quantity), 'Doanh thu': fmtVnd(item.revenue), 'Lợi nhuận': fmtVnd(item.profit) }],
+                            totalLabel: 'Tổng doanh thu',
+                            totalValue: item.revenue,
+                          });
+                        }}
+                      >
+                        <td className="py-2.5 px-2 font-medium text-slate-800">{item.name}</td>
+                        <td className="py-2.5 px-2 text-right text-slate-700">{item.quantity}</td>
+                        <td className="py-2.5 px-2 text-right text-slate-700">{fmtVnd(item.revenue)}</td>
+                        <td className="py-2.5 px-2 text-right text-slate-700">{fmtVnd(item.profit)}</td>
+                        <td className="py-2.5 px-2">
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1 bg-slate-100 rounded-full h-2">
+                              <div className="bg-indigo-500 h-2 rounded-full" style={{ width: `${pct}%` }} />
+                            </div>
+                            <span className="text-slate-600 text-xs w-8">{pct}%</span>
                           </div>
-                          <span className="text-slate-600 text-xs w-8">{pct}%</span>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
         ) : (
           <div className="flex items-center justify-center h-[260px] text-sm text-slate-400">Chưa có sản phẩm nào</div>
         )}
@@ -891,7 +798,7 @@ function FinanceTab({ data, period, customFrom, customTo, onStatClick, onDrilldo
       )}
 
       {/* 6. HIỆU SUẤT HLV */}
-      {data.trainerPerformance && data.trainerPerformance.length > 0 && (
+      {/* {data.trainerPerformance && data.trainerPerformance.length > 0 && (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
           <div className="flex items-center justify-between mb-1">
             <h2 className="text-lg font-bold text-slate-900">Hiệu suất HLV</h2>
@@ -949,7 +856,7 @@ function FinanceTab({ data, period, customFrom, customTo, onStatClick, onDrilldo
             </div>
           )}
         </div>
-      )}
+      )} */}
 
       {/* 7. SO SÁNH CLB */}
       {data.clubComparison && data.clubComparison.length > 0 && (
