@@ -214,6 +214,11 @@ export function CustomerList() {
   const [transferOpen, setTransferOpen] = useState(false);
   const transferSearchTimer = useRef<any>(null);
   const [transferSubmitting, setTransferSubmitting] = useState(false);
+  // Phí chuyển nhượng theo cấu hình dịch vụ của cơ sở người gửi (trang /admin/services)
+  const [transferFee, setTransferFee] = useState<number | null>(null);
+  // Trùng bộ môn: mỗi người chỉ 1 gói/bộ môn - chặn chuyển khi người nhận đã có gói cùng môn
+  const [transferConflict, setTransferConflict] = useState('');
+  const [transferValidating, setTransferValidating] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancelCustomer, setCancelCustomer] = useState<Customer | null>(null);
   const [cancelPackageId, setCancelPackageId] = useState('');
@@ -247,6 +252,23 @@ export function CustomerList() {
   const [upgradeCalc, setUpgradeCalc] = useState<any>(null);
   const [upgradeCalculating, setUpgradeCalculating] = useState(false);
   const [upgradeSubmitting, setUpgradeSubmitting] = useState(false);
+  // Xem chi tiết gói tập - click tên gói trong danh sách gói của hội viên
+  const [pkgViewTarget, setPkgViewTarget] = useState<any>(null);
+  const [pkgViewInfo, setPkgViewInfo] = useState<any>(null);
+  const [pkgViewLoading, setPkgViewLoading] = useState(false);
+  const [pkgViewError, setPkgViewError] = useState('');
+
+  const openPkgDetailModal = async (pkg: any) => {
+    setPkgViewTarget(pkg); setPkgViewInfo(null); setPkgViewError(''); setPkgViewLoading(true);
+    try {
+      const pid = pkg.packageId || pkg.package_id;
+      if (!pid) throw new Error('Không tìm thấy mã gói');
+      const res = await fetch(`${getApiUrl()}/api/packages/${pid}`, { headers: getAuthHeaders() as any });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Không tải được thông tin gói');
+      setPkgViewInfo(data?.data || data);
+    } catch (e: any) { setPkgViewError(e.message); } finally { setPkgViewLoading(false); }
+  };
 
   const backendUrl = getApiUrl() || 'http://localhost:5000';
 
@@ -376,8 +398,27 @@ export function CustomerList() {
   };
 
   const openTransferModal = async (customer: Customer, pkgId?: string) => {
-    setTransferCustomer(customer); setTransferPackageId(pkgId||''); setTransferRecipient(''); setTransferRecipientId(''); setTransferRecipientName(''); setTransferRecipientAccount(''); setTransferRecipientAvatar(''); setTransferResults([]); setTransferOpen(false); setShowTransferModal(true);
-    if (!detail360 || detail360.customer?._id !== customer._id) await fetchDetail360(customer._id);
+    setTransferCustomer(customer); setTransferPackageId(pkgId||''); setTransferRecipient(''); setTransferRecipientId(''); setTransferRecipientName(''); setTransferRecipientAccount(''); setTransferRecipientAvatar(''); setTransferResults([]); setTransferOpen(false); setTransferFee(null); setTransferConflict(''); setShowTransferModal(true);
+    // Lấy CLB của người gửi để lọc người nhận + đọc phí chuyển nhượng (không phụ thuộc bộ lọc CLB đang chọn)
+    let senderLoc = (customer as any).locationId || '';
+    try {
+      let d360 = detail360;
+      if (!d360 || d360.customer?._id !== customer._id) {
+        const res = await fetch(`${backendUrl}/api/customers/${customer._id}/detail360`, { headers: getAuthHeaders() as any });
+        if (res.ok) { d360 = await res.json(); setDetail360(d360); }
+      }
+      senderLoc = d360?.customer?.locationId || (customer as any).locationId || '';
+    } catch {}
+    if (senderLoc) {
+      try {
+        const res = await fetch(`${getApiUrl()}/api/locations/${senderLoc}/services`, { headers: getAuthHeaders() as any });
+        if (res.ok) {
+          const cfg = await res.json();
+          const f = (cfg.serviceFees || []).find((x: any) => x.service_type === 'transfer');
+          setTransferFee(f && f.hasFee && Number(f.fee) > 0 ? Math.floor(Number(f.fee)) : 0);
+        } else setTransferFee(0);
+      } catch { setTransferFee(0); }
+    } else setTransferFee(0);
   };
   const searchTransferRecipients = async (keyword: string) => {
     const q = keyword.trim();
@@ -389,8 +430,12 @@ export function CustomerList() {
     setTransferSearching(true);
     setTransferOpen(true);
     try {
-      const locParam = selectedClub && selectedClub !== 'all' ? `&locationId=${encodeURIComponent(selectedClub)}` : '';
-      const res = await fetch(`${backendUrl}/api/customers/search?q=${encodeURIComponent(q)}${locParam}`, { headers: getAuthHeaders() as any });
+      // Luôn lọc theo CLB của người gửi (chỉ được chuyển cùng cơ sở) - không theo bộ lọc đang chọn
+      const senderLoc = detail360?.customer?.locationId || (transferCustomer as any)?.locationId || '';
+      const locId = senderLoc || (selectedClub && selectedClub !== 'all' ? selectedClub : '');
+      const locParam = locId ? `&locationId=${encodeURIComponent(String((locId as any)?._id || locId))}` : '';
+      // includeNoLocation: hiện cả hội viên chưa set cơ sở / chưa có gói (cùng CLB lên trước)
+      const res = await fetch(`${backendUrl}/api/customers/search?q=${encodeURIComponent(q)}${locParam}&includeNoLocation=1`, { headers: getAuthHeaders() as any });
       if (res.ok) {
         const data = await res.json();
         setTransferResults(Array.isArray(data) ? data : []);
@@ -408,11 +453,12 @@ export function CustomerList() {
       setTransferRecipientName('');
       setTransferRecipientAccount('');
       setTransferRecipientAvatar('');
+      setTransferConflict('');
     }
     if (transferSearchTimer.current) clearTimeout(transferSearchTimer.current);
     transferSearchTimer.current = setTimeout(() => searchTransferRecipients(value), 350);
   };
-  const selectTransferRecipient = (m: any) => {
+  const selectTransferRecipient = async (m: any) => {
     setTransferRecipientId(m._id);
     setTransferRecipientName(m.fullName || m.account || '');
     setTransferRecipientAccount(m.account || '');
@@ -420,9 +466,21 @@ export function CustomerList() {
     setTransferRecipient(m.phone || '');
     setTransferOpen(false);
     setTransferResults([]);
+    // Kiểm tra trùng bộ môn ngay khi chọn (mỗi người chỉ 1 gói/bộ môn)
+    setTransferConflict('');
+    if (transferCustomer && transferPackageId) {
+      setTransferValidating(true);
+      try {
+        const res = await fetch(`${backendUrl}/api/customers/${transferCustomer._id}/transfer-validate?packageId=${transferPackageId}&recipientId=${m._id}`, { headers: getAuthHeaders() as any });
+        const d = await res.json();
+        if (res.ok && d.ok === false) setTransferConflict(d.error || 'Người này đã có gói cùng bộ môn!');
+        else if (!res.ok) setTransferConflict(d.error || 'Không kiểm tra được trùng bộ môn!');
+      } catch { setTransferConflict(''); } finally { setTransferValidating(false); }
+    }
   };
   const handleTransferSubmit = async () => {
     if (!transferCustomer || !transferPackageId || !transferRecipientId) { toast.error('Chọn gói và chọn người nhận (nhập SĐT rồi chọn từ danh sách)'); return; }
+    if (transferConflict) { toast.error(transferConflict); return; }
     setTransferSubmitting(true);
     try {
       const res = await fetch(`${backendUrl}/api/customers/${transferCustomer._id}/transfer-request`, {
@@ -430,7 +488,24 @@ export function CustomerList() {
         body: JSON.stringify({ packageId: transferPackageId, recipient: transferRecipient.trim(), reason: '' })
       });
       const d = await res.json(); if (!res.ok) throw new Error(d.error);
-      toast.success(d.message || 'Đã chuyển nhượng thành công (Thành công - do nhân viên tạo)'); setShowTransferModal(false); fetchDetail360(transferCustomer._id); fetchCustomers(page);
+      toast.success(d.message || 'Đã chuyển nhượng thành công'); setShowTransferModal(false);
+      // Mở ngay hồ sơ người nhận để kiểm tra gói đã sang (khỏi phải tìm tay ngoài danh sách)
+      try {
+        const rid = d?.recipient?._id || transferRecipientId;
+        if (rid) {
+          const rc = await fetch(`${backendUrl}/api/customers/${rid}`, { headers: getAuthHeaders() as any });
+          if (rc.ok) {
+            const rCust = await rc.json();
+            setSelectedCustomer(rCust); setDetailTab('packages'); setPaymentFilter('all');
+            await fetchDetail360(rCust._id);
+          } else {
+            fetchDetail360(transferCustomer._id);
+          }
+        } else {
+          fetchDetail360(transferCustomer._id);
+        }
+      } catch { fetchDetail360(transferCustomer._id); }
+      fetchCustomers(page);
     } catch (e:any) { toast.error(e.message); } finally { setTransferSubmitting(false); }
   };
   const openCancelModal = (customer: Customer, pkgId: string) => {
@@ -586,7 +661,9 @@ export function CustomerList() {
     } catch (e:any) { toast.error(e.message); } finally { setRenewSubmitting(false); }
   };
 
-  // Nâng cấp - chọn gói cao cấp hơn cùng bộ môn, tính toán chênh lệch
+  // Nâng cấp - chỉ hiện gói cùng bộ môn (so theo TÊN, vì mỗi cơ sở có _id bộ môn riêng)
+  // hoặc gói đa bộ môn (combo), giá >= gói hiện tại. Không hiện gói đơn ở bộ môn khác.
+  // Tính tiền + buổi HLV do BE (calculate-upgrade / admin-upgrade) xử lý, giữ nguyên.
   const openUpgradeModal = async (pkg: any) => {
     const isExpired = pkg.status === 'hết hạn' || (pkg.daysLeft !== undefined && pkg.daysLeft < 0) || (pkg.end_date && new Date(pkg.end_date) < new Date());
     if (isExpired) { toast.error('Gói đã hết hạn - vui lòng Gia hạn trước khi Nâng cấp'); return; }
@@ -595,33 +672,68 @@ export function CustomerList() {
     try {
       const pid = pkg.packageId || pkg.package_id;
       if (!pid) { toast.error('Không tìm thấy mã gói'); return; }
-      const detailRes = await fetch(`${getApiUrl()}/api/packages/${pid}`, { headers: getAuthHeaders() as any });
-      const detail = await detailRes.json();
+      const [detailRes, listRes] = await Promise.all([
+        fetch(`${getApiUrl()}/api/packages/${pid}`, { headers: getAuthHeaders() as any }),
+        fetch(`${getApiUrl()}/api/packages?page=1&limit=200`, { headers: getAuthHeaders() as any }),
+      ]);
+      const detailRaw = await detailRes.json();
+      const detail = detailRaw?.data || detailRaw;
       if (detailRes.ok) setUpgradePkgDetail(detail);
-      // Lấy danh sách gói cùng bộ môn để nâng cấp
-      const listRes = await fetch(`${getApiUrl()}/api/packages?page=1&limit=50`, { headers: getAuthHeaders() as any });
       const listData = await listRes.json();
       const list = listData?.data || (Array.isArray(listData) ? listData : []);
-      const currentIds = new Set<string>();
-      if (detail?.disciplineId) currentIds.add(detail.disciplineId?._id || detail.disciplineId);
-      (detail?.disciplines || []).forEach((d:any)=> currentIds.add(d?._id || d));
-      let candidates = list.filter((p:any)=> p.is_active && String(p._id) !== String(pid));
-      if (currentIds.size) {
-        candidates = candidates.filter((p:any)=> {
-          if (p.combo) return (p.disciplines||[]).some((d:any)=> currentIds.has(d?._id || d));
-          return currentIds.has(p.disciplineId?._id || p.disciplineId);
+      const norm = (s: any) => String(s ?? '').trim().toLowerCase();
+      // Map _id bộ môn -> tên (detail không populate `disciplines`, chỉ có id thô)
+      const idToName = new Map<string, string>();
+      list.forEach((p: any) => {
+        const d = p?.disciplineId;
+        if (d && typeof d === 'object' && d._id && d.name) idToName.set(String(d._id), String(d.name));
+        (p?.disciplines || []).forEach((x: any) => {
+          if (x && typeof x === 'object' && x._id && x.name) idToName.set(String(x._id), String(x.name));
         });
+      });
+      const resolveNames = (p: any): string[] => {
+        const out: string[] = [];
+        const push = (v: any) => { const n = norm(v); if (n) out.push(n); };
+        const d = p?.disciplineId;
+        if (d && typeof d === 'object') push(d.name);
+        else if (d) { const nm = idToName.get(String(d)); if (nm) push(nm); }
+        (p?.disciplines || []).forEach((x: any) => {
+          if (x && typeof x === 'object') push(x.name);
+          else { const nm = idToName.get(String(x)); if (nm) push(nm); }
+        });
+        return [...new Set(out)];
+      };
+      // Ưu tiên bản populate đầy đủ trong list để lấy tên bộ môn (kể cả gói combo)
+      const currentFromList = list.find((p: any) => String(p._id) === String(pid));
+      const currentNames = resolveNames(currentFromList || detail);
+      const isMulti = (p: any) => p?.combo === true || (p?.disciplines || []).length > 1;
+      let candidates = list.filter((p: any) => p.is_active && String(p._id) !== String(pid));
+      if (currentNames.length) {
+        candidates = candidates.filter((p: any) => {
+          if (isMulti(p)) return true; // gói đa bộ môn luôn được phép nâng cấp
+          return resolveNames(p).some((n) => currentNames.includes(n)); // gói đơn: cùng tên bộ môn
+        });
+      } else {
+        // Không resolve được tên (dữ liệu cũ): so theo _id như trước để không lọc sạch
+        const currentIds = new Set<string>();
+        const src = currentFromList || detail;
+        if (src?.disciplineId) currentIds.add(src.disciplineId?._id || src.disciplineId);
+        (src?.disciplines || []).forEach((d: any) => currentIds.add(d?._id || d));
+        if (currentIds.size) {
+          candidates = candidates.filter((p: any) => {
+            if (isMulti(p)) return (p.disciplines || []).some((d: any) => currentIds.has(d?._id || d));
+            return currentIds.has(p.disciplineId?._id || p.disciplineId);
+          });
+        }
       }
       // Chỉ gói có giá cao hơn hoặc bằng (theo đơn giá) mới là nâng cấp - chặn hạ cấp để không phải hoàn tiền
-      const currentUnit = detail?.unitPrice || (pkg.total_price ? Math.round(pkg.total_price / (pkg.duration_months ||1)) : 0);
-      candidates = candidates.filter((p:any)=> Number(p.unitPrice||0) >= currentUnit);
-      if (!candidates.length) {
-        // fallback: gói giá cao hơn hoặc bằng bất kỳ
-        const allHigher = (listData?.data||[]).filter((p:any)=> p.is_active && Number(p.unitPrice||0) >= currentUnit && String(p._id)!==String(pid));
-        candidates = allHigher.slice(0,12);
-      }
+      const currentUnit = detail?.unitPrice || (pkg.total_price ? Math.round(pkg.total_price / (pkg.duration_months || 1)) : 0);
+      candidates = candidates
+        .filter((p: any) => Number(p.unitPrice || 0) >= currentUnit)
+        .sort((a: any, b: any) => Number(a.unitPrice || 0) - Number(b.unitPrice || 0));
+      // KHÔNG fallback sang bộ môn khác: hết là hết, modal sẽ báo không có gói phù hợp
       setUpgradeList(candidates);
-    } catch (e:any) { toast.error(e.message); }
+    } catch (e: any) { toast.error(e.message); }
   };
   const handleSelectUpgradePkg = async (pkg:any) => {
     setSelectedUpgradePkg(pkg); setUpgradeCalc(null); setUpgradeCalculating(true);
@@ -1177,7 +1289,7 @@ export function CustomerList() {
                           <div key={p._id} className="p-4 border border-slate-200 rounded-xl">
                             <div className="flex justify-between items-start gap-4">
                               <div className="flex-1">
-                                <p className="font-semibold text-slate-900">{p.packageName} {p.isFrozen && <span className="ml-2 px-2 py-0.5 rounded-full bg-slate-800 text-white text-xs">Đang đóng băng</span>}</p>
+                                <button onClick={() => openPkgDetailModal(p)} title="Xem chi tiết gói tập" className="font-semibold text-slate-900 hover:text-indigo-700 hover:underline text-left">{p.packageName} {p.isFrozen && <span className="ml-2 px-2 py-0.5 rounded-full bg-slate-800 text-white text-xs no-underline inline-block">Đang đóng băng</span>}</button>
                                 <p className="text-xs text-slate-500 mt-1">Từ {new Date(p.start_date).toLocaleDateString('vi-VN')} đến <b className="text-slate-700">{new Date(p.end_date).toLocaleDateString('vi-VN')}</b> {p.location?`• ${p.location}`:''}</p>
                                 <div className="flex flex-wrap items-center gap-2 mt-2">
                                   <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${statusColor}`}>{derivedStatus}</span>
@@ -1415,12 +1527,19 @@ export function CustomerList() {
                 <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
                   <p className="text-xs text-slate-500">Gói sẽ chuyển</p>
                   <p className="font-semibold text-slate-900">{(detail360?.packages||[]).find((p:any)=>p._id===transferPackageId)?.packageName || '—'} {transferPackageId ? `• ${new Date((detail360?.packages||[]).find((p:any)=>p._id===transferPackageId)?.end_date).toLocaleDateString('vi-VN')} (còn ${(detail360?.packages||[]).find((p:any)=>p._id===transferPackageId)?.daysLeft} ngày)` : ''}</p>
+                  <div className="flex justify-between items-center mt-2 pt-2 border-t border-slate-200 text-sm">
+                    <span className="text-slate-500">Phí chuyển nhượng (theo cấu hình dịch vụ)</span>
+                    {transferFee === null
+                      ? <span className="text-slate-400 flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> Đang tải...</span>
+                      : <b className={transferFee > 0 ? 'text-amber-600' : 'text-emerald-600'}>{transferFee > 0 ? `${transferFee.toLocaleString('vi-VN')}đ (thu tại quầy)` : 'Miễn phí'}</b>}
+                  </div>
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 mb-1">Người được chuyển nhượng</label>
+                  <p className="text-xs text-slate-500 mb-1">Tìm trong cùng cơ sở + cả hội viên chưa set cơ sở / chưa có gói (người chưa có gói bộ môn này vẫn chuyển được).</p>
                   <div className="relative">
                     <input value={transferRecipient} onChange={(e)=>handleTransferRecipientChange(e.target.value)} onFocus={() => transferRecipient && !transferRecipientId && setTransferOpen(true)} placeholder="Nhập tên, số điện thoại hoặc tài khoản để tìm kiếm..." className="w-full px-3 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-                    {transferRecipientId && transferRecipientName && (
+                    {transferRecipientId && transferRecipientName && !transferConflict && (
                       <div className="mt-2 flex items-center gap-3 p-3 bg-green-50 border border-green-200 rounded-xl">
                         {transferRecipientAvatar ? (
                           <img
@@ -1451,6 +1570,7 @@ export function CustomerList() {
                             setTransferRecipientName('');
                             setTransferRecipientAccount('');
                             setTransferRecipientAvatar('');
+                            setTransferConflict('');
                           }}
                           className="text-slate-400 hover:text-red-500 transition-colors"
                           aria-label="Bỏ chọn"
@@ -1458,6 +1578,12 @@ export function CustomerList() {
                           <X className="w-5 h-5" />
                         </button>
                       </div>
+                    )}
+                    {transferRecipientId && transferValidating && (
+                      <div className="mt-2 flex items-center gap-2 text-sm text-indigo-600 px-1 py-1"><Loader2 className="w-4 h-4 animate-spin" /> Đang kiểm tra trùng bộ môn...</div>
+                    )}
+                    {transferRecipientId && transferConflict && !transferValidating && (
+                      <div className="mt-2 flex items-start gap-2 text-sm bg-red-50 border border-red-200 px-3 py-2 rounded-xl text-red-700"><AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" /> {transferConflict}</div>
                     )}
                     {transferOpen && !transferRecipientId && (
                       <div className="absolute z-10 mt-2 w-full bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden">
@@ -1489,7 +1615,7 @@ export function CustomerList() {
                                 </div>
                               )}
                               <div className="flex-1 min-w-0 text-left">
-                                <p className="font-semibold text-slate-900 truncate">{m.fullName || m.account}</p>
+                                <p className="font-semibold text-slate-900 truncate">{m.fullName || m.account} {!m.locationId && <span className="ml-1 px-1.5 py-0.5 bg-slate-100 text-slate-500 text-[11px] rounded-full font-semibold">Chưa set cơ sở</span>}</p>
                                 <p className="text-xs text-slate-500 truncate">
                                   {m.phone ? `SĐT: ${m.phone}` : ''}{m.phone && m.account ? ' • ' : ''}{m.account ? `Tài khoản: ${m.account}` : ''}
                                 </p>
@@ -1508,7 +1634,7 @@ export function CustomerList() {
               </div>
               <div className="flex gap-3 mt-6">
                 <Button variant="outlined" onClick={()=>setShowTransferModal(false)} sx={{flex:1, borderColor:'#cbd5e1', color:'#475569', textTransform:'none', borderRadius:2}}>Hủy</Button>
-                <Button variant="contained" onClick={handleTransferSubmit} disabled={transferSubmitting} sx={{flex:1, bgcolor:'#f59e0b', '&:hover':{bgcolor:'#d97706'}, textTransform:'none', borderRadius:2}}>{transferSubmitting?'Đang gửi...':'Tạo yêu cầu'}</Button>
+                <Button variant="contained" onClick={handleTransferSubmit} disabled={transferSubmitting || transferValidating || !!transferConflict} sx={{flex:1, bgcolor:'#f59e0b', '&:hover':{bgcolor:'#d97706'}, textTransform:'none', borderRadius:2}}>{transferSubmitting?'Đang gửi...':'Tạo yêu cầu'}</Button>
               </div>
             </div>
           </div>
@@ -1671,7 +1797,7 @@ export function CustomerList() {
               </div>
               <div className="flex-1 overflow-y-auto p-6 space-y-4">
                 {!upgradeList.length ? (
-                  <p className="text-sm text-slate-500">Không có gói nâng cấp phù hợp trong cùng bộ môn</p>
+                  <p className="text-sm text-slate-500">Không có gói nâng cấp phù hợp — chỉ hiện gói cùng bộ môn (hoặc gói đa bộ môn) có giá từ {(upgradePkgDetail?.unitPrice || 0).toLocaleString('vi-VN')}đ/tháng trở lên</p>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     {upgradeList.map((pkg:any)=>{
@@ -1679,7 +1805,12 @@ export function CustomerList() {
                       return (
                         <button key={pkg._id} onClick={()=>handleSelectUpgradePkg(pkg)} className={`text-left p-4 rounded-xl border-2 transition ${isSel ? 'border-indigo-600 bg-indigo-50' : 'border-slate-200 bg-white hover:border-indigo-300'}`}>
                           <p className="font-bold text-slate-900 text-sm">{pkg.name} {pkg.combo && <span className="ml-1 px-1.5 py-0.5 bg-fuchsia-100 text-fuchsia-700 text-xs rounded-full">COMBO</span>}</p>
-                          {pkg.disciplineId?.name && <span className="inline-block mt-1 px-2 py-0.5 bg-violet-100 text-violet-700 text-xs font-semibold rounded-full">{pkg.disciplineId.name}</span>}
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {pkg.disciplineId?.name && <span className="inline-block px-2 py-0.5 bg-violet-100 text-violet-700 text-xs font-semibold rounded-full">{pkg.disciplineId.name}</span>}
+                            {(pkg.disciplines || []).map((d: any) => (
+                              <span key={d?._id || d} className="inline-block px-2 py-0.5 bg-fuchsia-100 text-fuchsia-700 text-xs font-semibold rounded-full">{d?.name || d}</span>
+                            ))}
+                          </div>
                           <p className="text-lg font-extrabold text-indigo-600 mt-2">{Number(pkg.unitPrice||0).toLocaleString('vi-VN')}đ <span className="text-xs font-normal text-slate-500">/tháng</span></p>
                           {(pkg.ptSessionsPerMonth>0 || pkg.isFullMonth) && <span className="inline-block mt-2 px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs font-semibold rounded-full">{pkg.isFullMonth ? 'Không giới hạn HLV' : `${pkg.ptSessionsPerMonth} buổi HLV/tháng`}</span>}
                           {isSel && upgradeCalculating && <span className="block mt-2 text-xs text-indigo-600 flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin"/> Đang tính...</span>}
@@ -1719,6 +1850,109 @@ export function CustomerList() {
               <div className="p-4 border-t border-slate-200 flex gap-3 bg-white">
                 <Button variant="outlined" onClick={()=>{ setUpgradeTarget(null); setSelectedUpgradePkg(null); setUpgradeCalc(null); }} sx={{flex:1, textTransform:'none', borderRadius:2, borderColor:'#cbd5e1', color:'#475569'}}>Hủy</Button>
                 <Button variant="contained" disabled={!selectedUpgradePkg || !upgradeCalc || upgradeCalc.error || upgradeSubmitting} onClick={handleUpgradeConfirm} sx={{flex:1, bgcolor:'#7c3aed', '&:hover':{bgcolor:'#6d28d9'}, textTransform:'none', borderRadius:2}}>{upgradeSubmitting ? 'Đang xử lý...' : 'Xác nhận nâng cấp'}</Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {pkgViewTarget && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setPkgViewTarget(null)}>
+            <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+              <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900">{pkgViewTarget.packageName}</h2>
+                  <p className="text-xs text-slate-500 mt-0.5">Chi tiết gói tập của hội viên</p>
+                </div>
+                <button onClick={() => setPkgViewTarget(null)} className="p-2 hover:bg-slate-100 rounded-xl"><X className="w-5 h-5 text-slate-600" /></button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-6 space-y-5">
+                {pkgViewLoading ? (
+                  <p className="text-sm text-slate-500 flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Đang tải thông tin gói...</p>
+                ) : pkgViewError ? (
+                  <div className="flex items-center gap-2 text-sm bg-red-50 border border-red-200 px-3 py-2 rounded-lg text-red-700"><AlertTriangle className="w-4 h-4" /> {pkgViewError}</div>
+                ) : (
+                  <>
+                    <div>
+                      <p className="font-bold text-slate-900 text-xs uppercase tracking-wide mb-2">Gói hội viên đang dùng</p>
+                      <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-sm">
+                        <div className="flex justify-between gap-2"><span className="text-slate-500">Trạng thái</span><b className="text-slate-900 text-right">{pkgViewTarget.status}{pkgViewTarget.isFrozen ? ' (đóng băng)' : ''}</b></div>
+                        <div className="flex justify-between gap-2"><span className="text-slate-500">Còn lại</span><b className="text-slate-900 text-right">{pkgViewTarget.daysLeft !== undefined ? (pkgViewTarget.daysLeft > 0 ? `${pkgViewTarget.daysLeft} ngày` : 'Hết hạn') : '—'}</b></div>
+                        <div className="flex justify-between gap-2"><span className="text-slate-500">Từ ngày</span><b className="text-slate-900 text-right">{pkgViewTarget.start_date ? new Date(pkgViewTarget.start_date).toLocaleDateString('vi-VN') : '—'}</b></div>
+                        <div className="flex justify-between gap-2"><span className="text-slate-500">Đến ngày</span><b className="text-slate-900 text-right">{pkgViewTarget.end_date ? new Date(pkgViewTarget.end_date).toLocaleDateString('vi-VN') : '—'}</b></div>
+                        <div className="flex justify-between gap-2"><span className="text-slate-500">Kỳ hạn</span><b className="text-slate-900 text-right">{pkgViewTarget.duration_months ? `${pkgViewTarget.duration_months} tháng` : '—'}</b></div>
+                        <div className="flex justify-between gap-2"><span className="text-slate-500">Tổng tiền</span><b className="text-indigo-600 text-right">{Number(pkgViewTarget.total_price || 0).toLocaleString('vi-VN')}đ</b></div>
+                        {(() => {
+                          const applied = pkgViewTarget.unit_price_applied
+                            || (pkgViewTarget.total_price && pkgViewTarget.duration_months ? Math.round(pkgViewTarget.total_price / pkgViewTarget.duration_months) : 0)
+                            || pkgViewInfo?.unitPrice || 0;
+                          return (
+                            <div className="flex justify-between gap-2"><span className="text-slate-500">Đơn giá áp dụng</span><b className="text-slate-900 text-right">{applied > 0 ? `${Number(applied).toLocaleString('vi-VN')}đ/tháng` : '—'}</b></div>
+                          );
+                        })()}
+                        <div className="flex justify-between gap-2"><span className="text-slate-500">Cơ sở</span><b className="text-slate-900 text-right">{pkgViewTarget.location || '—'}</b></div>
+                        <div className="flex justify-between gap-2"><span className="text-slate-500">Thanh toán</span><b className="text-slate-900 text-right">{pkgViewTarget.payment_status || '—'}</b></div>
+                        <div className="flex justify-between gap-2"><span className="text-slate-500">Ngày thanh toán</span><b className="text-slate-900 text-right">{pkgViewTarget.payment_date ? new Date(pkgViewTarget.payment_date).toLocaleDateString('vi-VN') : '—'}</b></div>
+                        <div className="flex justify-between gap-2"><span className="text-slate-500">Ngày đăng ký</span><b className="text-slate-900 text-right">{pkgViewTarget.createdAt ? new Date(pkgViewTarget.createdAt).toLocaleDateString('vi-VN') : '—'}</b></div>
+                        {pkgViewTarget.isFrozen && (
+                          <div className="flex justify-between gap-2 sm:col-span-2"><span className="text-slate-500">Đóng băng</span><b className="text-slate-900 text-right">Từ {pkgViewTarget.frozenAt ? new Date(pkgViewTarget.frozenAt).toLocaleDateString('vi-VN') : '?'} đến {pkgViewTarget.frozenUntil ? new Date(pkgViewTarget.frozenUntil).toLocaleDateString('vi-VN') : 'không thời hạn'}</b></div>
+                        )}
+                        {pkgViewTarget.vnpay_txn_ref && (
+                          <div className="flex justify-between gap-2 sm:col-span-2"><span className="text-slate-500">Mã GD VNPAY</span><b className="text-slate-900 text-right break-all">{pkgViewTarget.vnpay_txn_ref}</b></div>
+                        )}
+                      </div>
+                    </div>
+                    {pkgViewInfo && (
+                      <div>
+                        <p className="font-bold text-slate-900 text-xs uppercase tracking-wide mb-2">Thông tin gói tập</p>
+                        <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3 text-sm">
+                          {pkgViewInfo.description && <p className="text-slate-600">{pkgViewInfo.description}</p>}
+                          <div className="flex flex-wrap gap-1">
+                            {pkgViewInfo.disciplineId?.name && <span className="px-2 py-0.5 bg-violet-100 text-violet-700 text-xs font-semibold rounded-full">{pkgViewInfo.disciplineId.name}</span>}
+                            {(pkgViewInfo.disciplines || []).map((d: any) => (
+                              <span key={d?._id || d} className="px-2 py-0.5 bg-fuchsia-100 text-fuchsia-700 text-xs font-semibold rounded-full">{d?.name || d}</span>
+                            ))}
+                            {pkgViewInfo.combo && <span className="px-2 py-0.5 bg-fuchsia-100 text-fuchsia-700 text-xs font-bold rounded-full">COMBO đa bộ môn</span>}
+                            {pkgViewInfo.lifecycle_status && <span className="px-2 py-0.5 bg-slate-100 text-slate-600 text-xs font-semibold rounded-full">{pkgViewInfo.lifecycle_status}</span>}
+                          </div>
+                          <div className="flex justify-between gap-2"><span className="text-slate-500">Đơn giá</span><b className="text-indigo-600">{Number(pkgViewInfo.unitPrice || 0).toLocaleString('vi-VN')}đ/tháng</b></div>
+                          {(pkgViewInfo.ptSessionsPerMonth > 0 || pkgViewInfo.isFullMonth) && (
+                            <div className="flex justify-between gap-2"><span className="text-slate-500">Buổi HLV</span><b className="text-emerald-700">{pkgViewInfo.isFullMonth ? 'Không giới hạn' : `${pkgViewInfo.ptSessionsPerMonth} buổi/tháng`}</b></div>
+                          )}
+                          {(pkgViewInfo.durations?.length > 0 || pkgViewInfo.price_table?.length > 0) && (
+                            <div>
+                              <p className="text-slate-500 mb-1">Bảng giá theo kỳ hạn</p>
+                              <div className="divide-y divide-slate-100 border border-slate-100 rounded-lg overflow-hidden">
+                                {(pkgViewInfo.price_table?.length ? pkgViewInfo.price_table : pkgViewInfo.durations).map((r: any, i: number) => (
+                                  <div key={i} className="flex justify-between px-3 py-1.5 text-sm">
+                                    <span className="text-slate-600">{r.months} tháng{r.discount ? ` (−${r.discount}%)` : ''}</span>
+                                    <b className="text-slate-900">{r.total != null ? `${Number(r.total).toLocaleString('vi-VN')}đ` : r.price != null ? `${Number(r.price).toLocaleString('vi-VN')}đ` : ''}</b>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          {(pkgViewInfo.features?.length > 0) && (
+                            <div>
+                              <p className="text-slate-500 mb-1">Quyền lợi</p>
+                              <ul className="list-disc list-inside text-slate-700 space-y-0.5">
+                                {pkgViewInfo.features.map((f: string, i: number) => <li key={i}>{f}</li>)}
+                              </ul>
+                            </div>
+                          )}
+                          {(pkgViewInfo.contractTerms || pkgViewInfo.contractA || pkgViewInfo.contractB) && (
+                            <div>
+                              <p className="text-slate-500 mb-1">Điều khoản</p>
+                              {pkgViewInfo.contractTerms && <p className="text-slate-600 whitespace-pre-line">{pkgViewInfo.contractTerms}</p>}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+              <div className="p-4 border-t border-slate-200 bg-white">
+                <Button fullWidth variant="outlined" onClick={() => setPkgViewTarget(null)} sx={{ textTransform: 'none', borderRadius: 2, borderColor: '#cbd5e1', color: '#475569' }}>Đóng</Button>
               </div>
             </div>
           </div>
