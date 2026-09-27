@@ -356,6 +356,7 @@ function FinanceTab({ data, period, customFrom, customTo, onStatClick, onDrilldo
   const s = data.summary;
   const c = s.change || {};
 
+  const MONTH_NUM: Record<string, number> = { T1: 1, T2: 2, T3: 3, T4: 4, T5: 5, T6: 6, T7: 7, T8: 8, T9: 9, T10: 10, T11: 11, T12: 12 };
   const [expSearch, setExpSearch] = useState('');
   const [trainerPage, setTrainerPage] = useState(1);
   const TRAINER_LIMIT = 10;
@@ -365,14 +366,16 @@ function FinanceTab({ data, period, customFrom, customTo, onStatClick, onDrilldo
   const filteredExpenses = (data.expenseStructure || []).filter((item: any) =>
     !expSearch.trim() || item.name.toLowerCase().includes(expSearch.toLowerCase())
   );
-  const filterByBucket = (items: any[], bucketLabel: string) => {
-    const bucket = (data.timeBuckets || []).find((b: any) => b.label === bucketLabel);
-    if (!bucket) return [];
-    const bStart = new Date(bucket.start);
-    const bEnd = new Date(bucket.end);
-    return items.filter((r: any) => { const d = new Date(r.date); return d >= bStart && d <= bEnd; });
+  const filterByMonth = (items: any[], monthLabel: string) => {
+    const m = MONTH_NUM[monthLabel];
+    if (!m) return [];
+    const year = new Date().getFullYear();
+    const mStart = new Date(year, m - 1, 1);
+    const isCurrent = m === new Date().getMonth() + 1;
+    const mEnd = isCurrent ? new Date() : new Date(year, m, 0, 23, 59, 59, 999);
+    return items.filter((r: any) => { const d = new Date(r.date); return d >= mStart && d <= mEnd; });
   };
-  const drillRevenue = (bucketLabel: string, metric: 'cash' | 'revenue') => {
+  const drillRevenue = (monthLabel: string, metric: 'cash' | 'revenue') => {
     if (!onDrilldown) return;
     const label = metric === 'cash' ? 'Tiền thực thu' : 'Doanh thu ghi nhận';
     if (metric === 'revenue') {
@@ -407,31 +410,24 @@ function FinanceTab({ data, period, customFrom, customTo, onStatClick, onDrilldo
       totalValue: items.reduce((sum: number, r: any) => sum + (r.amount || 0), 0),
     });
   };
-  const drillExpense = (bucketLabel: string) => {
+  const drillExpense = (monthLabel: string) => {
     if (!onDrilldown) return;
-    const items = filterByBucket(data.expenseDetails || [], bucketLabel);
-    const isDetailed = period === 'week' || period === 'month';
+    const items = filterByMonth(data.expenseDetails || [], monthLabel);
     onDrilldown({
-      title: `Chi phí — ${bucketLabel}`,
+      title: `Chi phí — ${monthLabel}`,
       subtitle: `${items.length} khoản chi`,
-      columns: isDetailed ? ['Ngày', 'Tên khoản chi', 'Phân loại', 'Loại', 'Ghi chú', 'Số tiền'] : ['Ngày', 'Tên khoản chi', 'Phân loại', 'Ghi chú', 'Số tiền'],
-      rows: items.map((e: any) => {
-        const row: any = { 'Ngày': new Date(e.date).toLocaleDateString('vi-VN'), 'Tên khoản chi': e.name, 'Phân loại': e.category || 'Khác' };
-        if (isDetailed) row['Loại'] = e.type === 'cogs' ? 'COGS' : e.type === 'depreciation' ? 'Khấu hao' : 'Chi phí';
-        row['Ghi chú'] = e.note || '';
-        row['Số tiền'] = fmtVnd(e.amount);
-        return row;
-      }),
-      totalLabel: `Tổng chi phí ${bucketLabel}`,
+      columns: ['Ngày', 'Tên khoản chi', 'Phân loại', 'Ghi chú', 'Số tiền'],
+      rows: items.map((e: any) => ({ 'Ngày': new Date(e.date).toLocaleDateString('vi-VN'), 'Tên khoản chi': e.name, 'Phân loại': e.category || 'Khác', 'Ghi chú': e.note || '', 'Số tiền': fmtVnd(e.amount) })),
+      totalLabel: `Tổng chi phí ${monthLabel}`,
       totalValue: items.reduce((sum: number, e: any) => sum + (e.amount || 0), 0),
     });
   };
-  const drillProfit = (bucketLabel: string) => {
+  const drillProfit = (monthLabel: string) => {
     if (!onDrilldown) return;
-    const row = (data.profitData || []).find((r: any) => r.month === bucketLabel);
+    const row = (data.profitData || []).find((r: any) => r.month === monthLabel);
     if (!row) return;
     onDrilldown({
-      title: `Lợi nhuận — ${bucketLabel}`,
+      title: `Lợi nhuận — ${monthLabel}`,
       columns: ['Chỉ số', 'Giá trị'],
       rows: [
         { 'Chỉ số': 'Doanh thu ghi nhận', 'Giá trị': fmtVnd(row.revenue) },
@@ -504,7 +500,7 @@ function FinanceTab({ data, period, customFrom, customTo, onStatClick, onDrilldo
       </div>
 
       {/* 1b. Chi tiết theo tháng (khi chọn tùy chỉnh hoặc có monthlyBreakdown) */}
-      {/* {data.monthlyBreakdown && data.monthlyBreakdown.length > 0 && (
+      {data.monthlyBreakdown && data.monthlyBreakdown.length > 0 && (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
           <div className="flex items-center justify-between mb-1">
             <h2 className="text-lg font-bold text-slate-900">Chi tiết theo tháng</h2>
@@ -525,7 +521,7 @@ function FinanceTab({ data, period, customFrom, customTo, onStatClick, onDrilldo
             </ComposedChart>
           </ResponsiveContainer>
         </div>
-      )} */}
+      )}
       {/* 2. Chi phí & Lãi */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 lg:col-span-2">
