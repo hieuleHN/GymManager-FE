@@ -272,7 +272,7 @@ export function CustomerList() {
 
   const backendUrl = getApiUrl() || 'http://localhost:5000';
 
-  const fetchCustomers = async (p = page) => {
+  const fetchCustomers = async (p = page, opts?: { search?: string; tab?: typeof activeTab }) => {
     try {
       const params = new URLSearchParams();
       if (selectedClub !== 'all') params.set('locationId', selectedClub);
@@ -280,6 +280,12 @@ export function CustomerList() {
       params.set('limit', '15');
       if (filterNoActive) params.set('hasActivePackage', 'false');
       if (filterNoFace) params.set('hasFaceId', 'false');
+      // Tìm kiếm server-side giống danh sách nhân viên: gõ là ra ngay trang 1, không phải lật trang
+      const s = (opts?.search ?? searchTerm).trim();
+      const t = opts?.tab ?? activeTab;
+      if (s) params.set('search', s);
+      if (t === 'expiring') params.set('expiring', 'true');
+      else if (t !== 'all') params.set('status', t);
       const url = `${backendUrl}/api/customers?${params.toString()}`;
       const res = await fetch(url, { headers: getAuthHeaders() as any });
       const data = await res.json();
@@ -763,6 +769,18 @@ export function CustomerList() {
 
   useEffect(() => { setPage(1); fetchCustomers(1); fetchKpi(); fetchExpiring(); }, [selectedClub, filterNoActive, filterNoFace]);
 
+  // Đổi tab (Tất cả / Sắp hết hạn / trạng thái...): về ngay trang 1 để bản ghi hiện lên đầu
+  useEffect(() => { setPage(1); fetchCustomers(1, { tab: activeTab }); }, [activeTab]);
+
+  // Tìm kiếm server-side giống danh sách nhân viên (debounce 400ms, về trang 1)
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setPage(1);
+      fetchCustomers(1, { search: searchTerm });
+    }, 400);
+    return () => clearTimeout(t);
+  }, [searchTerm]);
+
   useEffect(() => { fetchExpiring(); const iv = setInterval(fetchExpiring, 30000); return () => clearInterval(iv); }, [selectedClub]);
 
   useEffect(() => {
@@ -806,9 +824,8 @@ export function CustomerList() {
 
   const filteredCustomers = customers
     .filter(c => {
-      const matchSearch = c.fullName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        c.account?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        c.phone?.includes(searchTerm);
+      // search + tab trạng thái / sắp hết hạn đã lọc ở server (giống danh sách nhân viên)
+      // ở đây chỉ lọc thêm theo điểm danh hôm nay
       const info = todayCheckMap.get(c._id);
       const isPresent = info && info.latest && !info.latest.checkOutTime;
       const isLeft = info && info.latest && info.latest.checkOutTime;
@@ -818,11 +835,15 @@ export function CustomerList() {
         if (d.getMonth() !== now.getMonth() || d.getFullYear() !== now.getFullYear()) return false;
       } else if (attendanceFilter === 'present' && !isPresent) return false;
       else if (attendanceFilter === 'left' && !isLeft) return false;
-      if (activeTab === 'all') return matchSearch;
-      if (activeTab === 'expiring') return matchSearch && expiringIds.has(c._id);
-      return matchSearch && c.status === activeTab;
+      return true;
     })
     .sort((a, b) => {
+      // Tab "Sắp hết hạn": đưa bản ghi sắp hết hạn lên đầu trang
+      if (activeTab === 'expiring') {
+        const ae = expiringIds.has(a._id) ? 0 : 1;
+        const be = expiringIds.has(b._id) ? 0 : 1;
+        if (ae !== be) return ae - be;
+      }
       const aInfo = todayCheckMap.get(a._id);
       const bInfo = todayCheckMap.get(b._id);
       const aHas = !!aInfo;
