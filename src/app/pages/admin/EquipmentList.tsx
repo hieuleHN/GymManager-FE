@@ -3,12 +3,12 @@ import { Pagination } from "../../components/Pagination";
 import {
   Search,
   Edit,
-  Trash2,
   Loader2,
   AlertTriangle,
   X,
   Download,
   BellRing,
+  History,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
@@ -32,6 +32,11 @@ export function EquipmentList() {
   const [showReportModal, setShowReportModal] = useState(false);
   const [showReportListModal, setShowReportListModal] = useState(false);
   const [showReportDetailModal, setShowReportDetailModal] = useState(false);
+
+  // State cho Modal Lịch sử bảo trì (Option 1)
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+  const [selectedHistory, setSelectedHistory] = useState<any[]>([]);
+  const [selectedEquipName, setSelectedEquipName] = useState("");
 
   const [selectedEquipment, setSelectedEquipment] = useState<any>(null);
   const [selectedReport, setSelectedReport] = useState<any>(null);
@@ -72,7 +77,8 @@ export function EquipmentList() {
 
   const fetchAlerts = async () => {
     try {
-      const params = selectedClub !== "all" ? `?locationId=${selectedClub}` : "";
+      const params =
+        selectedClub !== "all" ? `?locationId=${selectedClub}` : "";
       const res = await fetch(`${getApiUrl()}/api/equipments/alerts${params}`, {
         headers: getAuthHeaders(),
       });
@@ -102,25 +108,6 @@ export function EquipmentList() {
   }, [selectedClub]);
 
   const handleEdit = (id: string) => navigate(`/admin/equipment/${id}/edit`);
-
-  const handleDelete = async (id: string) => {
-    if (!confirm("Bạn có chắc chắn muốn xóa thiết bị này?")) return;
-    try {
-      const res = await fetch(`${getApiUrl()}/api/equipments/${id}`, {
-        method: "DELETE",
-        headers: getAuthHeaders(),
-      });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Xóa thiết bị thất bại");
-      }
-      toast.success("Xóa thiết bị thành công!");
-      fetchEquipment(page);
-      fetchAlerts();
-    } catch (err: any) {
-      toast.error(err.message);
-    }
-  };
 
   const handleReport = (item: any) => {
     setSelectedEquipment(item);
@@ -167,6 +154,32 @@ export function EquipmentList() {
   };
 
   const handleResolveReport = async (equipmentId: string, reportId: string) => {
+    // Thêm Validate chặt chẽ cho Form Nghiệm thu
+    if (!resolveAssignee?.trim()) {
+      toast.error("Vui lòng nhập người phụ trách sửa chữa!");
+      return;
+    }
+    if (!resolveResult?.trim()) {
+      toast.error("Vui lòng nhập nội dung / kết quả xử lý!");
+      return;
+    }
+    if (
+      resolveCost === "" ||
+      isNaN(Number(resolveCost)) ||
+      Number(resolveCost) < 0
+    ) {
+      toast.error("Vui lòng nhập chi phí sửa chữa hợp lệ!");
+      return;
+    }
+    if (
+      resolveDowntime === "" ||
+      isNaN(Number(resolveDowntime)) ||
+      Number(resolveDowntime) < 0
+    ) {
+      toast.error("Vui lòng nhập số ngày chết máy hợp lệ!");
+      return;
+    }
+
     try {
       const res = await fetch(
         `${getApiUrl()}/api/equipments/${equipmentId}/report/${reportId}/resolve`,
@@ -271,19 +284,17 @@ export function EquipmentList() {
           </p>
         </div>
 
-        {/* CẢNH BÁO BẢO HÀNH & SỰ CỐ - CHUẨN 30 NGÀY */}
+        {/* CẢNH BÁO BẢO HÀNH & SỰ CỐ - CHỈ HIỂN THỊ CẢNH BÁO TỰ ĐỘNG */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
           <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
-            <BellRing className="w-5 h-5 text-orange-500" /> Cảnh báo Bảo hành &
-            Sự cố (30 ngày tới)
+            <BellRing className="w-5 h-5 text-orange-500" /> Cảnh báo tự động từ
+            hệ thống
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {alerts.maintenance_due.length === 0 &&
-              alerts.warranty_expiring.length === 0 &&
-              alerts.broken_long_time.length === 0 &&
-              alerts.overdue_tickets.length === 0 && (
+              alerts.warranty_expiring.length === 0 && (
                 <p className="text-sm text-slate-500 italic col-span-2">
-                  Không có cảnh báo nào cần xử lý ngay.
+                  Không có cảnh báo tự động nào cần xử lý.
                 </p>
               )}
 
@@ -333,62 +344,6 @@ export function EquipmentList() {
                   className="text-xs px-4 py-2 bg-blue-600 text-white hover:bg-blue-700 rounded-lg font-semibold transition-colors"
                 >
                   Gửi đi BH
-                </button>
-              </div>
-            ))}
-
-            {/* 3. Hỏng quá N ngày (7 ngày) */}
-            {alerts.broken_long_time.map((eq: any) => (
-              <div
-                key={`b-${eq._id}`}
-                className="flex items-center justify-between bg-red-50 p-4 rounded-xl border border-red-200"
-              >
-                <div className="flex items-start gap-3">
-                  <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse mt-1.5"></span>
-                  <div>
-                    <p className="text-sm font-bold text-red-900">{eq.name}</p>
-                    <p className="text-xs text-red-700 mt-0.5">
-                      Nằm đắp chiếu quá 7 ngày chưa sửa
-                    </p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => handleOpenReportList(eq)}
-                  className="text-xs px-4 py-2 bg-red-600 text-white hover:bg-red-700 rounded-lg font-semibold transition-colors"
-                >
-                  Sửa gấp
-                </button>
-              </div>
-            ))}
-
-            {/* 4. Phiếu quá hạn */}
-            {alerts.overdue_tickets.map((item: any) => (
-              <div
-                key={`ot-${item.equipment_id}`}
-                className="flex items-center justify-between bg-orange-50 p-4 rounded-xl border border-orange-200"
-              >
-                <div className="flex items-start gap-3">
-                  <span className="w-2.5 h-2.5 rounded-full bg-orange-500 mt-1.5"></span>
-                  <div>
-                    <p className="text-sm font-bold text-orange-900">
-                      {item.name}
-                    </p>
-                    <p className="text-xs text-orange-700 mt-0.5">
-                      Có {item.tickets.length} phiếu yêu cầu quá hạn xử lý
-                    </p>
-                  </div>
-                </div>
-                <button
-                  onClick={() =>
-                    handleOpenReportList({
-                      _id: item.equipment_id,
-                      name: item.name,
-                      reports: item.tickets,
-                    })
-                  }
-                  className="text-xs px-4 py-2 bg-orange-600 text-white hover:bg-orange-700 rounded-lg font-semibold transition-colors"
-                >
-                  Xem phiếu
                 </button>
               </div>
             ))}
@@ -469,7 +424,7 @@ export function EquipmentList() {
                     TCO (Tổng CF)
                   </th>
                   <th className="px-3 py-4 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">
-                    Downtime
+                    Số ngày chết máy
                   </th>
                   <th className="px-3 py-4 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">
                     Trạng thái
@@ -556,13 +511,6 @@ export function EquipmentList() {
                           >
                             <Edit className="w-4 h-4" />
                           </button>
-                          <button
-                            onClick={() => handleDelete(item._id)}
-                            className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                            title="Xóa"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
                           <div className="relative">
                             <button
                               onClick={() => handleReport(item)}
@@ -581,6 +529,22 @@ export function EquipmentList() {
                               </button>
                             )}
                           </div>
+                          {/* Nút xem Lịch sử bảo trì */}
+                          <button
+                            onClick={() => {
+                              const resolvedReports =
+                                item.reports?.filter(
+                                  (r: any) => r.status === "resolved",
+                                ) || [];
+                              setSelectedHistory(resolvedReports);
+                              setSelectedEquipName(item.name);
+                              setIsHistoryModalOpen(true);
+                            }}
+                            className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                            title="Lịch sử bảo trì"
+                          >
+                            <History className="w-4 h-4" />
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -797,7 +761,7 @@ export function EquipmentList() {
 
               <div>
                 <label className="block text-sm font-bold text-slate-700 mb-1.5">
-                  Số ngày chết máy (Downtime)
+                  Số ngày chết máy
                 </label>
                 <input
                   type="number"
@@ -933,6 +897,104 @@ export function EquipmentList() {
                 }}
               >
                 Gửi phiếu yêu cầu
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL LỊCH SỬ BẢO TRÌ (MỚI) */}
+      {isHistoryModalOpen && (
+        <div
+          className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center"
+          onClick={() => {
+            setIsHistoryModalOpen(false);
+            setSelectedHistory([]);
+          }}
+        >
+          <div
+            className="bg-white rounded-2xl p-6 max-w-3xl w-full mx-4 max-h-[85vh] flex flex-col shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4 flex-shrink-0">
+              <h3 className="text-xl font-bold text-slate-900">
+                Lịch sử bảo trì - {selectedEquipName}
+              </h3>
+              <button
+                onClick={() => setIsHistoryModalOpen(false)}
+                className="p-2 hover:bg-slate-100 rounded-xl transition-colors"
+              >
+                <X className="w-5 h-5 text-slate-600" />
+              </button>
+            </div>
+
+            <div className="overflow-y-auto flex-1 pr-2">
+              {selectedHistory.length === 0 ? (
+                <p className="text-center text-slate-500 py-8 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                  Thiết bị này chưa có lịch sử bảo trì/sửa chữa nào.
+                </p>
+              ) : (
+                <div className="border border-slate-200 rounded-xl overflow-hidden">
+                  <table className="w-full text-left text-sm text-slate-600">
+                    <thead className="bg-slate-50 text-slate-700 border-b border-slate-200">
+                      <tr>
+                        <th className="px-4 py-3 font-bold">Ngày nghiệm thu</th>
+                        <th className="px-4 py-3 font-bold">Người phụ trách</th>
+                        <th className="px-4 py-3 font-bold">Kết quả xử lý</th>
+                        {/* THÊM CỘT NÀY VÀO ĐÂY */}
+                        <th className="px-4 py-3 font-bold">
+                          Số ngày chết máy
+                        </th>
+                        <th className="px-4 py-3 font-bold">Chi phí</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {selectedHistory.map((hist: any, idx: number) => (
+                        <tr
+                          key={idx}
+                          className="hover:bg-slate-50 transition-colors"
+                        >
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            {new Date(hist.resolvedAt).toLocaleDateString(
+                              "vi-VN",
+                            )}
+                          </td>
+                          <td className="px-4 py-3 font-medium text-slate-900">
+                            {hist.assigned_to}
+                          </td>
+                          <td className="px-4 py-3 min-w-[200px]">
+                            {hist.result}
+                          </td>
+                          {/* THÊM DATA NÀY VÀO ĐÂY */}
+                          <td className="px-4 py-3 text-slate-600 whitespace-nowrap">
+                            {hist.downtime_days || 0} ngày
+                          </td>
+                          <td className="px-4 py-3 font-bold text-indigo-600 whitespace-nowrap">
+                            {hist.cost?.toLocaleString("vi-VN")} đ
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            <div className="pt-4 mt-2 border-t border-slate-100 flex justify-end flex-shrink-0">
+              <Button
+                variant="outlined"
+                onClick={() => setIsHistoryModalOpen(false)}
+                sx={{
+                  borderColor: "#cbd5e1",
+                  color: "#475569",
+                  "&:hover": { borderColor: "#94a3b8", bgcolor: "#f8fafc" },
+                  textTransform: "none",
+                  borderRadius: 2,
+                  fontWeight: "bold",
+                  px: 4,
+                }}
+              >
+                Đóng
               </Button>
             </div>
           </div>
