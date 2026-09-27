@@ -1,7 +1,7 @@
 import { AdminLayout } from '../../components/AdminLayout';
 import { Pagination } from '../../components/Pagination';
 import { Button } from '@mui/material';
-import { Plus, Edit, Trash2, AlertTriangle, Check, X } from 'lucide-react';
+import { Plus, Edit, Trash2, AlertTriangle, Check, X, ShoppingBag } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { getAuthHeaders, getApiUrl } from '../../context/AuthContext';
@@ -13,6 +13,7 @@ interface Product {
   name: string;
   price: number;
   quantity: number;
+  sold: number;
   description?: string;
   image?: string;
   importDate: string;
@@ -76,6 +77,32 @@ export function ProductList() {
       }
     } catch {
       toast.error('Xóa thất bại');
+    }
+  };
+
+  const handleSell = async (product: Product) => {
+    const qtyStr = prompt(`Nhập số lượng bán "${product.name}" (tồn kho: ${product.quantity}):`, '1');
+    if (!qtyStr) return;
+    const qty = parseInt(qtyStr);
+    if (isNaN(qty) || qty < 1) {
+      toast.error('Số lượng không hợp lệ');
+      return;
+    }
+    try {
+      const res = await fetch(`${getApiUrl()}/api/products/${product._id}/sell`, {
+        method: 'POST',
+        headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ quantity: qty }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success(data.message || 'Đã ghi nhận bán');
+        fetchProducts(page);
+      } else {
+        toast.error(data.message || 'Lỗi ghi nhận bán');
+      }
+    } catch {
+      toast.error('Lỗi ghi nhận bán');
     }
   };
 
@@ -178,7 +205,9 @@ export function ProductList() {
                   <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Ảnh</th>
                   <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Tên sản phẩm</th>
                   <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Đơn giá</th>
-                  <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Số lượng</th>
+                  <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Giá nhập</th>
+                  <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Tồn kho</th>
+                  <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Đã bán</th>
                   <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Ngày nhập</th>
                   <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Ngày hết hạn</th>
                   <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Thao tác</th>
@@ -186,9 +215,9 @@ export function ProductList() {
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={8} className="px-6 py-8 text-center text-slate-500">Đang tải...</td></tr>
+                  <tr><td colSpan={10} className="px-6 py-8 text-center text-slate-500">Đang tải...</td></tr>
                 ) : products.length === 0 ? (
-                  <tr><td colSpan={8} className="px-6 py-8 text-center text-slate-500">Chưa có sản phẩm nào</td></tr>
+                  <tr><td colSpan={10} className="px-6 py-8 text-center text-slate-500">Chưa có sản phẩm nào</td></tr>
                 ) : products.map((product, index) => (
                   <tr key={product._id} className="border-b border-slate-100 hover:bg-slate-50">
                     <td className="px-6 py-4 text-sm text-slate-900">{index + 1}</td>
@@ -201,11 +230,20 @@ export function ProductList() {
                     </td>
                     <td className="px-6 py-4 text-sm font-medium text-slate-900">{product.name}</td>
                     <td className="px-6 py-4 text-sm text-slate-600">{(product.price ?? 0).toLocaleString('vi-VN')}đ</td>
+                    <td className="px-6 py-4 text-sm text-slate-600">{(product.costPrice ?? 0).toLocaleString('vi-VN')}đ</td>
                     <td className="px-6 py-4 text-sm text-slate-600">{product.quantity ?? 0}</td>
+                    <td className="px-6 py-4 text-sm font-semibold text-green-600">{product.sold ?? 0}</td>
                     <td className="px-6 py-4 text-sm text-slate-600">{product.importDate ? new Date(product.importDate).toLocaleDateString('vi-VN') : ''}</td>
                     <td className="px-6 py-4 text-sm text-slate-600">{product.expiryDate ? new Date(product.expiryDate).toLocaleDateString('vi-VN') : ''}</td>
                     <td className="px-6 py-4">
                       <div className="flex gap-2">
+                        <button
+                          onClick={() => handleSell(product)}
+                          className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                          title="Ghi nhận bán"
+                        >
+                          <ShoppingBag className="w-4 h-4" />
+                        </button>
                         <button
                           onClick={() => handleEdit(product._id)}
                           className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"

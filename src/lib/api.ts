@@ -25,7 +25,9 @@ async function request<T>(
     ...(options.headers as Record<string, string>),
   };
 
-  if (!(options.body instanceof FormData)) {
+  if (options.body instanceof FormData) {
+    delete headers['Content-Type'];
+  } else {
     headers['Content-Type'] = 'application/json';
   }
 
@@ -81,9 +83,9 @@ export const api = {
     return request<T>(endpoint, { method: 'DELETE' });
   },
 
-  upload<T = any>(endpoint: string, formData: FormData) {
+  upload<T = any>(endpoint: string, formData: FormData, method: string = 'POST') {
     return request<T>(endpoint, {
-      method: 'POST',
+      method,
       body: formData,
     });
   },

@@ -60,10 +60,48 @@ export function BookTrainer() {
   const [loadingShifts, setLoadingShifts] = useState(false);
   const activeDateRef = useRef(activeDate);
   useEffect(() => { activeDateRef.current = activeDate; }, [activeDate]);
+  const [freeSessionsByDiscipline, setFreeSessionsByDiscipline] = useState<Record<string, number>>({});
+  const [ownedDisciplines, setOwnedDisciplines] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     fetchTrainer();
+    fetchFreePtSessions();
   }, [trainerId]);
+
+  useEffect(() => {
+    if (selectedDisciplineId || ownedDisciplines.size === 0 || !trainer) return;
+    const items: { id: string }[] = [];
+    if (trainer.disciplineId) items.push({ id: trainer.disciplineId._id });
+    trainer.specialties?.forEach(s => { if (!items.find(i => i.id === s)) items.push({ id: s }); });
+    const firstOwned = items.find(i => ownedDisciplines.has(i.id));
+    if (firstOwned) setSelectedDisciplineId(firstOwned.id);
+  }, [ownedDisciplines, trainer]);
+
+  const fetchFreePtSessions = async () => {
+    try {
+      const res = await fetch(`${getApiUrl()}/api/user-packages/pt-sessions`, {
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const byDisc: Record<string, number> = {};
+        const owned = new Set<string>();
+        data.forEach((p: any) => {
+          const discIds = [p.disciplineId, ...(p.comboDisciplineIds || [])].filter(Boolean);
+          discIds.forEach((id: string) => {
+            owned.add(id);
+            byDisc[id] = (byDisc[id] || 0) + (p.currentMonthRemaining || 0);
+          });
+          if (p.disciplineName) {
+            owned.add(p.disciplineName);
+            byDisc[p.disciplineName] = (byDisc[p.disciplineName] || 0) + (p.currentMonthRemaining || 0);
+          }
+        });
+        setFreeSessionsByDiscipline(byDisc);
+        setOwnedDisciplines(owned);
+      }
+    } catch {}
+  };
 
   const fetchTrainer = async () => {
     try {
@@ -219,7 +257,7 @@ export function BookTrainer() {
       toast.error('Vui lòng chọn bộ môn tập!');
       return;
     }
-    const slotCount = Object.keys(selections).length;
+      const slotCount = Object.keys(selections).length;
     if (slotCount === 0) {
       toast.error('Vui lòng chọn ít nhất một ngày và giờ!');
       return;
@@ -238,6 +276,10 @@ export function BookTrainer() {
         endTime: time.end
       }));
 
+      const discFree = selectedDisciplineId ? (freeSessionsByDiscipline[selectedDisciplineId] || 0) : 0;
+      const freeCount = Math.min(discFree, slotCount);
+      const paidCount = Math.max(0, slotCount - freeCount);
+
       const bookingRes = await fetch(`${getApiUrl()}/api/bookings/bulk`, {
         method: 'POST',
         headers: { ...getAuthHeaders() as any, 'Content-Type': 'application/json' },
@@ -246,7 +288,8 @@ export function BookTrainer() {
           disciplineId: selectedDisciplineId,
           slots,
           locationId: locId,
-          price
+          price,
+          freeToUse: freeCount
         })
       });
 
@@ -255,7 +298,13 @@ export function BookTrainer() {
 
       const allBookings = bookingData.bookings || (bookingData.booking ? [bookingData.booking] : []);
       const batchId = allBookings[0]?.batchId || '';
-      const totalPrice = price * (allBookings.length || 1);
+      const actualPrice = price * paidCount;
+
+      if (actualPrice === 0) {
+        toast.success(`Đặt lịch thành công! (${slotCount} buổi tập miễn phí)`);
+        navigate('/dashboard/my-packages');
+        return;
+      }
 
       navigate('/payment', {
         state: {
@@ -263,8 +312,8 @@ export function BookTrainer() {
           bookings: allBookings,
           batchId,
           trainer,
-          totalPrice,
-          package: { name: `PT ${allBookings.length} buổi với ${trainer.fullName}`, price: totalPrice }
+          totalPrice: actualPrice,
+          package: { name: `PT ${paidCount} buổi với ${trainer.fullName}`, price: actualPrice }
         }
       });
     } catch (err: any) {
@@ -348,24 +397,42 @@ export function BookTrainer() {
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
           <h3 className="font-bold text-slate-900 mb-4">Chọn bộ môn tập</h3>
           {(() => {
-            const items: { id: string; name: string; isMain: boolean }[] = [];
-            if (trainer.disciplineId) items.push({ id: trainer.disciplineId._id, name: trainer.disciplineId.name, isMain: true });
+            const items: { id: string; name: string }[] = [];
+            if (trainer.disciplineId) items.push({ id: trainer.disciplineId._id, name: trainer.disciplineId.name });
             trainer.specialties?.forEach(s => {
-              if (!items.find(i => i.name === s)) items.push({ id: s, name: s, isMain: false });
+              if (!items.find(i => i.name === s)) items.push({ id: s, name: s });
             });
+
             return items.length > 0 ? (
               <div className="flex flex-wrap gap-3">
-                {items.map(item => (
-                  <button key={item.id} onClick={() => setSelectedDisciplineId(item.id)}
-                    className={`px-5 py-2.5 rounded-xl border-2 font-semibold transition-all ${
-                      selectedDisciplineId === item.id
-                        ? 'border-indigo-600 bg-indigo-600 text-white shadow-md'
-                        : 'border-slate-200 hover:border-indigo-300 hover:bg-slate-50'
-                    }`}>
-                    {item.name}
-                    {item.isMain && <span className="ml-1.5 text-[10px] opacity-70">(Chính)</span>}
-                  </button>
-                ))}
+                {items.map(item => {
+                  const isOwned = ownedDisciplines.has(item.id) || ownedDisciplines.has(item.name);
+                  const isSelected = selectedDisciplineId === item.id;
+                  return (
+                    <button key={item.id} onClick={() => {
+                      if (!isOwned) {
+                        toast.error('Bạn chưa mua gói tập của bộ môn này');
+                        return;
+                      }
+                      setSelectedDisciplineId(item.id);
+                    }}
+                      className={`px-5 py-2.5 rounded-xl border-2 font-semibold transition-all ${
+                        isSelected
+                          ? 'border-indigo-600 bg-indigo-600 text-white shadow-md'
+                          : isOwned
+                          ? 'border-slate-200 hover:border-indigo-300 hover:bg-slate-50'
+                          : 'border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed'
+                      }`}>
+                      {item.name}
+                      {isOwned && (freeSessionsByDiscipline[item.id] || 0) + (freeSessionsByDiscipline[item.name] || 0) > 0 && (
+                        <span className="ml-1.5 text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full">
+                          {(freeSessionsByDiscipline[item.id] || 0) + (freeSessionsByDiscipline[item.name] || 0)} buổi
+                        </span>
+                      )}
+                      {!isOwned && <span className="ml-1.5 text-[10px]">(Chưa mua)</span>}
+                    </button>
+                  );
+                })}
               </div>
             ) : (
               <p className="text-slate-400 text-sm">HLV chưa có bộ môn nào</p>
@@ -545,12 +612,21 @@ export function BookTrainer() {
         </div>
 
         {selectionCount > 0 && (() => {
+          const discFree = selectedDisciplineId ? (freeSessionsByDiscipline[selectedDisciplineId] || 0) : 0;
+          const paidCount = Math.max(0, selectionCount - discFree);
+          const freeCount = Math.min(discFree, selectionCount);
           return (
             <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-6">
               <h4 className="font-semibold text-indigo-900 mb-2">Thông tin đặt lịch:</h4>
               <p className="text-indigo-700 mb-3">
                 Tổng số buổi: <span className="font-bold">{selectionCount}</span>
               </p>
+              {discFree > 0 && (
+                <div className="mb-3 px-3 py-2 bg-green-100 text-green-800 rounded-lg text-sm font-medium">
+                  Bạn còn <span className="font-bold">{discFree}</span> buổi tập miễn phí cho bộ môn này trong tháng
+                  {freeCount > 0 && ` → ${freeCount} buổi miễn phí, ${paidCount} buổi tính phí`}
+                </div>
+              )}
               <div className="flex flex-wrap gap-1.5 mb-3">
                 {Object.entries(selections).map(([dateKey, time]) => {
                   const { day, month, year } = parseDateKey(dateKey);
@@ -564,7 +640,9 @@ export function BookTrainer() {
               <div className="flex justify-between items-center pt-3 border-t border-indigo-200">
                 <span className="text-indigo-800 font-medium">Tổng phí HLV ({selectionCount} buổi):</span>
                 <span className="text-xl font-bold text-indigo-900">
-                  {(price * selectionCount).toLocaleString('vi-VN')}đ
+                  {paidCount > 0
+                    ? `${(price * paidCount).toLocaleString('vi-VN')}đ`
+                    : 'Miễn phí'}
                 </span>
               </div>
             </div>

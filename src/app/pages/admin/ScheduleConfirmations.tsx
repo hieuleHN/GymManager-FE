@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { CheckCircle, Calendar, Clock, User, Check, X, Info, Loader2 } from "lucide-react";
 import { AdminLayout } from "../../components/AdminLayout";
-import { getApiUrl, getAuthHeaders } from "../../context/AuthContext";
+import { getApiUrl, getAuthHeaders, useAuth } from "../../context/AuthContext";
 import { toast } from "sonner";
 import { useLocation, useNavigate } from "react-router";
 
@@ -23,6 +23,7 @@ interface Booking {
 export function ScheduleConfirmations() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { user } = useAuth();
   const bookingIdFromNav = (location.state as any)?.bookingId;
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'confirmed' | 'rejected'>('all');
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -35,11 +36,31 @@ export function ScheduleConfirmations() {
   const [actionLoading, setActionLoading] = useState(false);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [trainers, setTrainers] = useState<{ _id: string; fullName: string }[]>([]);
+  const [selectedTrainer, setSelectedTrainer] = useState('all');
+  const [trainerSearch, setTrainerSearch] = useState('');
+  const [trainerDropdownOpen, setTrainerDropdownOpen] = useState(false);
+
+  const isAdminOrManager = user?.isAdmin === true ||
+    user?.jobPermissions?.includes('quan_ly') ||
+    user?.jobPermissions?.includes('le_tan');
+
+  useEffect(() => {
+    if (!isAdminOrManager) return;
+    fetch(`${getApiUrl()}/api/staff/trainers?permission=huan_luyen_vien`, { headers: getAuthHeaders() })
+      .then(res => res.json())
+      .then(data => {
+        const list = Array.isArray(data) ? data : data?.data || [];
+        setTrainers(list.map((t: any) => ({ _id: t._id, fullName: t.fullName || '' })));
+      })
+      .catch(() => {});
+  }, [isAdminOrManager]);
 
   const fetchBookings = async (p = page) => {
     setLoading(true);
     try {
-      const res = await fetch(`${getApiUrl()}/api/bookings?page=${p}&limit=20`, {
+      const trainerParam = isAdminOrManager && selectedTrainer !== 'all' ? `&trainerId=${selectedTrainer}` : '';
+      const res = await fetch(`${getApiUrl()}/api/bookings?page=${p}&limit=20${trainerParam}`, {
         headers: getAuthHeaders()
       });
       const data = await res.json();
@@ -60,7 +81,7 @@ export function ScheduleConfirmations() {
     setLoading(false);
   };
 
-  useEffect(() => { fetchBookings(1); }, []);
+  useEffect(() => { fetchBookings(1); }, [selectedTrainer]);
 
   const handleConfirm = async (id: string) => {
     setActionLoading(true);
@@ -182,6 +203,46 @@ export function ScheduleConfirmations() {
             <p className={`text-4xl font-bold ${statusFilter === 'rejected' ? 'text-white' : 'text-slate-900'}`}>{rejectedCount}</p>
           </button>
         </div>
+
+        {isAdminOrManager && (
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
+            <div className="relative max-w-sm">
+              <label className="block text-sm font-semibold text-slate-700 mb-1">Huấn luyện viên</label>
+              <input
+                type="text"
+                value={trainerDropdownOpen ? trainerSearch : (selectedTrainer === 'all' ? 'Tất cả HLV' : trainers.find(t => t._id === selectedTrainer)?.fullName || 'Tất cả HLV')}
+                onChange={e => { setTrainerSearch(e.target.value); setTrainerDropdownOpen(true); }}
+                onFocus={() => { setTrainerSearch(''); setTrainerDropdownOpen(true); }}
+                placeholder="Tìm và chọn HLV..."
+                className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+              {trainerDropdownOpen && (
+                <>
+                  <div className="absolute left-0 right-0 mt-1 bg-white rounded-xl shadow-lg border border-slate-200 z-50 max-h-64 overflow-y-auto">
+                    <button
+                      onClick={() => { setSelectedTrainer('all'); setTrainerSearch(''); setTrainerDropdownOpen(false); }}
+                      className={`w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50 ${selectedTrainer === 'all' ? 'text-indigo-600 font-semibold' : 'text-slate-600'}`}
+                    >
+                      Tất cả HLV
+                    </button>
+                    {trainers
+                      .filter(t => (t.fullName || '').toLowerCase().includes(trainerSearch.toLowerCase()))
+                      .map(t => (
+                        <button
+                          key={t._id}
+                          onClick={() => { setSelectedTrainer(t._id); setTrainerSearch(''); setTrainerDropdownOpen(false); }}
+                          className={`w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50 ${selectedTrainer === t._id ? 'text-indigo-600 font-semibold' : 'text-slate-600'}`}
+                        >
+                          {t.fullName}
+                        </button>
+                      ))}
+                  </div>
+                  <div className="fixed inset-0 z-40" onClick={() => setTrainerDropdownOpen(false)} />
+                </>
+              )}
+            </div>
+          </div>
+        )}
 
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200">
           <div className="p-6 border-b border-slate-200">

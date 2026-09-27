@@ -10,6 +10,7 @@ import { useForm } from 'react-hook-form';
 interface ProductFormData {
   name: string;
   price: string;
+  costPrice: string;
   quantity: string;
   description: string;
   importDate: string;
@@ -35,6 +36,7 @@ export function EditProduct() {
       reset({
         name: product.name || '',
         price: String(product.price ?? ''),
+        costPrice: String(product.costPrice ?? ''),
         quantity: String(product.quantity ?? ''),
         description: product.description || '',
         importDate: product.importDate ? product.importDate.split('T')[0] : '',
@@ -57,6 +59,7 @@ export function EditProduct() {
       const fd = new FormData();
       fd.append('name', data.name);
       fd.append('price', String(Number(data.price)));
+      fd.append('costPrice', String(Number(data.costPrice || 0)));
       fd.append('quantity', String(Number(data.quantity)));
       fd.append('description', data.description);
       fd.append('importDate', data.importDate);
@@ -134,7 +137,22 @@ export function EditProduct() {
               {errors.name && <span className="text-red-500 text-sm mt-1">{errors.name.message}</span>}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Giá nhập
+                </label>
+                <input
+                  type="number"
+                  {...register('costPrice', {
+                    validate: (value) => !value || Number(value) >= 0 || 'Giá nhập phải >= 0'
+                  })}
+                  className={"w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 " + (errors.costPrice ? 'border-red-500' : 'border-slate-200')}
+                  placeholder="VD: 10000"
+                />
+                {errors.costPrice && <span className="text-red-500 text-sm mt-1">{errors.costPrice.message}</span>}
+              </div>
+
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
                   Đơn giá <span className="text-red-500">*</span>

@@ -1,54 +1,90 @@
 import { DashboardLayout } from '../components/DashboardLayout';
-import { CreditCard, Calendar, TrendingUp, Activity } from 'lucide-react';
+import { CreditCard, Calendar, TrendingUp, Activity, Loader2 } from 'lucide-react';
 import { motion } from 'motion/react';
-import { useAuth } from '../context/AuthContext';
+import { useAuth, getAuthHeaders, getApiUrl } from '../context/AuthContext';
+import { useEffect, useState } from 'react';
+import { Link } from 'react-router';
 
 export function Dashboard() {
   const { user } = useAuth();
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState([
+    { name: 'Gói tập hiện tại', value: '—', icon: CreditCard, color: 'bg-indigo-500', change: 'Đang tải...' },
+    { name: 'Buổi đã tập tháng này', value: '—', icon: Activity, color: 'bg-green-500', change: '' },
+    { name: 'Lịch hẹn tháng này', value: '—', icon: Calendar, color: 'bg-amber-500', change: '' },
+    { name: 'Tiến độ tháng này', value: '—', icon: TrendingUp, color: 'bg-purple-500', change: '' }
+  ]);
+  const [upcomingClasses, setUpcomingClasses] = useState<{ name: string; time: string; trainer: string; location: string }[]>([]);
+  const [recentActivities, setRecentActivities] = useState<{ action: string; detail: string; time: string }[]>([]);
 
-  const stats = [
-    {
-      name: 'Gói tập hiện tại',
-      value: 'PREMIUM',
-      icon: CreditCard,
-      color: 'bg-indigo-500',
-      change: 'Còn 25 ngày'
-    },
-    {
-      name: 'Buổi đã tập tháng này',
-      value: '18',
-      icon: Activity,
-      color: 'bg-green-500',
-      change: '+12% so với tháng trước'
-    },
-    {
-      name: 'Lịch hẹn tháng này',
-      value: '18/20',
-      icon: Calendar,
-      color: 'bg-amber-500',
-      change: 'Tỷ lệ hoàn thành: 90%'
-    },
-    {
-      name: 'Tiến độ tháng này',
-      value: '75%',
-      icon: TrendingUp,
-      color: 'bg-purple-500',
-      change: 'Đạt mục tiêu'
-    }
-  ];
+  useEffect(() => {
+    if (!user || user.isStaff) { setLoading(false); return; }
+    const load = async () => {
+      try {
+        const headers = getAuthHeaders() as any;
+        const [pkgRes, checkinRes, bookingRes] = await Promise.all([
+          fetch(`${getApiUrl()}/api/user-packages/my`, { headers }).then(r => r.json()).catch(() => []),
+          fetch(`${getApiUrl()}/api/checkin/history?limit=100`, { headers }).then(r => r.json()).catch(() => []),
+          fetch(`${getApiUrl()}/api/bookings/my`, { headers }).then(r => r.json()).catch(() => [])
+        ]);
+        const regs: any[] = Array.isArray(pkgRes) ? pkgRes : [];
+        const activeRegs = regs.filter((r: any) => ['đang hoạt động','còn 10 ngày','đang tạm ngưng'].includes(r.status) && r.payment_status === 'đã thanh toán');
+        const currentPkg = activeRegs.sort((a: any, b: any) => new Date(b.end_date).getTime() - new Date(a.end_date).getTime())[0];
+        let pkgName = 'Chưa có gói';
+        let pkgRemain = 'Chưa đăng ký';
+        if (currentPkg) {
+          pkgName = currentPkg.package_id?.name || currentPkg.name || 'Gói tập';
+          const end = new Date(currentPkg.end_date);
+          const diff = Math.ceil((end.getTime() - Date.now()) / (86400000));
+          pkgRemain = diff > 0 ? `Còn ${diff} ngày` : 'Hết hạn';
+        }
+        const checkins: any[] = Array.isArray(checkinRes) ? checkinRes : (checkinRes?.data || []);
+        const now = new Date();
+        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+        const monthCheckins = checkins.filter((c: any) => c.checkInTime && new Date(c.checkInTime) >= monthStart);
+        const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
+        const lastMonthCount = checkins.filter((c: any) => c.checkInTime && new Date(c.checkInTime) >= lastMonthStart && new Date(c.checkInTime) <= lastMonthEnd).length;
+        const changePct = lastMonthCount > 0 ? Math.round(((monthCheckins.length - lastMonthCount) / lastMonthCount) * 100) : 0;
+        const bookings: any[] = Array.isArray(bookingRes) ? bookingRes : [];
+        const monthBookings = bookings.filter((b: any) => b.date && new Date(b.date).getMonth() === now.getMonth() && new Date(b.date).getFullYear() === now.getFullYear());
+        const confirmed = monthBookings.filter((b: any) => b.status === 'confirmed').length;
+        const totalMonthBookings = monthBookings.length;
+        const progress = totalMonthBookings > 0 ? Math.round((confirmed / totalMonthBookings) * 100) : (monthCheckins.length > 0 ? Math.min(100, Math.round((monthCheckins.length / 20) * 100)) : 0);
 
-  const upcomingClasses = [
-    { name: 'Yoga Buổi Sáng', time: 'Hôm nay, 7:00 AM', trainer: 'HLV Trần Thị B', location: 'ZenFitness Quận 1' },
-    { name: 'Boxing Cardio', time: 'Mai, 6:30 PM', trainer: 'HLV Lê Minh C', location: 'ZenFitness Quận 1' },
-    { name: 'Pilates Core', time: 'Thứ 6, 9:00 AM', trainer: 'HLV Nguyễn Văn A', location: 'ZenFitness Quận 7' }
-  ];
+        setStats([
+          { name: 'Gói tập hiện tại', value: pkgName, icon: CreditCard, color: 'bg-indigo-500', change: pkgRemain },
+          { name: 'Buổi đã tập tháng này', value: String(monthCheckins.length), icon: Activity, color: 'bg-green-500', change: lastMonthCount > 0 ? `${changePct >= 0 ? '+' : ''}${changePct}% so với tháng trước` : 'Tháng đầu tiên' },
+          { name: 'Lịch hẹn tháng này', value: totalMonthBookings > 0 ? `${confirmed}/${totalMonthBookings}` : `${monthBookings.length}`, icon: Calendar, color: 'bg-amber-500', change: totalMonthBookings > 0 ? `Tỷ lệ hoàn thành: ${progress}%` : 'Chưa có lịch' },
+          { name: 'Tiến độ tháng này', value: `${progress}%`, icon: TrendingUp, color: 'bg-purple-500', change: progress >= 75 ? 'Đạt mục tiêu' : progress >= 50 ? 'Đang tiến triển' : 'Cần cố gắng' }
+        ]);
 
-  const recentActivities = [
-    { action: 'Hoàn thành buổi tập', detail: 'Gym - Strength Training', time: '2 giờ trước' },
-    { action: 'Đặt lịch mới', detail: 'Yoga Buổi Sáng', time: '5 giờ trước' },
-    { action: 'Thanh toán thành công', detail: 'Gói PREMIUM - 1 tháng', time: 'Hôm qua' },
-    { action: 'Cập nhật tiến độ', detail: 'Giảm 0.5kg', time: '2 ngày trước' }
-  ];
+        const upcoming = bookings
+          .filter((b: any) => b.status === 'confirmed' || b.status === 'pending')
+          .filter((b: any) => new Date(b.date) >= new Date(new Date().setHours(0,0,0,0)))
+          .sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime())
+          .slice(0, 3)
+          .map((b: any) => ({
+            name: b.disciplineName || b.disciplineId?.name || 'Buổi tập',
+            time: `${new Date(b.date).toLocaleDateString('vi-VN')} ${b.startTime || b.time || ''}`.trim(),
+            trainer: b.trainerId?.fullName ? `HLV ${b.trainerId.fullName}` : 'HLV',
+            location: b.locationId?.title || b.locationId?.address || 'ZenFitness'
+          }));
+        setUpcomingClasses(upcoming);
+
+        const activities: { action: string; detail: string; time: string }[] = [];
+        monthCheckins.slice(0, 2).forEach((c: any) => {
+          activities.push({ action: 'Hoàn thành buổi tập', detail: c.locationId?.title || 'Gym', time: new Date(c.checkInTime).toLocaleDateString('vi-VN') });
+        });
+        monthBookings.slice(0, 2).forEach((b: any) => {
+          activities.push({ action: b.status === 'confirmed' ? 'Lịch hẹn đã xác nhận' : 'Đặt lịch mới', detail: b.disciplineName || 'Buổi tập', time: new Date(b.createdAt || b.date).toLocaleDateString('vi-VN') });
+        });
+        if (currentPkg) activities.push({ action: 'Gói tập hiện tại', detail: pkgName, time: `Hạn ${new Date(currentPkg.end_date).toLocaleDateString('vi-VN')}` });
+        setRecentActivities(activities.slice(0, 4));
+      } catch {} finally { setLoading(false); }
+    };
+    load();
+  }, [user]);
 
   return (
     <DashboardLayout>
@@ -94,43 +130,55 @@ export function Dashboard() {
           {/* Upcoming Classes */}
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
             <h2 className="text-xl font-bold text-slate-900 mb-6">Lịch tập sắp tới</h2>
-            <div className="space-y-4">
-              {upcomingClasses.map((cls, idx) => (
-                <div
-                  key={idx}
-                  className="flex items-start gap-4 p-4 rounded-xl bg-slate-50 hover:bg-slate-100 transition-colors"
-                >
-                  <div className="w-12 h-12 bg-indigo-100 rounded-xl flex items-center justify-center shrink-0">
-                    <Calendar className="w-6 h-6 text-indigo-600" />
+            {loading ? (
+              <div className="flex items-center justify-center py-8 text-slate-500"><Loader2 className="w-5 h-5 animate-spin mr-2" /> Đang tải...</div>
+            ) : upcomingClasses.length === 0 ? (
+              <p className="text-sm text-slate-500 text-center py-8">Chưa có lịch tập sắp tới</p>
+            ) : (
+              <div className="space-y-4">
+                {upcomingClasses.map((cls, idx) => (
+                  <div
+                    key={idx}
+                    className="flex items-start gap-4 p-4 rounded-xl bg-slate-50 hover:bg-slate-100 transition-colors"
+                  >
+                    <div className="w-12 h-12 bg-indigo-100 rounded-xl flex items-center justify-center shrink-0">
+                      <Calendar className="w-6 h-6 text-indigo-600" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-semibold text-slate-900 mb-1">{cls.name}</h3>
+                      <p className="text-sm text-slate-600 mb-1">{cls.time}</p>
+                      <p className="text-xs text-slate-500">{cls.trainer} • {cls.location}</p>
+                    </div>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold text-slate-900 mb-1">{cls.name}</h3>
-                    <p className="text-sm text-slate-600 mb-1">{cls.time}</p>
-                    <p className="text-xs text-slate-500">{cls.trainer} • {cls.location}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <button className="w-full mt-4 py-3 bg-indigo-50 text-indigo-600 font-semibold rounded-xl hover:bg-indigo-100 transition-colors">
+                ))}
+              </div>
+            )}
+            <Link to="/dashboard/schedule" className="block w-full mt-4 py-3 bg-indigo-50 text-indigo-600 font-semibold rounded-xl hover:bg-indigo-100 transition-colors text-center">
               Xem tất cả lịch tập
-            </button>
+            </Link>
           </div>
 
           {/* Recent Activities */}
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
             <h2 className="text-xl font-bold text-slate-900 mb-6">Hoạt động gần đây</h2>
-            <div className="space-y-4">
-              {recentActivities.map((activity, idx) => (
-                <div key={idx} className="flex items-start gap-4 pb-4 border-b border-slate-100 last:border-0">
-                  <div className="w-2 h-2 bg-indigo-600 rounded-full mt-2 shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold text-slate-900 mb-1">{activity.action}</h3>
-                    <p className="text-sm text-slate-600 mb-1">{activity.detail}</p>
-                    <p className="text-xs text-slate-500">{activity.time}</p>
+            {loading ? (
+              <div className="flex items-center justify-center py-8 text-slate-500"><Loader2 className="w-5 h-5 animate-spin mr-2" /> Đang tải...</div>
+            ) : recentActivities.length === 0 ? (
+              <p className="text-sm text-slate-500 text-center py-8">Chưa có hoạt động nào</p>
+            ) : (
+              <div className="space-y-4">
+                {recentActivities.map((activity, idx) => (
+                  <div key={idx} className="flex items-start gap-4 pb-4 border-b border-slate-100 last:border-0">
+                    <div className="w-2 h-2 bg-indigo-600 rounded-full mt-2 shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-semibold text-slate-900 mb-1">{activity.action}</h3>
+                      <p className="text-sm text-slate-600 mb-1">{activity.detail}</p>
+                      <p className="text-xs text-slate-500">{activity.time}</p>
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 

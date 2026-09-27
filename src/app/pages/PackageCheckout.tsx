@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { Button } from '@mui/material';
-import { Check, ArrowRight, ChevronDown } from 'lucide-react';
+import { Check, ArrowRight, ChevronDown, AlertTriangle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth, getApiUrl, getAuthHeaders } from '../context/AuthContext';
 
@@ -42,6 +42,14 @@ export function PackageCheckout() {
   const [openPackage, setOpenPackage] = useState(false);
   const discRef = useRef<HTMLDivElement>(null);
   const pkgRef = useRef<HTMLDivElement>(null);
+
+  const [conflictData, setConflictData] = useState<{
+    hasConflict: boolean;
+    conflicts: any[];
+    upcomingBookings: any[];
+  } | null>(null);
+  const [checkingConflict, setCheckingConflict] = useState(false);
+  const [showConflictWarning, setShowConflictWarning] = useState(false);
 
   useEffect(() => {
     if (!user) { navigate('/auth'); return; }
@@ -133,6 +141,42 @@ export function PackageCheckout() {
     } else if (selectedPkg) {
       setSelectedDuration({ months: 1, discount: 0 });
     }
+  }, [selectedPkg]);
+
+  // Check schedule conflict when package changes
+  useEffect(() => {
+    if (!selectedPkg) {
+      setConflictData(null);
+      setShowConflictWarning(false);
+      return;
+    }
+
+    const disciplineId = selectedPkg.disciplineId?._id || selectedPkg.disciplineId;
+    if (!disciplineId) {
+      setConflictData(null);
+      setShowConflictWarning(false);
+      return;
+    }
+
+    setCheckingConflict(true);
+    fetch(`${getApiUrl()}/api/user-packages/check-conflict?disciplineId=${disciplineId}`, {
+      headers: getAuthHeaders()
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.hasConflict) {
+          setConflictData(data);
+          setShowConflictWarning(true);
+        } else {
+          setConflictData(null);
+          setShowConflictWarning(false);
+        }
+      })
+      .catch(() => {
+        setConflictData(null);
+        setShowConflictWarning(false);
+      })
+      .finally(() => setCheckingConflict(false));
   }, [selectedPkg]);
 
   const selectedDiscName = selectedDiscipline
@@ -325,6 +369,80 @@ export function PackageCheckout() {
               </motion.div>
             )}
           </div>
+
+          {/* Conflict Warning */}
+          {showConflictWarning && conflictData && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3 }}
+            >
+              <div className="bg-amber-50 border-2 border-amber-300 rounded-2xl p-6">
+                <div className="flex items-start gap-3 mb-4">
+                  <AlertTriangle className="w-6 h-6 text-amber-600 mt-0.5 shrink-0" />
+                  <div>
+                    <h3 className="text-lg font-bold text-amber-900 mb-1">
+                      Cảnh báo trùng lịch tập
+                    </h3>
+                    <p className="text-sm text-amber-700">
+                      Bạn đang có gói tập active chưa hết hạn. Đăng ký gói mới có thể gây trùng lịch.
+                    </p>
+                  </div>
+                </div>
+                <div className="space-y-3 ml-9">
+                  {conflictData.conflicts.map((conflict, idx) => (
+                    <div key={idx} className="bg-white/80 border border-amber-200 rounded-xl p-3">
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-slate-900">{conflict.packageName}</span>
+                        <span className="text-xs px-2 py-1 bg-amber-100 text-amber-700 rounded-full font-medium">
+                          Còn đến {new Date(conflict.endDate).toLocaleDateString('vi-VN')}
+                        </span>
+                      </div>
+                      {conflict.remainingSessions && !conflict.isFullMonth && (
+                        <p className="text-sm text-slate-600 mt-1">
+                          Buổi PT tháng này: {conflict.remainingSessions.total - conflict.remainingSessions.used}/{conflict.remainingSessions.total} còn lại
+                        </p>
+                      )}
+                      {conflict.isFullMonth && (
+                        <p className="text-sm text-slate-600 mt-1">Gói không giới hạn buổi tập</p>
+                      )}
+                    </div>
+                  ))}
+                  {conflictData.upcomingBookings?.length > 0 && (
+                    <div className="bg-white/80 border border-blue-200 rounded-xl p-3">
+                      <p className="text-sm font-semibold text-blue-800 mb-2">
+                        Lịch tập sắp tới ({conflictData.upcomingBookings.length} buổi):
+                      </p>
+                      <div className="space-y-1">
+                        {conflictData.upcomingBookings.slice(0, 3).map((b: any, i: number) => (
+                          <p key={i} className="text-xs text-slate-600">
+                            - {new Date(b.date).toLocaleDateString('vi-VN')} {b.time}
+                            {b.trainer ? ` với HLV ${b.trainer}` : ''}
+                            {b.discipline ? ` (${b.discipline})` : ''}
+                          </p>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <button
+                    onClick={() => setShowConflictWarning(false)}
+                    className="text-sm text-amber-700 font-medium hover:text-amber-900 underline"
+                  >
+                    Tôi đã hiểu, tiếp tục đăng ký
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {checkingConflict && selectedPkg && (
+            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
+              <p className="text-sm text-slate-500 flex items-center gap-2">
+                <span className="animate-spin inline-block w-4 h-4 border-2 border-slate-300 border-t-indigo-600 rounded-full"></span>
+                Đang kiểm tra lịch tập...
+              </p>
+            </div>
+          )}
 
           {/* Right: 2 columns - Package Detail */}
           <div className="lg:col-span-2">

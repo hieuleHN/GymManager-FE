@@ -138,10 +138,14 @@ export function PackageDetail() {
                 <p className="text-lg text-slate-600 mb-6">{pkg.description}</p>
               )}
 
-              <div className="flex items-baseline gap-2 mb-8">
+              <div className="flex items-baseline gap-2 mb-1">
                 <span className="text-5xl font-extrabold text-indigo-600">{formatPrice(unitPrice)}</span>
                 <span className="text-xl text-slate-400">/ tháng</span>
               </div>
+              <p className="text-xs text-slate-400 mb-8 max-w-md">
+                Giá hiện tại của gói, áp dụng cho đăng ký mới và gia hạn.
+                Hợp đồng đã ký trước đó vẫn giữ nguyên giá theo thời điểm đăng ký.
+              </p>
 
               {/* Duration Selection */}
               <div className="mb-8">

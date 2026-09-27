@@ -1,6 +1,6 @@
 import { AdminLayout } from '../../components/AdminLayout';
 import { Button } from '@mui/material';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { useClub } from '../../context/ClubContext';
 import { getAuthHeaders } from '../../context/AuthContext';
@@ -20,6 +20,7 @@ interface ClubData {
   accountNumber?: string;
   accountName?: string;
   branch?: string;
+  signature?: string;
 }
 
 interface FormValues {
@@ -58,6 +59,10 @@ export function ClubManagement() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [fetchedOnce, setFetchedOnce] = useState(false);
+  const [clubSignature, setClubSignature] = useState('');
+  const [signatureSaving, setSignatureSaving] = useState(false);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const selectedClubData = clubs.find(c => c._id === selectedClub);
 
@@ -86,6 +91,7 @@ export function ClubManagement() {
           branch: data.branch || '',
         });
         setFetchedOnce(true);
+        setClubSignature(data.signature || '');
       } catch {
         toast.error('Không thể tải thông tin cơ sở');
       } finally {
@@ -94,6 +100,73 @@ export function ClubManagement() {
     };
     fetchClub();
   }, [selectedClub]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.strokeStyle = '#1e293b';
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+  }, []);
+
+  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    setIsDrawing(true);
+    const rect = canvas.getBoundingClientRect();
+    let x: number, y: number;
+    if ('touches' in e) {
+      x = e.touches[0].clientX - rect.left;
+      y = e.touches[0].clientY - rect.top;
+      e.preventDefault();
+    } else {
+      x = e.clientX - rect.left;
+      y = e.clientY - rect.top;
+    }
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+  };
+
+  const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    if (!isDrawing) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const rect = canvas.getBoundingClientRect();
+    let x: number, y: number;
+    if ('touches' in e) {
+      x = e.touches[0].clientX - rect.left;
+      y = e.touches[0].clientY - rect.top;
+      e.preventDefault();
+    } else {
+      x = e.clientX - rect.left;
+      y = e.clientY - rect.top;
+    }
+    ctx.lineTo(x, y);
+    ctx.stroke();
+  };
+
+  const stopDrawing = () => {
+    setIsDrawing(false);
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    setClubSignature(canvas.toDataURL());
+  };
+
+  const clearSignatureCanvas = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    setClubSignature('');
+  };
 
   const onSubmit = async (data: FormValues) => {
     if (!selectedClub || selectedClub === 'all') {
@@ -221,44 +294,75 @@ export function ClubManagement() {
               </div>
 
               <div className="border-t border-slate-200 pt-6 mt-6">
-                <h3 className="text-lg font-bold text-slate-900 mb-4">Cấu hình Thanh toán Online</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">Mã Ngân hàng (VD: MB, VCB, TCB)</label>
-                    <input
-                      type="text"
-                      {...register('bankName')}
-                      className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                      placeholder="Nhập tên viết tắt ngân hàng..."
-                    />
+                <h3 className="text-lg font-bold text-slate-900 mb-4">Chữ ký đại diện cơ sở</h3>
+                <p className="text-sm text-slate-500 mb-4">Vẽ chữ ký đại diện của cơ sở để hiển thị trên hợp đồng</p>
+
+                {selectedClubData?.signature && (
+                  <div className="mb-4">
+                    <p className="text-xs text-slate-400 mb-1">Chữ ký hiện tại:</p>
+                    <img src={selectedClubData.signature} alt="Chữ ký hiện tại" className="h-12 object-contain border border-slate-200 rounded-lg p-1" />
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">Số tài khoản</label>
-                    <input
-                      type="text"
-                      {...register('accountNumber')}
-                      className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                      placeholder="Nhập số tài khoản..."
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">Tên chủ tài khoản</label>
-                    <input
-                      type="text"
-                      {...register('accountName')}
-                      className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                      placeholder="Nhập tên in hoa không dấu..."
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">Chi nhánh (Không bắt buộc)</label>
-                    <input
-                      type="text"
-                      {...register('branch')}
-                      className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                      placeholder="Chi nhánh ngân hàng..."
-                    />
-                  </div>
+                )}
+
+                <div className="border-2 border-slate-300 rounded-xl overflow-hidden bg-white max-w-md">
+                  <canvas
+                    ref={canvasRef}
+                    width={600}
+                    height={180}
+                    className="w-full touch-none"
+                    style={{ minHeight: 180, cursor: 'crosshair' }}
+                    onMouseDown={startDrawing}
+                    onMouseMove={draw}
+                    onMouseUp={stopDrawing}
+                    onMouseLeave={stopDrawing}
+                    onTouchStart={startDrawing}
+                    onTouchMove={draw}
+                    onTouchEnd={stopDrawing}
+                  />
+                </div>
+
+                <div className="flex items-center gap-3 mt-3">
+                  {clubSignature && (
+                    <button
+                      type="button"
+                      onClick={clearSignatureCanvas}
+                      className="text-sm text-red-600 hover:text-red-700 font-medium"
+                    >
+                      Xóa chữ ký
+                    </button>
+                  )}
+                  {clubSignature && clubSignature !== selectedClubData?.signature && (
+                    <Button
+                      type="button"
+                      variant="contained"
+                      disabled={signatureSaving}
+                      onClick={async () => {
+                        setSignatureSaving(true);
+                        try {
+                          const res = await fetch(`/api/locations/${selectedClub}/signature`, {
+                            method: 'POST',
+                            headers: { ...headers, 'Content-Type': 'application/json' } as any,
+                            body: JSON.stringify({ signature: clubSignature }),
+                          });
+                          if (!res.ok) throw new Error('Failed');
+                          toast.success('Cập nhật chữ ký thành công!');
+                        } catch {
+                          toast.error('Cập nhật chữ ký thất bại');
+                        } finally {
+                          setSignatureSaving(false);
+                        }
+                      }}
+                      sx={{
+                        bgcolor: '#4f46e5',
+                        '&:hover': { bgcolor: '#4338ca' },
+                        textTransform: 'none',
+                        borderRadius: 2,
+                        px: 4
+                      }}
+                    >
+                      {signatureSaving ? 'Đang lưu...' : 'Lưu chữ ký'}
+                    </Button>
+                  )}
                 </div>
               </div>
 

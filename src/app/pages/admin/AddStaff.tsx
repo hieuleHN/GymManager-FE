@@ -10,7 +10,6 @@ import { toast } from 'sonner';
 interface Job {
   _id: string;
   name: string;
-  salary: number;
 }
 
 interface StaffFormData {
@@ -20,9 +19,15 @@ interface StaffFormData {
   password: string;
   phone: string;
   gender: string;
+  dateOfBirth: string;
   job: string;
-  startDate: string;
   address: string;
+  description: string;
+  specialties: string;
+  experience: string;
+  certifications: string;
+  disciplineId: string;
+  pricePerSession: string;
 }
 
 export function AddStaff() {
@@ -35,8 +40,15 @@ export function AddStaff() {
   const [pageLoading, setPageLoading] = useState(isEdit);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [currentAccount, setCurrentAccount] = useState('');
+  const [avatarPreview, setAvatarPreview] = useState<string>('');
+  const [avatarBase64, setAvatarBase64] = useState<string>('');
+  const [coverPreview, setCoverPreview] = useState<string>('');
+  const [coverBase64, setCoverBase64] = useState<string>('');
+  const [galleryPreviews, setGalleryPreviews] = useState<string[]>([]);
+  const [galleryBase64s, setGalleryBase64s] = useState<string[]>([]);
+  const [disciplines, setDisciplines] = useState<{ _id: string; name: string }[]>([]);
 
-  const { register, handleSubmit, setValue, reset, formState: { errors }, watch } = useForm<StaffFormData>({
+  const { register, handleSubmit, setValue, reset, formState: { errors } } = useForm<StaffFormData>({
     defaultValues: {
       account: '',
       fullName: '',
@@ -44,9 +56,15 @@ export function AddStaff() {
       password: '',
       phone: '',
       gender: 'Nam',
+      dateOfBirth: '',
       job: '',
-      startDate: new Date().toISOString().split('T')[0],
-      address: ''
+      address: '',
+      description: '',
+      specialties: '',
+      experience: '',
+      certifications: '',
+      disciplineId: '',
+      pricePerSession: ''
     }
   });
 
@@ -59,6 +77,13 @@ export function AddStaff() {
           setJobs(list);
           if (!isEdit && list.length > 0) setValue('job', list[0]._id);
         }
+      })
+      .catch(() => {});
+    fetch(`${getApiUrl()}/api/disciplines?limit=100`, { headers: getAuthHeaders() })
+      .then(r => r.json())
+      .then(data => {
+        const list = data.data || (Array.isArray(data) ? data : []);
+        if (Array.isArray(list)) setDisciplines(list);
       })
       .catch(() => {});
   }, [setValue, isEdit]);
@@ -78,10 +103,37 @@ export function AddStaff() {
           password: '',
           phone: staff.phone || '',
           gender: staff.gender || 'Nam',
+          dateOfBirth: staff.dateOfBirth ? new Date(staff.dateOfBirth).toISOString().split('T')[0] : '',
           job: staff.job?._id || staff.job || '',
-          startDate: staff.startDate ? new Date(staff.startDate).toISOString().split('T')[0] : '',
-          address: staff.address || ''
+          address: staff.address || '',
+          description: staff.description || '',
+          specialties: Array.isArray(staff.specialties) ? staff.specialties.join(', ') : '',
+          experience: staff.experience || '',
+          certifications: Array.isArray(staff.certifications) ? staff.certifications.join(', ') : '',
+          disciplineId: staff.disciplineId?._id || staff.disciplineId || '',
+          pricePerSession: staff.pricePerSession ? String(staff.pricePerSession) : ''
         });
+        if (staff.avatar) {
+          setAvatarPreview(staff.avatar);
+          setAvatarBase64(staff.avatar);
+        } else {
+          setAvatarPreview('');
+          setAvatarBase64('');
+        }
+        if (staff.coverImage) {
+          setCoverPreview(staff.coverImage);
+          setCoverBase64(staff.coverImage);
+        } else {
+          setCoverPreview('');
+          setCoverBase64('');
+        }
+        if (Array.isArray(staff.gallery) && staff.gallery.length) {
+          setGalleryPreviews(staff.gallery);
+          setGalleryBase64s(staff.gallery);
+        } else {
+          setGalleryPreviews([]);
+          setGalleryBase64s([]);
+        }
       })
       .catch(() => {
         toast.error('Không thể tải thông tin nhân viên');
@@ -90,12 +142,92 @@ export function AddStaff() {
       .finally(() => setPageLoading(false));
   }, [id, isEdit, reset, navigate]);
 
-  const watchJob = watch('job');
-  const selectedJob = jobs.find(j => j._id === watchJob);
-  const displaySalary = selectedJob?.salary || 0;
+  const validateDOB = (dob: string) => {
+    if (!dob) return true;
+    const d = new Date(dob);
+    const now = new Date();
+    if (d > now) return 'Ngày sinh không được ở tương lai';
+    const age = now.getFullYear() - d.getFullYear() - (now < new Date(now.getFullYear(), d.getMonth(), d.getDate()) ? 1 : 0);
+    if (age < 14) return 'Nhân viên phải từ 14 tuổi trở lên';
+    if (age > 70) return 'Ngày sinh không hợp lệ';
+    return true;
+  };
+
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { toast.error('Vui lòng chọn file ảnh'); return; }
+    if (file.size > 2 * 1024 * 1024) { toast.error('Ảnh tối đa 2MB'); return; }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const b64 = reader.result as string;
+      setAvatarBase64(b64);
+      setAvatarPreview(b64);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleCoverChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { toast.error('Vui lòng chọn file ảnh'); return; }
+    if (file.size > 5 * 1024 * 1024) { toast.error('Ảnh bìa tối đa 5MB'); return; }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const b64 = reader.result as string;
+      setCoverBase64(b64);
+      setCoverPreview(b64);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleGalleryChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    const valid = files.filter(f => f.type.startsWith('image/') && f.size <= 5 * 1024 * 1024);
+    if (valid.length !== files.length) toast.error('Chỉ nhận ảnh <=5MB');
+    const remaining = 8 - galleryBase64s.length;
+    const toAdd = valid.slice(0, remaining);
+    if (valid.length > remaining) toast.error(`Chỉ được tối đa 8 ảnh, đã thêm ${remaining} ảnh`);
+    toAdd.forEach(file => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const b64 = reader.result as string;
+        setGalleryBase64s(prev => [...prev, b64]);
+        setGalleryPreviews(prev => [...prev, b64]);
+      };
+      reader.readAsDataURL(file);
+    });
+    e.target.value = '';
+  };
+
+  const removeGalleryAt = (idx: number) => {
+    setGalleryBase64s(prev => prev.filter((_, i) => i !== idx));
+    setGalleryPreviews(prev => prev.filter((_, i) => i !== idx));
+  };
 
   const onSubmit = async (data: StaffFormData) => {
+    const dobCheck = validateDOB(data.dateOfBirth);
+    if (dobCheck !== true) { setError(dobCheck as string); return; }
     setError('');
+
+    const extra: any = {};
+    if (data.description?.trim()) extra.description = data.description.trim();
+    if (data.specialties?.trim()) extra.specialties = data.specialties.split(',').map(s => s.trim()).filter(Boolean);
+    else if (isEdit && data.specialties === '') extra.specialties = [];
+    if (data.experience?.trim()) extra.experience = data.experience.trim();
+    if (data.certifications?.trim()) extra.certifications = data.certifications.split(',').map(s => s.trim()).filter(Boolean);
+    else if (isEdit && data.certifications === '') extra.certifications = [];
+    if (data.disciplineId) extra.disciplineId = data.disciplineId;
+    else if (isEdit && data.disciplineId === '') extra.disciplineId = null;
+    if (data.pricePerSession) {
+      const n = Number(data.pricePerSession);
+      if (!isNaN(n) && n >= 0) extra.pricePerSession = n;
+    }
+    if (avatarBase64) extra.avatar = avatarBase64;
+    if (coverBase64) extra.coverImage = coverBase64;
+    if (galleryBase64s.length) extra.gallery = galleryBase64s;
+    else if (isEdit && galleryBase64s.length === 0 && galleryPreviews.length === 0) extra.gallery = [];
 
     if (isEdit) {
       setLoading(true);
@@ -105,11 +237,13 @@ export function AddStaff() {
           email: data.email,
           phone: data.phone,
           gender: data.gender,
+          dateOfBirth: data.dateOfBirth || null,
           job: data.job,
-          startDate: data.startDate,
           address: data.address,
-          baseSalary: displaySalary
+          ...extra
         };
+        // Nếu ảnh đã xóa hết thì vẫn gửi gallery rỗng để xóa
+        if (isEdit && galleryBase64s.length === 0) body.gallery = [];
         if (data.password) body.password = data.password;
 
         const res = await fetch(`${getApiUrl()}/api/staff/${id}`, {
@@ -139,10 +273,12 @@ export function AddStaff() {
     }
     setLoading(true);
     try {
+      const payload: any = { ...data, locationId: club };
+      if (avatarBase64) payload.avatar = avatarBase64;
       const res = await fetch(`${getApiUrl()}/api/staff`, {
         method: 'POST',
         headers: getAuthHeaders(),
-        body: JSON.stringify({ ...data, baseSalary: displaySalary, locationId: club })
+        body: JSON.stringify(payload)
       });
       const responseData = await res.json();
       if (!res.ok) throw new Error(responseData.error || 'Lỗi thêm nhân viên!');
@@ -251,20 +387,92 @@ export function AddStaff() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Lương theo chức vụ
+                  Ngày sinh
                 </label>
-                <div className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-indigo-600 font-bold text-lg">
-                  {displaySalary.toLocaleString('vi-VN')}đ
-                </div>
+                <input type="date" {...register('dateOfBirth', { validate: validateDOB })}
+                  className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                {errors.dateOfBirth && <span className="text-red-500 text-sm mt-1">{errors.dateOfBirth.message as string}</span>}
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Ngày bắt đầu
+                  Ảnh đại diện
                 </label>
-                <input type="date" {...register('startDate')}
-                  className={`w-full p-3 border ${errors.startDate ? 'border-red-400' : 'border-slate-200'} rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500`} />
-                {errors.startDate && <span className="text-red-500 text-sm mt-1">{errors.startDate.message}</span>}
+                <input type="file" accept="image/*" onChange={handleAvatarChange}
+                  className="w-full p-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-sm" />
+                {avatarPreview && (
+                  <div className="mt-3 w-24 h-24 rounded-xl overflow-hidden border border-slate-200">
+                    <img src={avatarPreview} alt="preview" className="w-full h-full object-cover" />
+                  </div>
+                )}
               </div>
+
+              {isEdit && (
+                <>
+                  <div className="md:col-span-2 border-t border-slate-100 pt-6">
+                    <h3 className="text-sm font-bold text-slate-900 mb-4">Thông tin bổ sung (không bắt buộc)</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="md:col-span-2">
+                        <label className="block text-sm font-medium text-slate-700 mb-2">Giới thiệu</label>
+                        <textarea {...register('description')} rows={3} placeholder="Mô tả ngắn về nhân viên..."
+                          className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-2">Chuyên môn (cách nhau dấu phẩy)</label>
+                        <input type="text" {...register('specialties')} placeholder="VD: Yoga, Pilates, Gym"
+                          className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-2">Kinh nghiệm</label>
+                        <input type="text" {...register('experience')} placeholder="VD: 5 năm kinh nghiệm"
+                          className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-2">Chứng chỉ (cách nhau dấu phẩy)</label>
+                        <input type="text" {...register('certifications')} placeholder="VD: PT Level 2, Yoga Alliance"
+                          className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-2">Bộ môn</label>
+                        <select {...register('disciplineId')} className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
+                          <option value="">-- Không chọn --</option>
+                          {disciplines.map(d => <option key={d._id} value={d._id}>{d.name}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-2">Giá mỗi buổi (đ)</label>
+                        <input type="number" {...register('pricePerSession')} placeholder="500000"
+                          className="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" min="0" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-2">Ảnh bìa</label>
+                        <input type="file" accept="image/*" onChange={handleCoverChange}
+                          className="w-full p-2.5 border border-slate-200 rounded-xl bg-white text-sm" />
+                        {coverPreview && (
+                          <div className="mt-3 w-full h-28 rounded-xl overflow-hidden border border-slate-200">
+                            <img src={coverPreview} alt="cover preview" className="w-full h-full object-cover" />
+                          </div>
+                        )}
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-2">Thư viện ảnh (tối đa 8, chọn nhiều file)</label>
+                        <input type="file" accept="image/*" multiple onChange={handleGalleryChange}
+                          className="w-full p-2.5 border border-slate-200 rounded-xl bg-white text-sm" />
+                        {galleryPreviews.length > 0 && (
+                          <div className="mt-3 grid grid-cols-4 gap-2">
+                            {galleryPreviews.map((src, idx) => (
+                              <div key={idx} className="relative group aspect-square rounded-lg overflow-hidden border border-slate-200">
+                                <img src={src} alt={`g${idx}`} className="w-full h-full object-cover" />
+                                <button type="button" onClick={() => removeGalleryAt(idx)} className="absolute top-1 right-1 bg-black/60 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100">×</button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
+
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-slate-700 mb-2">
                   Địa chỉ

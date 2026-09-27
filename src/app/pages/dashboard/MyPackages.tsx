@@ -14,6 +14,7 @@ interface Registration {
     name: string;
     unitPrice: number;
     features: string[];
+    disciplineId?: { _id: string; name: string };
   };
   locationId: {
     _id: string;
@@ -33,6 +34,8 @@ interface Registration {
   payment_method: string;
 
   signature: string;
+  frozenAt?: string | null;
+  frozenUntil?: string | null;
   createdAt: string;
 }
 
@@ -203,6 +206,17 @@ export function MyPackages() {
     const diff = new Date(endDate).getTime() - new Date().getTime();
     return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
   };
+  // Hạn sử dụng thực tế: khi gói đang tạm ngưng, cộng thêm số ngày đã đóng băng
+  const effectiveEndDate = (reg: Registration): string => {
+    if (reg.status === "đang tạm ngưng" && reg.frozenAt) {
+      const frozenMs = Date.now() - new Date(reg.frozenAt).getTime();
+      const frozenDays = Math.max(0, Math.floor(frozenMs / 86400000));
+      const end = new Date(reg.end_date);
+      end.setDate(end.getDate() + frozenDays);
+      return end.toISOString();
+    }
+    return reg.end_date;
+  };
 
   const handleOpenRenewModal = (reg: Registration) => {
     setSelectedPkg(reg.package_id);
@@ -211,9 +225,39 @@ export function MyPackages() {
     setRenewModalOpen(true);
   };
 
+  // Giá gia hạn do server tính theo giá hiện tại + bảng giảm giá
+  const [renewPreviewTotal, setRenewPreviewTotal] = useState<number | null>(
+    null,
+  );
+
+  useEffect(() => {
+    if (!renewModalOpen || !selectedPkg) return;
+    let active = true;
+    setRenewPreviewTotal(null);
+    fetch(`${getApiUrl()}/api/packages/preview-price`, {
+      method: "POST",
+      headers: getAuthHeaders() as any,
+      body: JSON.stringify({
+        package_id: selectedPkg._id,
+        months: renewMonths,
+      }),
+    })
+      .then((r) => r.json())
+      .then((d) => {
+        if (active && d && typeof d.total_price === "number") {
+          setRenewPreviewTotal(d.total_price);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [renewModalOpen, selectedPkg, renewMonths]);
+
   const handleExecuteRenew = async () => {
     if (!selectedPkg) return;
-    const computedPrice = renewMonths * (selectedPkg.unitPrice || 0);
+    const finalPrice =
+      renewPreviewTotal ?? renewMonths * (selectedPkg.unitPrice || 0);
 
     try {
       const response = await fetch(
@@ -226,7 +270,7 @@ export function MyPackages() {
             package_id: selectedPkg._id,
             locationId: customer?.locationId?._id || customer?.locationId,
             duration_months: renewMonths,
-            total_price: computedPrice,
+            total_price: finalPrice,
             current_end_date: selectedPkgEndDate,
           }),
         },
@@ -241,7 +285,7 @@ export function MyPackages() {
           registration: { id: data.registration._id },
           customer: customer,
           durationMonths: renewMonths,
-          totalPrice: computedPrice,
+          totalPrice: finalPrice,
         },
       });
     } catch (err: any) {
@@ -258,40 +302,11 @@ export function MyPackages() {
       </DashboardLayout>
     );
 
-  if (customer && customer.status !== "approved") {
-    return (
-      <DashboardLayout>
-        <div className="max-w-7xl mx-auto space-y-6">
-          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-8 text-center">
-            <AlertTriangle className="w-16 h-16 text-amber-500 mx-auto mb-4" />
-            <h2 className="text-2xl font-bold text-amber-900 mb-2">
-              Chưa được xác nhận
-            </h2>
-            <p className="text-amber-700 mb-6">
-              Bạn cần hoàn thiện thông tin cá nhân và được nhân viên xác nhận
-              trước khi đăng ký gói tập.
-            </p>
-            <Button
-              variant="contained"
-              onClick={() => navigate("/dashboard/settings")}
-              sx={{
-                bgcolor: "#d97706",
-                "&:hover": { bgcolor: "#b45309" },
-                textTransform: "none",
-                borderRadius: 2,
-              }}
-            >
-              Đi đến cài đặt <ArrowRight className="ml-2 w-4 h-4" />
-            </Button>
-          </div>
-        </div>
-      </DashboardLayout>
-    );
-  }
+  const showApprovalWarning = customer && customer.status !== "approved";
 
 
   const activeRegistrations = registrations.filter(r =>
-    r.status === 'đang hoạt động' || r.status === 'còn 10 ngày'
+    r.status === 'đang hoạt động' || r.status === 'còn 10 ngày' || r.status === 'đang tạm ngưng'
   );
   const paidPendingRegistrations = registrations.filter(r =>
     r.status === 'chờ xác nhận' && r.payment_status === 'paid'
@@ -301,6 +316,7 @@ export function MyPackages() {
   );
 
   const groupedRegistrationsMap = new Map<string, Registration>();
+  const bestUpgradeRegId = new Map<string, string>();
   const groups: Record<string, Registration[]> = {};
 
   // 1. Phân nhóm các hóa đơn theo cùng một gói tập
@@ -331,6 +347,7 @@ export function MyPackages() {
       });
       displayReg.end_date = maxPaidReg.end_date;
       displayReg.status = maxPaidReg.status;
+      bestUpgradeRegId.set(pkgId, maxPaidReg._id);
     }
 
     groupedRegistrationsMap.set(pkgId, displayReg);
@@ -382,32 +399,79 @@ export function MyPackages() {
           </div>
         )}
 
-        {ptSessions.length > 0 && (
-          <div className="bg-gradient-to-r from-indigo-50 to-green-50 border border-indigo-200 rounded-2xl p-5">
-            <h3 className="font-semibold text-indigo-900 mb-3 flex items-center gap-2">
-              <Calendar className="w-5 h-5 text-indigo-600" />
-              Buổi tập Huấn luyện viên trong tháng
-            </h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {ptSessions.map((ps, i) => (
-                <div key={i} className="bg-white/80 rounded-xl p-3 border border-indigo-100">
-                  <p className="text-sm font-medium text-slate-800">{ps.packageName}</p>
-                  <p className="text-lg font-bold text-indigo-600">
-                    {ps.isFullMonth ? 'Không giới hạn' : `${ps.currentMonthRemaining} / ${ps.ptSessionsPerMonth} buổi`}
-                  </p>
-                  <div className="w-full bg-slate-200 rounded-full h-1.5 mt-1">
-                    {!ps.isFullMonth && ps.ptSessionsPerMonth > 0 && (
-                      <div
-                        className="bg-indigo-600 h-1.5 rounded-full transition-all"
-                        style={{ width: `${((ps.ptSessionsPerMonth - (ps.ptSessionsPerMonth - ps.currentMonthRemaining)) / ps.ptSessionsPerMonth) * 100}%` }}
-                      />
-                    )}
-                  </div>
-                </div>
-              ))}
+        {showApprovalWarning && (
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-amber-600 mt-0.5 shrink-0" />
+            <div className="flex-1">
+              <p className="font-bold text-amber-900">Tài khoản chưa được xác nhận</p>
+              <p className="text-sm text-amber-700 mt-1">Bạn cần hoàn thiện thông tin và được nhân viên xác nhận, nhưng các gói đã đăng ký (kể cả do nhân viên đăng ký hộ) vẫn hiển thị bên dưới.</p>
             </div>
+            <Button
+              variant="contained"
+              onClick={() => navigate("/dashboard/settings")}
+              sx={{ bgcolor: "#d97706", "&:hover": { bgcolor: "#b45309" }, textTransform: "none", borderRadius: 2, whiteSpace: "nowrap" }}
+            >
+              Đi đến cài đặt
+            </Button>
           </div>
         )}
+
+        {(() => {
+          const validPtSessions = ptSessions.filter(
+            (ps: any) => ps.ptSessionsPerMonth > 0 || ps.isFullMonth
+          );
+          return validPtSessions.length > 0 ? (
+            <div className="bg-gradient-to-r from-indigo-50 to-green-50 border border-indigo-200 rounded-2xl p-5">
+              <h3 className="font-semibold text-indigo-900 mb-3 flex items-center gap-2">
+                <Calendar className="w-5 h-5 text-indigo-600" />
+                Buổi tập Huấn luyện viên trong tháng
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {validPtSessions.map((ps: any, i: number) => {
+                  const schedule = (ps.monthlySchedule || []).filter(
+                    (m: any) => m.total > 0 && m.total < 999,
+                  );
+                  return (
+                    <div key={i} className="bg-white/80 rounded-xl p-3 border border-indigo-100">
+                      <p className="text-sm font-medium text-slate-800">{ps.packageName}</p>
+                      <p className="text-lg font-bold text-indigo-600">
+                        {ps.isFullMonth ? 'Không giới hạn' : `${ps.currentMonthRemaining} / ${ps.ptSessionsPerMonth} buổi`}
+                      </p>
+                      <div className="w-full bg-slate-200 rounded-full h-1.5 mt-1">
+                        {!ps.isFullMonth && ps.ptSessionsPerMonth > 0 && (
+                          <div
+                            className="bg-indigo-600 h-1.5 rounded-full transition-all"
+                            style={{ width: `${(ps.currentMonthRemaining / ps.ptSessionsPerMonth) * 100}%` }}
+                          />
+                        )}
+                      </div>
+                      {schedule.length > 0 && (
+                        <div className="mt-2 pt-2 border-t border-indigo-50">
+                          <p className="text-[11px] text-slate-400 mb-1">Hệ thống tự cấp theo từng tháng:</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {schedule.map((m: any) => (
+                              <span
+                                key={`${m.month}-${m.year}`}
+                                title={`Đã dùng ${m.used}/${m.total} buổi`}
+                                className={`inline-flex px-2 py-0.5 rounded-md text-[11px] font-medium ${
+                                  m.month === ps.currentMonth && m.year === ps.currentYear
+                                    ? 'bg-indigo-600 text-white'
+                                    : 'bg-indigo-50 text-indigo-700'
+                                }`}
+                              >
+                                T{m.month}/{String(m.year).slice(2)}: còn {m.remaining}/{m.total}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null;
+        })()}
 
         <div>
           <h1 className="text-3xl font-bold text-slate-900 mb-2">
@@ -444,13 +508,24 @@ export function MyPackages() {
                   <div className="flex items-start justify-between mb-4">
                     <div>
                       <div
-                        className={`inline-block px-3 py-1 rounded-full text-xs font-semibold mb-2 ${reg.status === "còn 10 ngày" ? "bg-amber-100 text-amber-700" : "bg-green-100 text-green-700"}`}
+                        className={`inline-block px-3 py-1 rounded-full text-xs font-semibold mb-2 ${
+                          reg.status === "đang tạm ngưng"
+                            ? "bg-amber-100 text-amber-700"
+                            : reg.status === "còn 10 ngày"
+                            ? "bg-amber-100 text-amber-700"
+                            : "bg-green-100 text-green-700"
+                        }`}
                       >
                         {reg.status}
                       </div>
                       <h3 className="text-2xl font-bold text-slate-900">
                         {reg.package_id?.name || "Đã xóa"}
                       </h3>
+                      {reg.package_id?.disciplineId?.name && (
+                        <p className="text-sm text-indigo-600 font-medium mt-1">
+                          {reg.package_id.disciplineId.name}
+                        </p>
+                      )}
                     </div>
                   </div>
 
@@ -467,7 +542,7 @@ export function MyPackages() {
                     <div className="flex items-center gap-2 text-sm">
                       <Calendar className="w-4 h-4 text-slate-400" />
                       <span className="text-slate-600 font-medium">
-                        Hạn sử dụng: đến {formatDate(reg.end_date)}
+                        Hạn sử dụng: đến {formatDate(effectiveEndDate(reg))}
                       </span>
                     </div>
 
@@ -482,15 +557,33 @@ export function MyPackages() {
                       </span>
                     </div>
 
-                    {reg.end_date && (
-                      <div className="px-3 py-2 rounded-lg bg-indigo-50 inline-block border border-indigo-100">
-                        <p className="text-sm text-indigo-700">
-                          Còn lại{" "}
-                          <span className="font-bold text-indigo-900">
-                            {daysRemaining(reg.end_date)} ngày
-                          </span>
+                    {reg.status === "đang tạm ngưng" ? (
+                      <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200">
+                        <Clock className="w-4 h-4 text-amber-600 shrink-0" />
+                        <p className="text-sm text-amber-800">
+                          Đang tạm ngưng — còn lại{" "}
+                          <span className="font-bold text-amber-900">
+                            {daysRemaining(effectiveEndDate(reg))} ngày
+                          </span>{" "}
+                          sử dụng (được bảo lưu)
+                          {reg.frozenUntil && (
+                            <span className="block text-xs mt-0.5">
+                              Sẽ tự động kích hoạt lại sau: {formatDate(reg.frozenUntil)}
+                            </span>
+                          )}
                         </p>
                       </div>
+                    ) : (
+                      reg.end_date && (
+                        <div className="px-3 py-2 rounded-lg bg-indigo-50 inline-block border border-indigo-100">
+                          <p className="text-sm text-indigo-700">
+                            Còn lại{" "}
+                            <span className="font-bold text-indigo-900">
+                              {daysRemaining(reg.end_date)} ngày
+                            </span>
+                          </p>
+                        </div>
+                      )
                     )}
                   </div>
 
@@ -513,7 +606,7 @@ export function MyPackages() {
                         sx={{ textTransform: 'none', borderRadius: 2, bgcolor: '#d97706', '&:hover': { bgcolor: '#b45309' } }}>
                         Thanh toán ngay
                       </Button>
-                    ) : reg.contract_pdf && reg.payment_status === 'paid' ? (
+                    ) : reg.payment_status !== 'chờ thanh toán' ? (
                       <>
                         {reg.status === 'chờ xác nhận' && (
                           <div className="col-span-2 flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800 mb-1">
@@ -529,12 +622,11 @@ export function MyPackages() {
                         </a>
                       </>
                     ) : null}
-                    <Link to="/packages">
-                      <Button fullWidth variant="outlined" size="small"
-                        sx={{ textTransform: 'none', borderRadius: 2 }}>
-                        Đăng ký thêm
-                      </Button>
-                    </Link>
+                    <Button fullWidth variant="outlined" size="small"
+                      onClick={() => navigate(`/dashboard/upgrade/${bestUpgradeRegId.get(reg.package_id?._id || '') || reg._id}`)}
+                      sx={{ textTransform: 'none', borderRadius: 2, color: '#22c55e', borderColor: '#22c55e', '&:hover': { borderColor: '#16a34a', bgcolor: 'rgba(34,197,94,0.08)' } }}>
+                      Nâng cấp
+                    </Button>
                     <Button fullWidth variant="contained" size="small"
                       onClick={() => navigate(`/packages/${reg.package_id?._id}`)}
                       sx={{ textTransform: 'none', borderRadius: 2, bgcolor: '#4f46e5', '&:hover': { bgcolor: '#4338ca' } }}>
@@ -561,9 +653,12 @@ export function MyPackages() {
                           Đã thanh toán - chờ duyệt
                         </span>
                         <h3 className="text-2xl font-bold text-slate-900">{reg.package_id?.name || 'Đã xóa'}</h3>
+                        {reg.package_id?.disciplineId?.name && (
+                          <p className="text-sm text-indigo-600 font-medium mt-1">{reg.package_id.disciplineId.name}</p>
+                        )}
                       </div>
                       <div className="text-right">
-                        <p className="text-sm text-slate-600">Giá trị</p>
+                        <p className="text-sm text-slate-600">Giá trị hợp đồng</p>
                         <p className="text-xl font-bold text-indigo-600">{formatPrice(reg.total_price)}</p>
                       </div>
                     </div>
@@ -580,18 +675,16 @@ export function MyPackages() {
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-3">
-                      {reg.contract_pdf && (
-                        <a href={`${getApiUrl()}/api/user-packages/${reg._id}/contract-pdf?token=${encodeURIComponent(JSON.parse(localStorage.getItem('auth_user') || '{}').token || '')}`} target="_blank" rel="noopener noreferrer" className="block col-span-2">
-                          <Button fullWidth variant="outlined" size="small"
-                            sx={{ textTransform: 'none', borderRadius: 2, color: '#4f46e5', borderColor: '#4f46e5' }}>
-                            Xem hợp đồng (PDF)
-                          </Button>
-                        </a>
-                      )}
+                      <a href={`${getApiUrl()}/api/user-packages/${reg._id}/contract-pdf?token=${encodeURIComponent(JSON.parse(localStorage.getItem('auth_user') || '{}').token || '')}`} target="_blank" rel="noopener noreferrer" className="block col-span-2">
+                        <Button fullWidth variant="outlined" size="small"
+                          sx={{ textTransform: 'none', borderRadius: 2, color: '#4f46e5', borderColor: '#4f46e5' }}>
+                          Xem hợp đồng (PDF)
+                        </Button>
+                      </a>
                       <Link to="/packages">
                         <Button fullWidth variant="outlined" size="small"
-                          sx={{ textTransform: 'none', borderRadius: 2 }}>
-                          Đăng ký thêm
+                          sx={{ textTransform: 'none', borderRadius: 2, color: '#4f46e5', borderColor: '#4f46e5' }}>
+                          Xem gói tập
                         </Button>
                       </Link>
                       <Button fullWidth variant="contained" size="small"
@@ -620,9 +713,12 @@ export function MyPackages() {
                           {reg.status}
                         </span>
                         <h3 className="text-2xl font-bold text-slate-900">{reg.package_id?.name || 'Đã xóa'}</h3>
+                        {reg.package_id?.disciplineId?.name && (
+                          <p className="text-sm text-indigo-600 font-medium mt-1">{reg.package_id.disciplineId.name}</p>
+                        )}
                       </div>
                       <div className="text-right">
-                        <p className="text-sm text-slate-600">Giá trị</p>
+                        <p className="text-sm text-slate-600">Giá trị hợp đồng</p>
                         <p className="text-xl font-bold text-indigo-600">{formatPrice(reg.total_price)}</p>
                       </div>
                     </div>
@@ -685,7 +781,8 @@ export function MyPackages() {
                   (r) =>
                     r.package_id?._id === pkg._id &&
                     (r.status === "đang hoạt động" ||
-                      r.status === "còn 10 ngày"),
+                      r.status === "còn 10 ngày" ||
+                      r.status === "đang tạm ngưng"),
                 );
                 return (
                   <div
@@ -771,11 +868,22 @@ export function MyPackages() {
                     </button>
                   ))}
                 </div>
-                <div className="flex justify-between items-center font-bold text-lg bg-slate-50 p-4 rounded-xl border border-slate-100">
-                  <span>Thành tiền:</span>
-                  <span className="text-indigo-600">
-                    {formatPrice(selectedPkg.unitPrice * renewMonths)}
-                  </span>
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 mb-6">
+                  <div className="flex justify-between items-center font-bold text-lg">
+                    <span>Thành tiền (giá hiện tại):</span>
+                    <span className="text-indigo-600">
+                      {formatPrice(
+                        renewPreviewTotal ??
+                          renewMonths * (selectedPkg.unitPrice || 0),
+                      )}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400 mt-2 leading-relaxed">
+                    Gia hạn tính theo giá gói hiện tại
+                    {" "}
+                    {formatPrice(selectedPkg.unitPrice || 0)}/tháng. Hợp đồng
+                    đã ký trước đó vẫn giữ nguyên giá theo thời điểm đăng ký.
+                  </p>
                 </div>
               </div>
               <div className="p-4 bg-slate-50 border-t flex gap-3">

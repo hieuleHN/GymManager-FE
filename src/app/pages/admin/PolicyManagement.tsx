@@ -8,12 +8,14 @@ import { toast } from 'sonner';
 import { useForm } from 'react-hook-form';
 
 interface PolicyFormData {
+  menuTitle: string;
   title: string;
   description: string;
 }
 
 interface Policy {
   _id: string;
+  menuTitle: string;
   title: string;
   description: string;
   createdAt: string;
@@ -25,7 +27,7 @@ export function PolicyManagement() {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<Policy | null>(null);
-  const { register, handleSubmit: formSubmit, reset, formState: { errors, isSubmitting } } = useForm<PolicyFormData>({ defaultValues: { title: '', description: '' } });
+  const { register, handleSubmit: formSubmit, reset, formState: { errors, isSubmitting } } = useForm<PolicyFormData>({ defaultValues: { menuTitle: '', title: '', description: '' } });
   const [submitting, setSubmitting] = useState(false);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -51,13 +53,13 @@ export function PolicyManagement() {
 
   const openAdd = () => {
     setEditing(null);
-    reset({ title: '', description: '' });
+    reset({ menuTitle: '', title: '', description: '' });
     setShowModal(true);
   };
 
   const openEdit = (p: Policy) => {
     setEditing(p);
-    reset({ title: p.title, description: p.description });
+    reset({ menuTitle: p.menuTitle || '', title: p.title, description: p.description });
     setShowModal(true);
   };
 
@@ -115,6 +117,7 @@ export function PolicyManagement() {
                 <thead className="bg-slate-50 border-b border-slate-200">
                   <tr>
                     <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">STT</th>
+                    <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Tiêu đề menu</th>
                     <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Tiêu đề</th>
                     <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Mô tả</th>
                     <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Thao tác</th>
@@ -124,6 +127,7 @@ export function PolicyManagement() {
                   {policies.map((policy, index) => (
                     <tr key={policy._id} className="border-b border-slate-100 hover:bg-slate-50">
                       <td className="px-6 py-4 text-sm text-slate-900">{index + 1}</td>
+                      <td className="px-6 py-4 text-sm font-medium text-indigo-700">{policy.menuTitle || 'Khác'}</td>
                       <td className="px-6 py-4 text-sm font-medium text-slate-900">{policy.title}</td>
                       <td className="px-6 py-4 text-sm text-slate-600 max-w-md">{policy.description}</td>
                       <td className="px-6 py-4">
@@ -139,7 +143,7 @@ export function PolicyManagement() {
                     </tr>
                   ))}
                   {policies.length === 0 && (
-                    <tr><td colSpan={4} className="px-6 py-8 text-center text-slate-500">Chưa có chính sách nào</td></tr>
+                    <tr><td colSpan={5} className="px-6 py-8 text-center text-slate-500">Chưa có chính sách nào</td></tr>
                   )}
                 </tbody>
               </table>
@@ -151,9 +155,16 @@ export function PolicyManagement() {
 
       {showModal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center" onClick={() => setShowModal(false)}>
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full mx-4" onClick={e => e.stopPropagation()}>
+          <div className="bg-white rounded-2xl p-6 max-w-lg w-full mx-4" onClick={e => e.stopPropagation()}>
             <h3 className="text-xl font-bold text-slate-900 mb-6">{editing ? 'Sửa chính sách' : 'Thêm chính sách'}</h3>
             <form onSubmit={formSubmit(onFormSubmit)} className="space-y-4 mb-6">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Tiêu đề menu <span className="text-red-500">*</span></label>
+                <input type="text" {...register('menuTitle', { required: 'Vui lòng nhập tiêu đề menu' })}
+                  placeholder="VD: Chính sách bảo mật"
+                  className={`w-full p-3 border ${errors.menuTitle ? 'border-red-400' : 'border-slate-200'} rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500`} />
+                {errors.menuTitle && <span className="text-red-500 text-sm mt-1">{errors.menuTitle.message}</span>}
+              </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">Tiêu đề <span className="text-red-500">*</span></label>
                 <input type="text" {...register('title', { required: 'Vui lòng nhập tiêu đề' })}

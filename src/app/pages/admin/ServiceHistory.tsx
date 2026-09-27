@@ -1,72 +1,67 @@
 import { AdminLayout } from '../../components/AdminLayout';
 import { Button } from '@mui/material';
-import { useState } from 'react';
+import { Loader2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { getAuthHeaders } from '../../context/AuthContext';
+import { toast } from 'sonner';
+import {
+  SERVICE_LABELS,
+  SERVICE_STATUS_LABELS
+} from '../../../lib/serviceCatalog';
 
-const historyData = [
-  {
-    id: 1,
-    memberName: 'Phạm Văn D',
-    requestType: 'Chuyển cơ sở',
-    currentClub: 'ZenFitness Quận 1',
-    targetClub: 'ZenFitness Quận 5',
-    reason: 'Chuyển công ty',
-    requestDate: '2024-05-15',
-    processedDate: '2024-05-16',
-    status: 'accepted'
-  },
-  {
-    id: 2,
-    memberName: 'Hoàng Thị E',
-    requestType: 'Chuyển cơ sở',
-    currentClub: 'ZenFitness Quận 3',
-    targetClub: 'ZenFitness Quận 7',
-    reason: 'Gần nhà hơn',
-    requestDate: '2024-05-14',
-    processedDate: '2024-05-15',
-    status: 'rejected'
-  },
-  {
-    id: 3,
-    memberName: 'Đỗ Văn F',
-    requestType: 'Tạm ngưng gói tập',
-    currentClub: 'ZenFitness Quận 2',
-    targetClub: '-',
-    reason: 'Bận công việc',
-    requestDate: '2024-05-13',
-    processedDate: '2024-05-14',
-    status: 'accepted'
-  },
-  {
-    id: 4,
-    memberName: 'Vũ Thị G',
-    requestType: 'Chuyển cơ sở',
-    currentClub: 'ZenFitness Quận 6',
-    targetClub: 'ZenFitness Quận 1',
-    reason: 'Phù hợp lịch làm việc',
-    requestDate: '2024-05-12',
-    processedDate: '2024-05-13',
-    status: 'accepted'
-  },
-  {
-    id: 5,
-    memberName: 'Bùi Văn H',
-    requestType: 'Tạm ngưng gói tập',
-    currentClub: 'ZenFitness Quận 4',
-    targetClub: '-',
-    reason: 'Du lịch dài ngày',
-    requestDate: '2024-05-11',
-    processedDate: '2024-05-12',
-    status: 'rejected'
-  }
-];
+interface RequestItem {
+  _id: string;
+  customer_name: string;
+  customer_phone?: string;
+  service_type: string;
+  description: string;
+  status: string;
+  admin_note?: string;
+  createdAt: string;
+  processed_at?: string;
+  location_id?: { _id: string; title?: string; address?: string } | null;
+}
+
+const formatDate = (iso: string) => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+};
 
 export function ServiceHistory() {
-  const [filter, setFilter] = useState<'all' | 'accepted' | 'rejected'>('all');
+  const headers = getAuthHeaders();
+  const [filter, setFilter] = useState<'accepted' | 'success' | 'rejected' | 'all'>('all');
+  const [history, setHistory] = useState<RequestItem[]>([]);
+  const [loading, setLoading] = useState(false);
 
-  const filteredHistory = historyData.filter(item => {
-    if (filter === 'all') return true;
-    return item.status === filter;
-  });
+  const loadHistory = async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (filter !== 'all') params.set('status', filter);
+      params.set('limit', '100');
+      const res = await fetch(`/api/service-requests?${params.toString()}`, { headers: headers as any });
+      if (!res.ok) throw new Error('Failed');
+      const data = await res.json();
+      setHistory(Array.isArray(data?.data) ? data.data : []);
+    } catch {
+      toast.error('Không thể tải lịch sử dịch vụ');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadHistory();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filter]);
+
+  const filterButtons: { key: typeof filter; label: string; color: string }[] = [
+    { key: 'all', label: 'Tất cả', color: '#4f46e5' },
+    { key: 'accepted', label: 'Đã chấp nhận', color: '#10b981' },
+    { key: 'success', label: 'Thành công', color: '#0ea5e9' },
+    { key: 'rejected', label: 'Đã từ chối', color: '#ef4444' }
+  ];
 
   return (
     <AdminLayout>
@@ -78,103 +73,93 @@ export function ServiceHistory() {
 
         {/* Filter Buttons */}
         <div className="flex gap-3">
-          <Button
-            variant={filter === 'all' ? 'contained' : 'outlined'}
-            onClick={() => setFilter('all')}
-            sx={{
-              bgcolor: filter === 'all' ? '#4f46e5' : 'transparent',
-              color: filter === 'all' ? '#fff' : '#475569',
-              borderColor: '#cbd5e1',
-              '&:hover': {
-                bgcolor: filter === 'all' ? '#4338ca' : '#f8fafc',
-                borderColor: '#94a3b8'
-              },
-              textTransform: 'none',
-              borderRadius: 2,
-              px: 4
-            }}
-          >
-            Tất cả
-          </Button>
-          <Button
-            variant={filter === 'accepted' ? 'contained' : 'outlined'}
-            onClick={() => setFilter('accepted')}
-            sx={{
-              bgcolor: filter === 'accepted' ? '#10b981' : 'transparent',
-              color: filter === 'accepted' ? '#fff' : '#475569',
-              borderColor: '#cbd5e1',
-              '&:hover': {
-                bgcolor: filter === 'accepted' ? '#059669' : '#f0fdf4',
-                borderColor: '#94a3b8'
-              },
-              textTransform: 'none',
-              borderRadius: 2,
-              px: 4
-            }}
-          >
-            Đã chấp nhận
-          </Button>
-          <Button
-            variant={filter === 'rejected' ? 'contained' : 'outlined'}
-            onClick={() => setFilter('rejected')}
-            sx={{
-              bgcolor: filter === 'rejected' ? '#ef4444' : 'transparent',
-              color: filter === 'rejected' ? '#fff' : '#475569',
-              borderColor: '#cbd5e1',
-              '&:hover': {
-                bgcolor: filter === 'rejected' ? '#dc2626' : '#fef2f2',
-                borderColor: '#94a3b8'
-              },
-              textTransform: 'none',
-              borderRadius: 2,
-              px: 4
-            }}
-          >
-            Đã từ chối
-          </Button>
+          {filterButtons.map(btn => (
+            <Button
+              key={btn.key}
+              variant={filter === btn.key ? 'contained' : 'outlined'}
+              onClick={() => setFilter(btn.key)}
+              sx={{
+                bgcolor: filter === btn.key ? btn.color : 'transparent',
+                color: filter === btn.key ? '#fff' : '#475569',
+                borderColor: '#cbd5e1',
+                '&:hover': {
+                  bgcolor: filter === btn.key ? btn.color : '#f8fafc',
+                  borderColor: '#94a3b8'
+                },
+                textTransform: 'none',
+                borderRadius: 2,
+                px: 4
+              }}
+            >
+              {btn.label}
+            </Button>
+          ))}
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-slate-50 border-b border-slate-200">
-                <tr>
-                  <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">STT</th>
-                  <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Tên hội viên</th>
-                  <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Loại yêu cầu</th>
-                  <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Cơ sở hiện tại</th>
-                  <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Cơ sở mong muốn</th>
-                  <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Lý do</th>
-                  <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Ngày yêu cầu</th>
-                  <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Ngày xử lý</th>
-                  <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Trạng thái</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredHistory.map((item, index) => (
-                  <tr key={item.id} className="border-b border-slate-100 hover:bg-slate-50">
-                    <td className="px-6 py-4 text-sm text-slate-900">{index + 1}</td>
-                    <td className="px-6 py-4 text-sm font-medium text-slate-900">{item.memberName}</td>
-                    <td className="px-6 py-4 text-sm text-slate-900">{item.requestType}</td>
-                    <td className="px-6 py-4 text-sm text-slate-600">{item.currentClub}</td>
-                    <td className="px-6 py-4 text-sm text-slate-600">{item.targetClub}</td>
-                    <td className="px-6 py-4 text-sm text-slate-600 max-w-xs">{item.reason}</td>
-                    <td className="px-6 py-4 text-sm text-slate-600">{item.requestDate}</td>
-                    <td className="px-6 py-4 text-sm text-slate-600">{item.processedDate}</td>
-                    <td className="px-6 py-4">
-                      <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                        item.status === 'accepted'
-                          ? 'bg-green-100 text-green-700'
-                          : 'bg-red-100 text-red-700'
-                      }`}>
-                        {item.status === 'accepted' ? 'Đã chấp nhận' : 'Đã từ chối'}
-                      </span>
-                    </td>
+          {loading ? (
+            <div className="flex items-center justify-center py-16 text-slate-500">
+              <Loader2 className="w-6 h-6 animate-spin mr-2" />
+              <span>Đang tải dữ liệu...</span>
+            </div>
+          ) : history.length === 0 ? (
+            <div className="p-12 text-center text-slate-500">
+              <p>Chưa có yêu cầu nào được xử lý ở trạng thái này.</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-slate-50 border-b border-slate-200">
+                  <tr>
+                    <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">STT</th>
+                    <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Hội viên</th>
+                    <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Loại dịch vụ</th>
+                    <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Nội dung</th>
+                    <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Cơ sở</th>
+                    <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Ngày gửi</th>
+                    <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Ngày xử lý</th>
+                    <th className="px-6 py-4 text-left text-sm font-bold text-slate-900">Trạng thái</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {history.map((item, index) => (
+                    <tr key={item._id} className="border-b border-slate-100 hover:bg-slate-50">
+                      <td className="px-6 py-4 text-sm text-slate-900">{index + 1}</td>
+                      <td className="px-6 py-4">
+                        <p className="text-sm font-medium text-slate-900">{item.customer_name || 'Hội viên'}</p>
+                        {item.customer_phone && (
+                          <p className="text-xs text-slate-500">{item.customer_phone}</p>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-slate-900">{SERVICE_LABELS[item.service_type] || item.service_type}</td>
+                      <td className="px-6 py-4 text-sm text-slate-600 max-w-sm">
+                        <p className="line-clamp-2">{item.description || '—'}</p>
+                        {item.status === 'rejected' && item.admin_note && (
+                          <p className="text-xs text-red-500 mt-1">Lý do từ chối: {item.admin_note}</p>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-slate-600">
+                        {item.location_id?.title || item.location_id?.address || '—'}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-slate-600">{formatDate(item.createdAt)}</td>
+                      <td className="px-6 py-4 text-sm text-slate-600">{formatDate(item.processed_at || '')}</td>
+                      <td className="px-6 py-4">
+                        <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                          item.status === 'accepted'
+                            ? 'bg-green-100 text-green-700'
+                            : item.status === 'success'
+                            ? 'bg-sky-100 text-sky-700'
+                            : 'bg-red-100 text-red-700'
+                        }`}>
+                          {SERVICE_STATUS_LABELS[item.status] || item.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </div>
     </AdminLayout>
