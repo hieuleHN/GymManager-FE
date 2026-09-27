@@ -117,8 +117,8 @@ export function Home() {
       .then((res) => res.json())
       .then((data) => {
         const list = data?.data || [];
-        setArticles(list.filter((a: any) => a.category !== 'su-kien'));
-        setEvents(list.filter((a: any) => a.category === 'su-kien'));
+        setArticles(list.filter((a: any) => a.category !== "su-kien"));
+        setEvents(list.filter((a: any) => a.category === "su-kien"));
       })
       .catch(() => {});
   }, []);
@@ -700,8 +700,8 @@ export function Home() {
         </div>
       </section>
 
-      {/* ── BÀI VIẾT TỪ DATABASE ── */}
-      {articles.length > 0 && (
+      {/* ── BÀI VIẾT TỪ CMS ADMIN ── */}
+      {activeBlogs.length > 0 && (
         <section className="py-24 bg-white">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex items-center justify-between mb-16">
@@ -721,10 +721,10 @@ export function Home() {
               </Link>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-              {articles.slice(0, 3).map((article: any) => (
+              {activeBlogs.slice(0, 3).map((article: any) => (
                 <Link
-                  key={article._id}
-                  to={`/articles/${article._id}`}
+                  key={article.id}
+                  to={`/articles/${article.id}`}
                   className="rounded-2xl border border-slate-100 overflow-hidden shadow-sm hover:shadow-lg transition group"
                 >
                   <div className="h-48 bg-slate-100 overflow-hidden">
@@ -742,20 +742,20 @@ export function Home() {
                   </div>
                   <div className="p-6">
                     <span className="text-xs bg-indigo-50 text-indigo-600 px-3 py-1 rounded-full font-semibold">
-                      {article.category === 'tin-tuc' ? 'Tin tức' :
-                       article.category === 'meo-tap' ? 'Mẹo tập' :
-                       article.category === 'dinh-duong' ? 'Dinh dưỡng' : 'Khác'}
+                      {article.category === "tin-tuc"
+                        ? "Tin tức"
+                        : article.category === "meo-tap"
+                          ? "Mẹo tập"
+                          : article.category === "dinh-duong"
+                            ? "Dinh dưỡng"
+                            : article.category || "Khác"}
                     </span>
                     <h3 className="text-lg font-bold mt-4 mb-2 text-slate-900 group-hover:text-indigo-600 transition-colors line-clamp-2">
                       {article.title}
                     </h3>
                     <p className="text-sm text-slate-600 line-clamp-3">
-                      {(() => {
-                        if (article.excerpt) return article.excerpt;
-                        const tmp = document.createElement('div');
-                        tmp.innerHTML = article.content || '';
-                        return (tmp.textContent || tmp.innerText || '').slice(0, 150);
-                      })()}
+                      {article.excerpt ||
+                        "Chưa có nội dung tóm tắt cho bài viết này."}
                     </p>
                   </div>
                 </Link>
@@ -822,9 +822,9 @@ export function Home() {
                     </h3>
                     <p className="text-sm text-slate-600 line-clamp-3">
                       {(() => {
-                        const tmp = document.createElement('div');
-                        tmp.innerHTML = event.content || '';
-                        return tmp.textContent || tmp.innerText || '';
+                        const tmp = document.createElement("div");
+                        tmp.innerHTML = event.content || "";
+                        return tmp.textContent || tmp.innerText || "";
                       })()}
                     </p>
                   </div>
@@ -894,7 +894,8 @@ export function Home() {
                   target="_blank"
                   rel="noopener noreferrer"
                 >
-                  {p.logo?.startsWith("http") ? (
+                  {p.logo?.startsWith("http") ||
+                  p.logo?.startsWith("data:image") ? (
                     <img src={p.logo} className="h-10 object-contain" />
                   ) : (
                     <span className="text-xl font-bold">

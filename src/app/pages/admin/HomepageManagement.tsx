@@ -106,9 +106,16 @@ const initTestimonials: Testimonial[] = [
 const initAchievements: Achievement[] = [
   {
     id: 1,
-    number: "5,000+",
-    label: "Hội viên tin tưởng",
+    number: "10k+",
+    label: "Hội viên",
     icon: "users",
+    active: true,
+  },
+  {
+    id: 2,
+    number: "50+",
+    label: "HLV ưu tú",
+    icon: "award",
     active: true,
   },
 ];
@@ -252,6 +259,40 @@ export function HomepageManagement() {
     facilities: [],
   });
 
+  // HÀM HỖ TRỢ UPLOAD & NÉN ẢNH TỰ ĐỘNG
+  const handleImageUpload = (file: File, callback: (url: string) => void) => {
+    if (!file) return;
+    const reader = new FileReader();
+
+    reader.onload = (e) => {
+      const img = new window.Image();
+
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        let width = img.width;
+        let height = img.height;
+
+        const MAX_WIDTH = 1200;
+        if (width > MAX_WIDTH) {
+          height = Math.round((height * MAX_WIDTH) / width);
+          width = MAX_WIDTH;
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        ctx?.drawImage(img, 0, 0, width, height);
+
+        const compressedBase64 = canvas.toDataURL("image/jpeg", 0.7);
+        callback(compressedBase64);
+      };
+
+      img.src = e.target?.result as string;
+    };
+
+    reader.readAsDataURL(file);
+  };
+
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -261,12 +302,20 @@ export function HomepageManagement() {
         );
         const data = resSettings.data.data;
         if (data) {
-          setBanners(data.banners || []);
-          setAchievements(data.achievements || []);
-          setTestimonials(data.testimonials || []);
-          setBlogs(data.blogs || []);
-          setPartners(data.partners || []);
-          setFAQs(data.faqs || []);
+          setBanners(data.banners?.length > 0 ? data.banners : initBanners);
+          setAchievements(
+            data.achievements?.length > 0
+              ? data.achievements
+              : initAchievements,
+          );
+          setTestimonials(
+            data.testimonials?.length > 0
+              ? data.testimonials
+              : initTestimonials,
+          );
+          setBlogs(data.blogs?.length > 0 ? data.blogs : initBlogs);
+          setPartners(data.partners?.length > 0 ? data.partners : initPartners);
+          setFAQs(data.faqs?.length > 0 ? data.faqs : initFAQs);
 
           if (data.clubsPage) {
             setClubsPage({
@@ -284,6 +333,9 @@ export function HomepageManagement() {
               facilities: data.disciplinesPage.facilities || [],
             });
           }
+        } else {
+          setBanners(initBanners);
+          setAchievements(initAchievements);
         }
 
         const resStaff = await axios.get(`${getApiUrl()}/api/staff`, {
@@ -294,7 +346,6 @@ export function HomepageManagement() {
             ? resStaff.data
             : resStaff.data.data || [];
 
-          // Khớp trạng thái Nổi bật đã lưu từ Database với danh sách staff mới tải về
           if (data && data.staffList && data.staffList.length > 0) {
             const mergedStaff = fetchedStaff.map((s: any) => {
               const found = data.staffList.find(
@@ -434,7 +485,7 @@ export function HomepageManagement() {
         category: "Gym",
         image: "",
         featured: false,
-        publishDate: "2026-06-04",
+        publishDate: new Date().toISOString().split("T")[0],
       },
     ]);
   };
@@ -450,7 +501,7 @@ export function HomepageManagement() {
       partners.length > 0 ? Math.max(...partners.map((p) => p.id)) + 1 : 1;
     setPartners((prev) => [
       ...prev,
-      { id, name: "Đối tác mới", logo: "NEW", website: "", active: false },
+      { id, name: "Đối tác mới", logo: "", website: "", active: false },
     ]);
   };
   const deletePartner = (id: number) =>
@@ -771,19 +822,29 @@ export function HomepageManagement() {
                               />
                             </div>
                             <div>
-                              <label className="block text-xs font-medium text-slate-600 mb-1">
-                                Hình ảnh (URL)
+                              <label className="block text-xs font-medium text-slate-600 mb-2">
+                                Hình ảnh (Tải lên từ thiết bị)
                               </label>
+                              {banner.image &&
+                                (banner.image.startsWith("data:image") ||
+                                  banner.image.startsWith("http")) && (
+                                  <img
+                                    src={banner.image}
+                                    alt="preview"
+                                    className="h-16 w-32 object-cover rounded-lg border border-slate-200 mb-3 shadow-sm"
+                                  />
+                                )}
                               <input
-                                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
-                                value={banner.image}
-                                onChange={(e) =>
-                                  updateBanner(
-                                    banner.id,
-                                    "image",
-                                    e.target.value,
-                                  )
-                                }
+                                type="file"
+                                accept="image/*"
+                                className="w-full text-sm text-slate-500 file:cursor-pointer border border-slate-200 rounded-xl p-1 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 transition-all"
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0];
+                                  if (file)
+                                    handleImageUpload(file, (url) =>
+                                      updateBanner(banner.id, "image", url),
+                                    );
+                                }}
                               />
                             </div>
                           </div>
@@ -1089,20 +1150,38 @@ export function HomepageManagement() {
                               />
                             </div>
                             <div>
-                              <label className="text-xs">Ảnh URL</label>
+                              <label className="block text-xs font-medium text-slate-600 mb-2">
+                                Ảnh (Tải lên từ thiết bị)
+                              </label>
+                              {blog.image &&
+                                (blog.image.startsWith("data:image") ||
+                                  blog.image.startsWith("http")) && (
+                                  <img
+                                    src={blog.image}
+                                    alt="preview"
+                                    className="h-16 w-32 object-cover rounded-lg border border-slate-200 mb-3 shadow-sm"
+                                  />
+                                )}
                               <input
-                                className="w-full border rounded-lg p-2"
-                                value={blog.image}
-                                onChange={(e) =>
-                                  updateBlog(blog.id, "image", e.target.value)
-                                }
+                                type="file"
+                                accept="image/*"
+                                className="w-full text-sm text-slate-500 file:cursor-pointer border border-slate-200 rounded-xl p-1 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 transition-all"
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0];
+                                  if (file)
+                                    handleImageUpload(file, (url) =>
+                                      updateBlog(blog.id, "image", url),
+                                    );
+                                }}
                               />
                             </div>
                             <div>
-                              <label className="text-xs">Ngày đăng</label>
+                              <label className="text-xs mb-2 block">
+                                Ngày đăng
+                              </label>
                               <input
                                 type="date"
-                                className="w-full border rounded-lg p-2"
+                                className="w-full border rounded-lg p-3 text-sm"
                                 value={blog.publishDate}
                                 onChange={(e) =>
                                   updateBlog(
@@ -1118,7 +1197,7 @@ export function HomepageManagement() {
                       ))}
                       <button
                         onClick={addBlog}
-                        className="w-full border-2 border-dashed py-4 rounded-xl flex justify-center items-center gap-2 text-slate-500"
+                        className="w-full border-2 border-dashed py-4 rounded-xl flex justify-center items-center gap-2 text-slate-500 hover:text-indigo-600"
                       >
                         <Plus className="w-4 h-4" /> Thêm bài viết
                       </button>
@@ -1154,26 +1233,53 @@ export function HomepageManagement() {
                           </div>
                           <label className="text-xs">Tên</label>
                           <input
-                            className="w-full border p-2 mb-2 rounded"
+                            className="w-full border p-2 mb-3 rounded-lg text-sm"
                             value={p.name}
                             onChange={(e) =>
                               updatePartner(p.id, "name", e.target.value)
                             }
                           />
-                          <label className="text-xs">Logo (Text/URL)</label>
+                          <label className="text-xs mt-2 block">
+                            Link Website
+                          </label>
                           <input
-                            className="w-full border p-2 mb-2 rounded"
-                            value={p.logo}
+                            className="w-full border p-2 mb-3 rounded-lg text-sm"
+                            value={p.website || ""}
                             onChange={(e) =>
-                              updatePartner(p.id, "logo", e.target.value)
+                              updatePartner(p.id, "website", e.target.value)
                             }
+                            placeholder="https://..."
+                          />
+                          <label className="block text-xs font-medium text-slate-600 mb-2">
+                            Logo (Tải lên từ thiết bị)
+                          </label>
+                          {p.logo &&
+                            (p.logo.startsWith("data:image") ||
+                              p.logo.startsWith("http")) && (
+                              <img
+                                src={p.logo}
+                                alt="preview"
+                                className="h-16 w-32 object-contain rounded-lg border border-slate-200 mb-3 shadow-sm p-2 bg-slate-50"
+                              />
+                            )}
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="w-full text-sm text-slate-500 file:cursor-pointer border border-slate-200 rounded-xl p-1 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 transition-all"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file)
+                                handleImageUpload(file, (url) =>
+                                  updatePartner(p.id, "logo", url),
+                                );
+                            }}
                           />
                         </div>
                       ))}
                     </div>
                     <button
                       onClick={addPartner}
-                      className="w-full mt-4 border-2 border-dashed py-4 flex justify-center gap-2 text-slate-500 rounded-xl"
+                      className="w-full mt-4 border-2 border-dashed py-4 flex justify-center gap-2 text-slate-500 rounded-xl hover:text-indigo-600"
                     >
                       <Plus className="w-4 h-4" /> Thêm đối tác
                     </button>
@@ -1226,7 +1332,7 @@ export function HomepageManagement() {
                       ))}
                       <button
                         onClick={addFAQ}
-                        className="w-full border-2 border-dashed py-4 flex justify-center gap-2 text-slate-500 rounded-xl"
+                        className="w-full border-2 border-dashed py-4 flex justify-center gap-2 text-slate-500 rounded-xl hover:text-indigo-600"
                       >
                         <Plus className="w-4 h-4" /> Thêm câu hỏi
                       </button>
@@ -1284,29 +1390,34 @@ export function HomepageManagement() {
                       </div>
                       <div>
                         <label className="block text-sm font-semibold text-slate-700 mb-2">
-                          Banner Trang Câu Lạc Bộ (URL Ảnh)
+                          Banner Trang Câu Lạc Bộ (Tải ảnh lên từ thiết bị)
                         </label>
+                        {clubsPage.banner &&
+                          (clubsPage.banner.startsWith("data:image") ||
+                            clubsPage.banner.startsWith("http")) && (
+                            <div className="mt-4 mb-4 h-64 rounded-xl overflow-hidden border border-slate-200 shadow-sm">
+                              <img
+                                src={clubsPage.banner}
+                                alt="Preview Banner CLB"
+                                className="w-full h-full object-cover"
+                              />
+                            </div>
+                          )}
                         <input
-                          type="text"
-                          placeholder="https://..."
-                          className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
-                          value={clubsPage.banner}
-                          onChange={(e) =>
-                            setClubsPage((prev) => ({
-                              ...prev,
-                              banner: e.target.value,
-                            }))
-                          }
+                          type="file"
+                          accept="image/*"
+                          className="w-full text-sm text-slate-500 file:cursor-pointer border border-slate-200 rounded-xl p-1 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 transition-all"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file)
+                              handleImageUpload(file, (url) =>
+                                setClubsPage((prev) => ({
+                                  ...prev,
+                                  banner: url,
+                                })),
+                              );
+                          }}
                         />
-                        {clubsPage.banner && (
-                          <div className="mt-4 h-64 rounded-xl overflow-hidden border border-slate-200">
-                            <img
-                              src={clubsPage.banner}
-                              alt="Preview Banner CLB"
-                              className="w-full h-full object-cover"
-                            />
-                          </div>
-                        )}
                       </div>
                     </div>
                   </div>
@@ -1368,19 +1479,29 @@ export function HomepageManagement() {
                               />
                             </div>
                             <div>
-                              <label className="text-xs">
-                                URL Ảnh minh họa
+                              <label className="block text-xs font-medium text-slate-600 mb-2">
+                                Ảnh minh họa (Tải lên từ thiết bị)
                               </label>
+                              {fac.img &&
+                                (fac.img.startsWith("data:image") ||
+                                  fac.img.startsWith("http")) && (
+                                  <img
+                                    src={fac.img}
+                                    alt="preview"
+                                    className="h-16 w-32 object-cover rounded-lg border border-slate-200 mb-3 shadow-sm"
+                                  />
+                                )}
                               <input
-                                className="w-full border rounded-lg p-2 text-sm"
-                                value={fac.img}
-                                onChange={(e) =>
-                                  updateClubFacility(
-                                    fac.id,
-                                    "img",
-                                    e.target.value,
-                                  )
-                                }
+                                type="file"
+                                accept="image/*"
+                                className="w-full text-sm text-slate-500 file:cursor-pointer border border-slate-200 rounded-xl p-1 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 transition-all"
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0];
+                                  if (file)
+                                    handleImageUpload(file, (url) =>
+                                      updateClubFacility(fac.id, "img", url),
+                                    );
+                                }}
                               />
                             </div>
                           </div>
@@ -1416,25 +1537,31 @@ export function HomepageManagement() {
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
-                          <div className="h-32 bg-slate-100 rounded-lg mb-3 overflow-hidden">
-                            {imgUrl ? (
+                          <div className="h-32 bg-slate-100 rounded-lg mb-3 overflow-hidden border border-slate-200">
+                            {imgUrl &&
+                            (imgUrl.startsWith("data:image") ||
+                              imgUrl.startsWith("http")) ? (
                               <img
                                 src={imgUrl}
                                 className="w-full h-full object-cover"
                               />
                             ) : (
                               <div className="w-full h-full flex items-center justify-center text-slate-400 text-xs">
-                                Chưa có ảnh
+                                Chưa có ảnh hợp lệ
                               </div>
                             )}
                           </div>
                           <input
-                            placeholder="Nhập URL ảnh..."
-                            className="w-full border border-slate-200 rounded-lg p-2 text-xs"
-                            value={imgUrl}
-                            onChange={(e) =>
-                              updateClubTrans(index, e.target.value)
-                            }
+                            type="file"
+                            accept="image/*"
+                            className="w-full text-sm text-slate-500 file:cursor-pointer border border-slate-200 rounded-xl p-1 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 transition-all"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file)
+                                handleImageUpload(file, (url) =>
+                                  updateClubTrans(index, url),
+                                );
+                            }}
                           />
                         </div>
                       ))}
@@ -1495,27 +1622,33 @@ export function HomepageManagement() {
                     </div>
                     <div>
                       <label className="block text-sm font-semibold text-slate-700 mb-2">
-                        Banner Trang Bộ Môn (URL Ảnh)
+                        Banner Trang Bộ Môn (Tải ảnh lên từ thiết bị)
                       </label>
+                      {disciplinesPage.banner &&
+                        (disciplinesPage.banner.startsWith("data:image") ||
+                          disciplinesPage.banner.startsWith("http")) && (
+                          <div className="mt-4 mb-4 h-64 rounded-xl overflow-hidden border border-slate-200 shadow-sm">
+                            <img
+                              src={disciplinesPage.banner}
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                        )}
                       <input
-                        type="text"
-                        className="w-full p-3 border border-slate-200 rounded-xl outline-none focus:border-emerald-500"
-                        value={disciplinesPage.banner}
-                        onChange={(e) =>
-                          setDisciplinesPage((prev) => ({
-                            ...prev,
-                            banner: e.target.value,
-                          }))
-                        }
+                        type="file"
+                        accept="image/*"
+                        className="w-full text-sm text-slate-500 file:cursor-pointer border border-slate-200 rounded-xl p-1 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100 transition-all"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file)
+                            handleImageUpload(file, (url) =>
+                              setDisciplinesPage((prev) => ({
+                                ...prev,
+                                banner: url,
+                              })),
+                            );
+                        }}
                       />
-                      {disciplinesPage.banner && (
-                        <div className="mt-4 h-64 rounded-xl overflow-hidden">
-                          <img
-                            src={disciplinesPage.banner}
-                            className="w-full h-full object-cover"
-                          />
-                        </div>
-                      )}
                     </div>
                   </div>
                 )}
@@ -1575,7 +1708,7 @@ export function HomepageManagement() {
                             </span>
                             <button
                               onClick={() => deleteDiscFacility(fac.id)}
-                              className="text-red-500"
+                              className="text-red-500 hover:text-red-700"
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
@@ -1606,18 +1739,32 @@ export function HomepageManagement() {
                                 )
                               }
                             />
-                            <input
-                              className="w-full border rounded-lg p-2 text-sm outline-none focus:border-emerald-500"
-                              placeholder="URL Ảnh"
-                              value={fac.img}
-                              onChange={(e) =>
-                                updateDiscFacility(
-                                  fac.id,
-                                  "img",
-                                  e.target.value,
-                                )
-                              }
-                            />
+                            <div>
+                              <label className="block text-[10px] text-slate-500 mb-2">
+                                Ảnh tiện ích (Tải lên từ thiết bị)
+                              </label>
+                              {fac.img &&
+                                (fac.img.startsWith("data:image") ||
+                                  fac.img.startsWith("http")) && (
+                                  <img
+                                    src={fac.img}
+                                    alt="preview"
+                                    className="h-16 w-32 object-cover rounded-lg border border-slate-200 mb-3 shadow-sm"
+                                  />
+                                )}
+                              <input
+                                type="file"
+                                accept="image/*"
+                                className="w-full text-sm text-slate-500 file:cursor-pointer border border-slate-200 rounded-xl p-1 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100 transition-all"
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0];
+                                  if (file)
+                                    handleImageUpload(file, (url) =>
+                                      updateDiscFacility(fac.id, "img", url),
+                                    );
+                                }}
+                              />
+                            </div>
                           </div>
                         </div>
                       ))}
